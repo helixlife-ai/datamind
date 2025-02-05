@@ -379,7 +379,7 @@ def main():
     start_time = datetime.now()
     
     # 指定输入目录
-    input_dirs = [r"D:\github\My\unified-research\source\test_notes"]
+    input_dirs = [r"D:\github\Helixlife\datamind\source\test_data"]
     input_dirs = [Path(d.strip()) for d in input_dirs]
     logger.info(f"输入目录: {input_dirs}")
     
