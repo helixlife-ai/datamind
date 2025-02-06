@@ -1,0 +1,15 @@
+datamind/
+├── __init__.py
+├── core/
+│   ├── __init__.py
+│   ├── planner.py
+│   ├── executor.py
+│   ├── search.py
+│   ├── parser.py
+│   └── processor.py
+├── utils/
+│   ├── __init__.py
+│   └── common.py
+└── config/
+    ├── __init__.py
+    └── settings.py 

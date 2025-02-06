@@ -158,8 +158,16 @@ class DeepSeekIntentParser:
 def test_parser():
     """测试意图解析器功能"""
     try:
+        # 确保加载环境变量
+        load_dotenv()
+        
+        # 获取API key并验证
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise ValueError("未找到DEEPSEEK_API_KEY环境变量，请确保.env文件中包含该配置")
+            
         # 初始化解析器
-        parser = DeepSeekIntentParser(api_key=os.getenv("DEEPSEEK_API_KEY"))
+        parser = DeepSeekIntentParser(api_key=api_key)
         
         # 测试查询
         test_queries = [

@@ -10,6 +10,7 @@ sentence-transformers>=2.2.0
 faiss-cpu>=1.7.0
 python-magic-bin>=0.4.14
 xmltodict>=0.13.0
+openai>=1.0.0
 
 # 进度条显示
 tqdm>=4.62.0
@@ -19,4 +20,7 @@ pytest>=6.2.0
 
 # 开发工具
 black>=21.5b2
-flake8>=3.9.0 
+flake8>=3.9.0
+
+# 新增依赖
+python-dotenv 
