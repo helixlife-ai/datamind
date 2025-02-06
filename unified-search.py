@@ -33,6 +33,33 @@ DEFAULT_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
 DEFAULT_DB_PATH = "unified_storage.duckdb"
 SEARCH_TOP_K = 5
 
+def download_model():
+    """
+    下载并保存模型到本地缓存
+    """
+    try:
+        root_dir = Path.cwd()
+        model_cache_dir = root_dir / 'model_cache' / DEFAULT_MODEL
+        model_cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        print(f"开始下载模型 {DEFAULT_MODEL} ...")
+        # 使用 save() 方法确保模型保存到指定位置
+        model = SentenceTransformer(DEFAULT_MODEL)
+        model.save(str(model_cache_dir))
+        print(f"模型已成功下载并保存到: {model_cache_dir}")
+        
+        # 验证模型文件是否存在
+        if list(model_cache_dir.glob('*')):
+            print("模型文件验证成功")
+            return True
+        else:
+            print("警告：模型目录为空")
+            return False
+            
+    except Exception as e:
+        print(f"模型下载失败: {str(e)}")
+        return False
+
 # %% [3. 数据库初始化]
 def setup_database(db_path: str = DEFAULT_DB_PATH):
     """初始化数据库表结构"""
@@ -56,8 +83,6 @@ def setup_database(db_path: str = DEFAULT_DB_PATH):
 
 # %% [4. 搜索引擎核心类]
 class SearchEngine:
-    """智能搜索引擎核心类"""
-    
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
         """初始化搜索引擎
         Args:
@@ -67,33 +92,21 @@ class SearchEngine:
         
         # 获取当前工作目录作为根目录
         root_dir = Path.cwd()
-        model_cache_dir = root_dir / 'model_cache'
-        
-        # 确保缓存目录存在
-        model_cache_dir.mkdir(parents=True, exist_ok=True)
+        model_path = root_dir / 'model_cache' / DEFAULT_MODEL
         
         try:
-            # 优先尝试从本地缓存加载模型
-            print("尝试从本地缓存加载模型...")
-            self.text_model = SentenceTransformer(
-                model_name_or_path=DEFAULT_MODEL,
-                cache_folder=str(model_cache_dir)
-            )
+            # 检查模型文件是否存在
+            if not model_path.exists() or not list(model_path.glob('*')):
+                raise FileNotFoundError("模型文件不存在")
+                
+            # 从本地加载模型
+            print(f"正在从 {model_path} 加载模型...")
+            self.text_model = SentenceTransformer(str(model_path))
             print("模型加载成功")
         except Exception as e:
             print(f"模型加载失败: {str(e)}")
-            print("尝试下载模型...")
-            try:
-                # 下载并保存模型到缓存目录
-                self.text_model = SentenceTransformer(
-                    model_name_or_path=DEFAULT_MODEL,
-                    cache_folder=str(model_cache_dir)
-                )
-                print(f"模型已成功下载到: {model_cache_dir}")
-            except Exception as e:
-                print(f"模型下载失败: {str(e)}")
-                print("向量搜索功能将不可用")
-                self.text_model = None
+            print("请先运行 download_model() 下载模型")
+            self.text_model = None
         
         self.faiss_index = None
         self.vectors_map = {}  # 存储向量ID到源数据的映射
@@ -715,8 +728,18 @@ def test_intelligent_search():
 if __name__ == "__main__":
     # 环境检查
     validate_environment()
-
-     # 基础搜索测试
+    
+    # 检查模型文件
+    model_path = Path.cwd() / 'model_cache' / DEFAULT_MODEL
+    if not model_path.exists() or not list(model_path.glob('*')):
+        print("模型文件不存在，开始下载...")
+        if not download_model():
+            print("模型下载失败，程序退出")
+            exit(1)
+    else:
+        print(f"模型已存在于: {model_path}")
+    
+    # 基础搜索测试
     print("\n=== 基础搜索测试 ===")
     engine = SearchEngine()
     for query in ["机器学习","人工智能","file:json"]:

@@ -25,6 +25,39 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# %% [2. 常量定义]
+DEFAULT_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
+DEFAULT_DB_PATH = "unified_storage.duckdb"
+SEARCH_TOP_K = 5
+
+def download_model():
+    """
+    下载并保存模型到本地缓存
+    """
+    try:
+        root_dir = Path.cwd()
+        model_cache_dir = root_dir / 'model_cache' / DEFAULT_MODEL
+        model_cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"开始下载模型 {DEFAULT_MODEL} ...")
+        # 使用 save() 方法确保模型保存到指定位置
+        model = SentenceTransformer(DEFAULT_MODEL)
+        model.save(str(model_cache_dir))
+        logger.info(f"模型已成功下载并保存到: {model_cache_dir}")
+        
+        # 验证模型文件是否存在
+        if list(model_cache_dir.glob('*')):
+            logger.info("模型文件验证成功")
+            return True
+        else:
+            logger.warning("警告：模型目录为空")
+            return False
+            
+    except Exception as e:
+        logger.error(f"模型下载失败: {str(e)}")
+        return False
+
 # %% [2. 智能路径扫描]
 def smart_scanner(source, max_depth=3):
     """支持多路径和深度控制的扫描器"""
@@ -55,9 +88,23 @@ def smart_scanner(source, max_depth=3):
 class FileParser:
     def __init__(self):
         logger.info("初始化文件解析器")
-        logger.info("加载文本向量化模型...")
-        self.text_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-        logger.info("文本向量化模型加载完成")
+        
+        # 检查模型文件
+        root_dir = Path.cwd()
+        model_path = root_dir / 'model_cache' / DEFAULT_MODEL
+        
+        if not model_path.exists() or not list(model_path.glob('*')):
+            logger.info("模型文件不存在，开始下载...")
+            if not download_model():
+                raise RuntimeError("模型下载失败")
+        
+        try:
+            logger.info(f"从 {model_path} 加载模型...")
+            self.text_model = SentenceTransformer(str(model_path))
+            logger.info("文本向量化模型加载完成")
+        except Exception as e:
+            logger.error(f"模型加载失败: {str(e)}")
+            raise
     
     def parse(self, file_path):
         """统一的文件解析入口"""
@@ -386,6 +433,15 @@ def main():
     logger.info("="*50)
     
     start_time = datetime.now()
+    
+    # 检查并下载模型（可选，因为 FileParser 初始化时会处理）
+    root_dir = Path.cwd()
+    model_path = root_dir / 'model_cache' / DEFAULT_MODEL
+    if not model_path.exists() or not list(model_path.glob('*')):
+        logger.info("首次运行，需要下载模型...")
+        if not download_model():
+            logger.error("模型下载失败，程序退出")
+            return
     
     # 指定输入目录
     input_dirs = [r"D:\github\Helixlife\datamind\source\test_data"]
