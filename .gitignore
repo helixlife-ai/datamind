@@ -1,3 +1,7 @@
+model_cache/
+
+# 忽略所有.duckdb文件   
+*.duckdb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

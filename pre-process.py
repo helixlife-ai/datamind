@@ -293,7 +293,7 @@ class StorageSystem:
                 _file_type VARCHAR,             -- 文件类型
                 _processed_at TIMESTAMP,        -- 处理时间
                 _sub_id INTEGER,                -- 子记录ID
-                data JSON,                      -- 原始数据
+                data JSON,                      -- 原始数据（注意这里使用JSON类型）
                 vector DOUBLE[]                 -- 向量表示
             )
         """)
@@ -316,7 +316,7 @@ class StorageSystem:
             
             # 处理向量数据
             logger.info("序列化向量数据")
-            vector_data = df['vector'].apply(json.dumps)
+            vector_data = df['vector'].apply(lambda x: json.dumps(x, ensure_ascii=False))
             
             # 将其他列打包为JSON
             logger.info("打包其他字段为JSON格式")
@@ -324,36 +324,46 @@ class StorageSystem:
                            if col not in meta_columns + ['vector']]
             logger.debug(f"额外字段数量: {len(other_columns)}")
             
-            df['data'] = df[other_columns].apply(lambda x: json.dumps(x.dropna().to_dict()), axis=1)
+            # 创建要存储的数据字典
+            data_dicts = []
+            for idx, row in df.iterrows():
+                data_dict = {}
+                for col in other_columns:
+                    if pd.notna(row[col]):  # 只保存非空值
+                        data_dict[col] = row[col]
+                data_dicts.append(json.dumps(data_dict, ensure_ascii=False))
             
             # 准备存储数据
             logger.info("准备最终存储数据")
             df_to_save = df[meta_columns].copy()
-            df_to_save['data'] = df['data']
+            df_to_save['data'] = data_dicts  # 使用处理后的JSON字符串
             df_to_save['vector'] = vector_data
             
             # 存储数据
             logger.info("开始写入数据库")
-            self.db.register('temp_view', df_to_save)
             
-            # 记录插入前的记录数
-            pre_count = self.db.execute("SELECT COUNT(*) FROM unified_data").fetchone()[0]
-            logger.info(f"当前数据库记录数: {pre_count}")
-            
-            # 执行插入操作
-            self.db.execute("""
-                INSERT INTO unified_data 
-                SELECT * FROM temp_view
-                ON CONFLICT (_record_id) DO UPDATE 
-                SET data = EXCLUDED.data,
-                    vector = EXCLUDED.vector
-            """)
+            # 使用参数化查询来插入数据
+            for idx, row in df_to_save.iterrows():
+                self.db.execute("""
+                    INSERT INTO unified_data 
+                    (_record_id, _file_path, _file_name, _file_type, _processed_at, _sub_id, data, vector)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (_record_id) DO UPDATE 
+                    SET data = EXCLUDED.data,
+                        vector = EXCLUDED.vector
+                """, (
+                    row['_record_id'],
+                    row['_file_path'],
+                    row['_file_name'],
+                    row['_file_type'],
+                    row['_processed_at'],
+                    row['_sub_id'],
+                    row['data'],
+                    row['vector']
+                ))
             
             # 记录插入后的记录数
             post_count = self.db.execute("SELECT COUNT(*) FROM unified_data").fetchone()[0]
-            new_records = post_count - pre_count
-            
-            self.db.unregister('temp_view')
             
             # 计算处理时间
             process_time = (datetime.now() - start_time).total_seconds()
@@ -362,7 +372,6 @@ class StorageSystem:
             logger.info("="*40)
             logger.info("数据存储完成")
             logger.info(f"总处理时间: {process_time:.2f}秒")
-            logger.info(f"新增记录数: {new_records}")
             logger.info(f"当前总记录数: {post_count}")
             logger.info("="*40)
 
