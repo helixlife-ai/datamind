@@ -75,32 +75,55 @@ pip install -r requirements.txt
 
 ### 使用示例
 
-1. 文档预处理:
-```python
-from preprocess import main as preprocess_main
-
-# 配置文档目录
-input_dirs = ["path/to/your/documents"]
-
-# 运行预处理
-preprocess_main()
+1. 环境配置:
+```bash
+# 创建并配置 .env 文件
+DEEPSEEK_API_KEY=your_api_key
+DEEPSEEK_BASE_URL=your_base_url
 ```
 
-2. 搜索示例:
+2. 基础使用:
 ```python
-from unified_search import SearchEngine
+from datamind import UnifiedSearchEngine, DataProcessor
+from pathlib import Path
 
-# 初始化搜索引擎
-engine = SearchEngine()
+# 初始化组件
+processor = DataProcessor()
+search_engine = UnifiedSearchEngine()
 
-# 语义搜索
-results = engine.search("机器学习相关文档")
+# 处理数据目录
+input_dirs = ["source/test_data"]
+stats = processor.process_directory(input_dirs)
 
-# 按文件类型搜索
-results = engine.search("file:pdf")
+# 执行搜索
+results = search_engine.search("机器学习")
+print(results)
 
-# 按时间范围搜索
-results = engine.search("date:2023-01-01 to 2023-12-31")
+# 支持多种查询方式
+results = search_engine.search("file:json")  # 按文件类型搜索
+results = search_engine.search("modified:>2024-01-01")  # 按时间搜索
+```
+
+3. 智能检索:
+```python
+from datamind import IntentParser, SearchPlanner, SearchPlanExecutor
+
+# 设置DEEPSEEK的API密钥和基础URL
+api_key = "<your_api_key> "
+base_url = "<your_base_url>"
+
+# 初始化智能检索组件
+intent_parser = IntentParser(api_key=api_key, base_url=base_url)
+planner = SearchPlanner()
+executor = SearchPlanExecutor(search_engine)
+
+# 执行智能检索
+query = "找出上海2025年与人工智能专利技术相关的研究报告"
+parsed_intent = intent_parser.parse_query(query)
+results = executor.execute_plan(planner.build_search_plan(parsed_intent))
+
+# 导出结果
+csv_path = executor.save_results_to_csv(results, "search_results.csv")
 ```
 
 ## ⚙️ 配置说明
