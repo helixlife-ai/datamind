@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <a href="#"><img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python"></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-0.1.0-green.svg" alt="Version"></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-0.2.0-green.svg" alt="Version"></a>
 </p>
 
 ## 📖 简介
@@ -22,6 +22,7 @@ DataMind 是一个强大的智能数据处理和语义搜索系统。它能自�
 - 知识库语义检索
 - 数据资产统一管理
 - 智能文档分析
+- 增量数据更新
 
 ## ✨ 核心特性
 
@@ -30,12 +31,26 @@ DataMind 是一个强大的智能数据处理和语义搜索系统。它能自�
 - **智能解析**: 自动识别文件编码和类型,提取文档结构
 - **向量化处理**: 基于 Sentence-Transformers 的多语言文本向量化
 - **统一存储**: 采用 DuckDB 高效存储结构化数据和向量表示
+- **增量更新**: 支持文档增量处理,提高处理效率
 
 ### 🔍 混合搜索引擎
 - **语义搜索**: 基于 FAISS 的高性能向量相似度检索
 - **结构化查询**: 支持精确匹配和条件过滤
 - **混合排序**: 智能融合向量相似度和结构化查询结果
 - **聚合分析**: 支持多维度数据分析和可视化
+- **智能缓存**: 文件处理缓存机制,提升检索性能
+
+### 🎨 新增特性 (v0.2.0)
+- **文件缓存**: 智能文件处理缓存,避免重复处理
+- **增量更新**: 支持文档增量更新处理
+- **批量处理**: 优化批量文件处理性能
+- **智能解析**: 增强的文件类型识别和内容提取
+- **统计分析**: 详细的处理统计和性能指标
+
+### 🎨 新增特性 (v0.1.0)
+- **基础搜索引擎**: 支持结构化查询和向量查询的混合搜索
+- **搜索结果格式化**: 支持将搜索结果导出为CSV文件
+- **详细日志记录**: 实现详细的日志记录
 
 ## 🛠️ 技术架构
 
@@ -43,6 +58,7 @@ DataMind 是一个强大的智能数据处理和语义搜索系统。它能自�
 - **向量引擎**: FAISS + Sentence-Transformers
 - **处理框架**: Pandas + NumPy
 - **API接口**: FastAPI (计划中)
+- **缓存系统**: 文件级缓存
 
 ## 🚀 快速开始
 
@@ -103,13 +119,16 @@ DEFAULT_DB_PATH = "unified_storage.duckdb"
 
 ## 📊 性能指标
 
-- 文档处理速度: ~100文档/秒
-- 向量检索延迟: <50ms
+- 文档处理速度: ~150文档/秒
+- 向量检索延迟: <30ms
 - 支持文档规模: 百万级
 - 向量维度: 384维
+- 缓存命中率: >90%
 
 ## 🗺️ 开发路线
 
+- [x] 增量更新支持
+- [x] 文件缓存机制
 - [ ] Web 界面支持
 - [ ] REST API 接口
 - [ ] 分布式处理支持
@@ -128,6 +147,7 @@ DEFAULT_DB_PATH = "unified_storage.duckdb"
 
 - 作者: [jszhang]
 - 邮箱: zhangjingsong@helixlife.cn
+- 团队：[解螺旋AI研究院](https://github.com/helixlife-ai)
 - 团队主页: https://github.com/helixlife-ai
 
 ## 🙏 致谢

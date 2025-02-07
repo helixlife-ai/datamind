@@ -1,7 +1,12 @@
 model_cache/
+# 忽略工作目录
+work_dir/
 
-# 忽略所有.duckdb文件   
+# 忽略所有.duckdb等文件   
 *.duckdb
+*.wal
+*.db
+*.pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

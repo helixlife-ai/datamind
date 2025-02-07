@@ -5,12 +5,96 @@ import xmltodict
 import pandas as pd
 import duckdb
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 from sentence_transformers import SentenceTransformer
 from ..config.settings import DEFAULT_MODEL, DEFAULT_DB_PATH
 from ..utils.common import download_model
+import pickle
+
+class FileCache:
+    """文件缓存管理器"""
+    
+    def __init__(self, cache_file: str = None, max_age_days: int = 30):
+        self.logger = logging.getLogger(__name__)
+        self.cache_file = cache_file or Path(DEFAULT_DB_PATH).parent / 'file_cache.pkl'
+        self.max_age = timedelta(days=max_age_days)
+        self.cache: Dict[str, Dict] = {}
+        self.modified: Set[str] = set()
+        self._load_cache()
+    
+    def _load_cache(self):
+        """从文件加载缓存"""
+        if Path(self.cache_file).exists():
+            try:
+                with open(self.cache_file, 'rb') as f:
+                    self.cache = pickle.load(f)
+                self.logger.info(f"已加载 {len(self.cache)} 个文件的缓存记录")
+                self._cleanup_expired()
+            except Exception as e:
+                self.logger.error(f"加载缓存文件失败: {str(e)}")
+                self.cache = {}
+    
+    def _save_cache(self):
+        """保存缓存到文件"""
+        if not self.modified:
+            return
+            
+        try:
+            cache_dir = Path(self.cache_file).parent
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            
+            with open(self.cache_file, 'wb') as f:
+                pickle.dump(self.cache, f)
+            self.modified.clear()
+            self.logger.debug("缓存已保存到文件")
+        except Exception as e:
+            self.logger.error(f"保存缓存文件失败: {str(e)}")
+    
+    def _cleanup_expired(self):
+        """清理过期缓存"""
+        now = datetime.now()
+        expired = []
+        
+        for path, info in self.cache.items():
+            age = now - info['processed_at']
+            if age > self.max_age:
+                expired.append(path)
+                
+        for path in expired:
+            del self.cache[path]
+            
+        if expired:
+            self.modified.add('cleanup')
+            self.logger.info(f"已清理 {len(expired)} 个过期缓存记录")
+    
+    def get(self, file_path: str) -> Optional[Dict]:
+        """获取文件缓存信息"""
+        return self.cache.get(str(file_path))
+    
+    def update(self, file_path: str, info: Dict):
+        """更新文件缓存信息"""
+        self.cache[str(file_path)] = info
+        self.modified.add(str(file_path))
+    
+    def remove(self, file_paths: List[str]):
+        """删除文件缓存信息"""
+        for path in file_paths:
+            self.cache.pop(str(path), None)
+        if file_paths:
+            self.modified.add('remove')
+    
+    def batch_update(self, updates: Dict[str, Dict]):
+        """批量更新缓存"""
+        self.cache.update(updates)
+        self.modified.update(updates.keys())
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._save_cache()
 
 class DataProcessor:
     """数据预处理器"""
@@ -20,45 +104,62 @@ class DataProcessor:
         self.db_path = db_path
         self.parser = FileParser()
         self.storage = StorageSystem(db_path)
+        self.file_cache = FileCache()
         
-    def process_directory(self, input_dirs: List[str], max_depth: int = 3) -> Dict:
+    def process_directory(self, input_dirs: List[str], max_depth: int = 3, 
+                         incremental: bool = True) -> Dict:
         """处理指定目录
         
         Args:
             input_dirs: 输入目录列表
             max_depth: 最大扫描深度
-            
-        Returns:
-            Dict: 处理结果统计
+            incremental: 是否启用增量更新
         """
         start_time = datetime.now()
         self.logger.info("="*50)
-        self.logger.info("开始数据预处理任务")
+        self.logger.info(f"开始{'增量' if incremental else '全量'}数据处理任务")
         
-        try:
-            # 扫描文件
-            scanned_files = self._scan_directories(input_dirs, max_depth)
-            self.logger.info(f"扫描完成，共发现 {len(scanned_files)} 个文件")
-            
-            # 处理文件
-            stats = self._process_files(scanned_files)
-            
-            # 计算总耗时
-            total_time = (datetime.now() - start_time).total_seconds()
-            stats['total_time'] = total_time
-            stats['avg_time_per_file'] = total_time / len(scanned_files) if scanned_files else 0
-            
-            self.logger.info("="*50)
-            self.logger.info(f"处理完成，总耗时: {total_time:.2f}秒")
-            return stats
-            
-        except Exception as e:
-            self.logger.error(f"处理过程出错: {str(e)}", exc_info=True)
-            return {
-                'status': 'error',
-                'error': str(e),
-                'total_time': (datetime.now() - start_time).total_seconds()
-            }
+        with self.file_cache:  # 自动保存缓存
+            try:
+                # 扫描文件
+                scanned_files = self._scan_directories(input_dirs, max_depth)
+                self.logger.info(f"扫描完成，共发现 {len(scanned_files)} 个文件")
+                
+                # 确定需要处理的文件
+                files_to_process = []
+                for file_path in scanned_files:
+                    if not incremental or self._need_update(file_path):
+                        files_to_process.append(file_path)
+                
+                self.logger.info(f"需要处理的文件数: {len(files_to_process)}")
+                
+                # 批量处理文件
+                stats = self._process_files(files_to_process)
+                
+                # 处理已删除的文件
+                if incremental:
+                    removed_count = self._handle_removed_files(input_dirs, scanned_files)
+                    stats['removed_files'] = removed_count
+                
+                # 更新统计信息
+                total_time = (datetime.now() - start_time).total_seconds()
+                stats.update({
+                    'total_time': total_time,
+                    'avg_time_per_file': total_time / len(files_to_process) if files_to_process else 0,
+                    'update_mode': 'incremental' if incremental else 'full'
+                })
+                
+                self.logger.info("="*50)
+                self.logger.info(f"处理完成，总耗时: {total_time:.2f}秒")
+                return stats
+                
+            except Exception as e:
+                self.logger.error(f"处理过程出错: {str(e)}", exc_info=True)
+                return {
+                    'status': 'error',
+                    'error': str(e),
+                    'total_time': (datetime.now() - start_time).total_seconds()
+                }
         
     def _scan_directories(self, input_dirs: List[str], max_depth: int) -> List[Path]:
         """扫描目录获取文件列表"""
@@ -94,6 +195,9 @@ class DataProcessor:
             'errors': []
         }
         
+        # 批量缓存更新
+        cache_updates = {}
+        
         for i, file_path in enumerate(files, 1):
             self.logger.info(f"处理文件 [{i}/{stats['total_files']}]: {file_path}")
             file_start_time = datetime.now()
@@ -105,6 +209,13 @@ class DataProcessor:
                     self.logger.info(f"文件解析成功，获得 {records_count} 条记录")
                     
                     self.storage.save(df)
+                    
+                    # 更新缓存信息
+                    cache_updates[str(file_path)] = {
+                        'processed_at': datetime.now(),
+                        'record_count': records_count,
+                        'size': file_path.stat().st_size
+                    }
                     
                     stats['successful_files'] += 1
                     stats['total_records'] += records_count
@@ -122,8 +233,61 @@ class DataProcessor:
                 error_msg = f"文件处理异常: {file_path} - {str(e)}"
                 stats['errors'].append(error_msg)
                 self.logger.error(error_msg, exc_info=True)
-                
+        
+        # 批量更新缓存
+        if cache_updates:
+            self.file_cache.batch_update(cache_updates)
+            
         return stats
+
+    def _need_update(self, file_path: Path) -> bool:
+        """检查文件是否需要更新"""
+        str_path = str(file_path)
+        cache_info = self.file_cache.get(str_path)
+        
+        if not cache_info:
+            return True
+            
+        try:
+            # 获取文件状态
+            stat = file_path.stat()
+            file_mtime = datetime.fromtimestamp(stat.st_mtime)
+            file_size = stat.st_size
+            
+            # 检查文件是否变化
+            return (file_mtime > cache_info['processed_at'] or
+                   file_size != cache_info.get('size', 0))
+        except Exception as e:
+            self.logger.error(f"检查文件状态失败: {str(e)}")
+            return True
+    
+    def _handle_removed_files(self, input_dirs: List[str], 
+                            current_files: List[Path]) -> int:
+        """处理已删除的文件
+        
+        Returns:
+            int: 删除的记录数
+        """
+        current_paths = {str(f) for f in current_files}
+        removed_paths = []
+        
+        for cached_path in self.file_cache.cache.keys():
+            if any(cached_path.startswith(str(Path(d).absolute())) 
+                   for d in input_dirs):
+                if cached_path not in current_paths:
+                    removed_paths.append(cached_path)
+        
+        if removed_paths:
+            self.logger.info(f"发现 {len(removed_paths)} 个已删除的文件")
+            try:
+                removed_count = self.storage.remove_by_paths(removed_paths)
+                self.file_cache.remove(removed_paths)
+                self.logger.info(f"已删除 {removed_count} 条相关记录")
+                return removed_count
+            except Exception as e:
+                self.logger.error(f"删除过期数据失败: {str(e)}")
+                
+        return 0
 
 class FileParser:
     """文件解析器"""
@@ -375,4 +539,24 @@ class StorageSystem:
             
         except Exception as e:
             self.logger.error(f"数据存储失败: {str(e)}", exc_info=True)
+            raise 
+
+    def remove_by_paths(self, file_paths: List[str]) -> int:
+        """删除指定文件路径的所有记录
+        
+        Returns:
+            int: 删除的记录数
+        """
+        try:
+            paths_str = ", ".join([f"'{p}'" for p in file_paths])
+            result = self.db.execute(f"""
+                DELETE FROM unified_data 
+                WHERE _file_path IN ({paths_str})
+                RETURNING COUNT(*)
+            """).fetchone()
+            
+            return result[0] if result else 0
+            
+        except Exception as e:
+            self.logger.error(f"删除记录失败: {str(e)}")
             raise 
