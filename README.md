@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
-[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/helixlife-ai/datamind/releases)
+[![Version](https://img.shields.io/badge/version-0.2.1-green.svg)](https://github.com/helixlife-ai/datamind/releases)
 
 ## 📖 简介
 
@@ -35,6 +35,18 @@ DataMind 是一个强大的智能数据处理和语义搜索系统。它能自�
 - **混合排序**: 智能融合向量相似度和结构化查询结果
 - **聚合分析**: 支持多维度数据分析和可视化
 - **智能缓存**: 文件处理缓存机制,提升检索性能
+
+### 🎨 新增特性 (v0.2.1)
+- **模型管理**: 统一的模型管理系统，支持本地和API调用
+- **环境配置**: 优化的环境变量配置，提高安全性
+- **异步支持**: 改进的异步API调用支持
+- **错误处理**: 更完善的错误处理和日志记录
+- **搜索增强**: 
+  * 智能内容去重和相似度分析
+  * 深度洞察和关系发现
+  * 多格式结果导出
+  * 时间线分析
+  * 改进的结果摘要
 
 ### 🎨 新增特性 (v0.2.0)
 - **文件缓存**: 智能文件处理缓存,避免重复处理
@@ -191,3 +203,24 @@ class Config:
 - [Sentence-Transformers](https://github.com/UKPLab/sentence-transformers)
 - [FAISS](https://github.com/facebookresearch/faiss)
 - [DuckDB](https://github.com/duckdb/duckdb)
+
+## 环境变量配置
+
+项目使用以下环境变量：
+
+- `DATAMIND_LLM_API_KEY`: (必需) LLM API密钥
+- `DATAMIND_LLM_API_BASE`: (可选) LLM API基础URL，默认为 "https://api.deepseek.com"
+
+你可以通过以下方式设置环境变量：
+
+1. 创建 `.env` 文件：
+   ```bash
+   cp .env.example .env
+   # 然后编辑 .env 文件填入实际的值
+   ```
+
+2. 或者直接在环境中设置：
+   ```bash
+   export DATAMIND_LLM_API_KEY=your-api-key-here
+   export DATAMIND_LLM_API_BASE=https://api.deepseek.com
+   ```

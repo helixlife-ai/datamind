@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any, Union, Literal
 from sentence_transformers import SentenceTransformer
 from openai import AsyncOpenAI
 from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL
+from ..utils.common import download_model
 
 ModelType = Literal["local", "api"]
 
@@ -68,12 +69,12 @@ class ModelManager:
         
         if not model_path.exists() or not list(model_path.glob('*')):
             self.logger.info(f"模型文件不存在，开始下载到本地: {model_path}")
-            model = SentenceTransformer(config.name)
-            model.save(str(model_path))
+            if not download_model(config.name, model_path):
+                raise RuntimeError(f"下载模型 {config.name} 失败")
         else:
             self.logger.info(f"从本地加载模型: {model_path}")
-            model = SentenceTransformer(str(model_path))
             
+        model = SentenceTransformer(str(model_path))
         return model
     
     def _init_api_embedding_model(self, config: ModelConfig) -> Any:

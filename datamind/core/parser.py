@@ -6,6 +6,8 @@ import asyncio
 from .cache import QueryCache
 from ..config.settings import (
     DEFAULT_LLM_MODEL,
+    DEFAULT_LLM_API_KEY,
+    DEFAULT_LLM_API_BASE,
     DEFAULT_SIMILARITY_THRESHOLD,
     DEFAULT_TARGET_FIELD,
     QUERY_TEMPLATE,
@@ -20,11 +22,12 @@ from ..models.model_manager import ModelManager, ModelConfig
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""
     
-    def __init__(self, api_key: str, base_url: str):
+    def __init__(self, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE):
         """初始化解析器
         
         Args:
-            api_key: DeepSeek API密钥
+            api_key: API密钥，默认使用配置中的DEFAULT_LLM_API_KEY
+            base_url: API基础URL，默认使用配置中的DEFAULT_LLM_API_BASE
         """
         self.logger = logging.getLogger(__name__)
         self.model_manager = ModelManager()

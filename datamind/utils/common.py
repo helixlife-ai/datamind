@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
-from ..config.settings import DEFAULT_EMBEDDING_MODEL
+from typing import Optional
 
 def setup_logging():
     """配置日志"""
@@ -12,20 +12,30 @@ def setup_logging():
     )
     return logging.getLogger(__name__)
 
-def download_model():
-    """下载并保存模型到本地缓存"""
+def download_model(model_name: str, save_dir: Optional[Path] = None) -> bool:
+    """下载并保存模型到本地缓存
+    
+    Args:
+        model_name: 要下载的模型名称
+        save_dir: 保存目录，如果为None则使用默认的model_cache目录
+        
+    Returns:
+        bool: 下载是否成功
+    """
     logger = logging.getLogger(__name__)
     try:
         root_dir = Path.cwd()
-        model_cache_dir = root_dir / 'model_cache' / DEFAULT_EMBEDDING_MODEL
-        model_cache_dir.mkdir(parents=True, exist_ok=True)
+        if save_dir is None:
+            save_dir = root_dir / 'model_cache' / model_name
+            
+        save_dir.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"开始下载模型 {DEFAULT_EMBEDDING_MODEL} ...")
-        model = SentenceTransformer(DEFAULT_EMBEDDING_MODEL)
-        model.save(str(model_cache_dir))
-        logger.info(f"模型已成功下载并保存到: {model_cache_dir}")
+        logger.info(f"开始下载模型 {model_name} ...")
+        model = SentenceTransformer(model_name)
+        model.save(str(save_dir))
+        logger.info(f"模型已成功下载并保存到: {save_dir}")
         
-        if list(model_cache_dir.glob('*')):
+        if list(save_dir.glob('*')):
             logger.info("模型文件验证成功")
             return True
         else:
