@@ -305,6 +305,10 @@ class FileParser:
         
         self.text_model = self.model_manager.get_embedding_model()
         
+        # 添加文档分块配置
+        self.chunk_size = 1000  # 文档分块大小
+        self.chunk_overlap = 200  # 块之间的重叠大小
+
     def parse(self, file_path: Path) -> Optional[pd.DataFrame]:
         """统一的文件解析入口"""
         suffix = file_path.suffix.lower()
@@ -312,13 +316,16 @@ class FileParser:
         try:
             self.logger.info(f"开始解析文件: {file_path}")
             
+            # 生成基础record_id (作为文档ID)
+            base_record_id = f"{file_path.stem}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
+            
             # 基础元数据
             base_metadata = {
                 '_file_path': str(file_path),
                 '_file_name': file_path.name,
                 '_file_type': suffix.lstrip('.'),
                 '_processed_at': pd.Timestamp.now(),
-                '_record_id': f"{file_path.stem}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
+                '_record_id': base_record_id
             }
 
             # 解析文件内容
@@ -331,7 +338,10 @@ class FileParser:
             for idx, record in enumerate(records, 1):
                 record_data = base_metadata.copy()
                 record_data['_sub_id'] = idx - 1
-                record_data['_record_id'] = f"{record_data['_record_id']}_{idx-1}"
+                
+                # 如果是分块记录，修改record_id
+                if 'chunk_id' in record:
+                    record_data['_record_id'] = f"{base_record_id}_{idx-1}"
                 
                 # 扁平化记录
                 flat_data = self._flatten_record(record)
@@ -357,7 +367,9 @@ class FileParser:
             return self._parse_json(path)
         elif suffix in ['.csv', '.tsv']:
             return self._parse_csv(path)
-        elif suffix in ['.txt', '.md', '.log']:
+        elif suffix == '.md':
+            return self._parse_markdown(path)
+        elif suffix in ['.txt', '.log']:
             return self._parse_text(path)
         elif suffix in ['.xlsx', '.xls']:
             return self._parse_excel(path)
@@ -366,7 +378,6 @@ class FileParser:
         else:
             return self._parse_binary(path)
             
-    # 具体的解析方法实现...
     def _parse_json(self, path: Path) -> List[Dict]:
         """JSON文件解析"""
         with path.open('r', encoding='utf-8') as f:
@@ -382,11 +393,68 @@ class FileParser:
         """文本文件解析"""
         content = path.read_text(encoding='utf-8')
         lines = content.splitlines()
-        return [{
-            'content': content,
+        
+        # 获取文档的基本信息
+        base_info = {
             'char_count': len(content),
-            'line_count': len(lines)
-        }]
+            'line_count': len(lines),
+            'full_content': content  # 保存完整内容
+        }
+        
+        # 分块处理
+        chunks = self._split_text_into_chunks(content)
+        
+        # 为每个块创建记录
+        records = []
+        for i, chunk in enumerate(chunks):
+            record = base_info.copy()
+            record.update({
+                'chunk_id': i,
+                'total_chunks': len(chunks),
+                'content': chunk,
+                'chunk_char_count': len(chunk)
+            })
+            records.append(record)
+            
+        return records
+    
+    def _parse_markdown(self, path: Path) -> List[Dict]:
+        """Markdown文件解析"""
+        content = path.read_text(encoding='utf-8')
+        
+        # 提取标题结构
+        headers = []
+        current_level = 0
+        current_header = ""
+        
+        for line in content.splitlines():
+            if line.startswith('#'):
+                level = len(line.split()[0])  # 计算#的数量
+                header = line.lstrip('#').strip()
+                headers.append({
+                    'level': level,
+                    'text': header
+                })
+                current_level = level
+                current_header = header
+        
+        # 分块处理
+        chunks = self._split_text_into_chunks(content)
+        
+        # 为每个块创建记录
+        records = []
+        for i, chunk in enumerate(chunks):
+            record = {
+                'chunk_id': i,
+                'total_chunks': len(chunks),
+                'content': chunk,
+                'chunk_char_count': len(chunk),
+                'document_structure': headers,
+                'full_content': content
+            }
+            records.append(record)
+            
+        return records
         
     def _parse_excel(self, path: Path) -> List[Dict]:
         """Excel文件解析"""
@@ -452,6 +520,61 @@ class FileParser:
             self.logger.error(f"向量化失败: {str(e)}")
             return None
 
+    def _split_text_into_chunks(self, text: str) -> List[str]:
+        """将文本分割成重叠的块，使用迭代器方式处理以减少内存使用
+        
+        Args:
+            text: 输入文本
+            
+        Returns:
+            List[str]: 文本块列表
+        """
+        chunks = []
+        text_len = len(text)
+        
+        # 如果文本太大，增加块大小以减少块数
+        if text_len > 1000000:  # 1MB
+            self.chunk_size = 2000
+            self.chunk_overlap = 400
+            
+        start = 0
+        while start < text_len:
+            # 计算当前块的结束位置
+            end = min(start + self.chunk_size, text_len)
+            
+            # 如果不是最后一块，尝试在句子边界处截断
+            if end < text_len:
+                # 在chunk_size范围内找最后一个句子结束标记
+                found_boundary = False
+                for sep in ['. ', '\n', '。', '！', '？']:
+                    # 限制向前查找的范围，避免处理整个文本
+                    search_start = max(start, end - 100)
+                    chunk_text = text[search_start:end]
+                    last_sep = chunk_text.rfind(sep)
+                    
+                    if last_sep != -1:
+                        end = search_start + last_sep + len(sep)
+                        found_boundary = True
+                        break
+                
+                # 如果找不到合适的分割点，就强制分割
+                if not found_boundary:
+                    end = min(start + self.chunk_size, text_len)
+            
+            # 提取当前块
+            current_chunk = text[start:end].strip()
+            if current_chunk:  # 只添加非空块
+                chunks.append(current_chunk)
+            
+            # 更新起始位置，确保有重叠
+            start = max(start + 1, end - self.chunk_overlap)
+            
+            # 安全检查：确保进度
+            if start >= end:
+                start = end
+        
+        return chunks
+
 class StorageSystem:
     """存储系统"""
     
@@ -483,49 +606,77 @@ class StorageSystem:
             return
 
         try:
-            # 处理向量数据
-            vector_data = df['vector'].apply(lambda x: json.dumps(x) if x is not None else None)
+            # 开始事务
+            self.db.execute("BEGIN TRANSACTION")
             
-            # 将其他列打包为JSON
-            meta_columns = ['_record_id', '_file_path', '_file_name', 
-                          '_file_type', '_processed_at', '_sub_id']
-            other_columns = [col for col in df.columns 
-                           if col not in meta_columns + ['vector']]
-            
-            data_dicts = []
-            for idx, row in df.iterrows():
-                data_dict = {}
-                for col in other_columns:
-                    if pd.notna(row[col]):
-                        data_dict[col] = row[col]
-                data_dicts.append(json.dumps(data_dict, ensure_ascii=False))
-            
-            # 准备存储数据
-            df_to_save = df[meta_columns].copy()
-            df_to_save['data'] = data_dicts
-            df_to_save['vector'] = vector_data
-            
-            # 存储数据
-            for idx, row in df_to_save.iterrows():
-                self.db.execute("""
-                    INSERT INTO unified_data 
-                    (_record_id, _file_path, _file_name, _file_type, _processed_at, _sub_id, data, vector)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (_record_id) DO UPDATE 
-                    SET data = EXCLUDED.data,
-                        vector = EXCLUDED.vector
-                """, (
-                    row['_record_id'],
-                    row['_file_path'],
-                    row['_file_name'],
-                    row['_file_type'],
-                    row['_processed_at'],
-                    row['_sub_id'],
-                    row['data'],
-                    row['vector']
-                ))
-            
-            self.logger.info(f"成功存储 {len(df)} 条记录")
+            try:
+                # 先计数要删除的记录
+                file_paths = df['_file_path'].unique()
+                paths_str = ", ".join([f"'{p}'" for p in file_paths])
+                count_result = self.db.execute(f"""
+                    SELECT COUNT(*) 
+                    FROM unified_data 
+                    WHERE _file_path IN ({paths_str})
+                """).fetchone()
+                
+                old_count = count_result[0] if count_result else 0
+                
+                # 删除同一文件的所有旧记录
+                if old_count > 0:
+                    self.db.execute(f"""
+                        DELETE FROM unified_data 
+                        WHERE _file_path IN ({paths_str})
+                    """)
+                    self.logger.info(f"已删除 {old_count} 条旧记录")
+                
+                # 处理向量数据
+                vector_data = df['vector'].apply(lambda x: json.dumps(x) if x is not None else None)
+                
+                # 将其他列打包为JSON
+                meta_columns = ['_record_id', '_file_path', '_file_name', 
+                              '_file_type', '_processed_at', '_sub_id']
+                other_columns = [col for col in df.columns 
+                               if col not in meta_columns + ['vector']]
+                
+                data_dicts = []
+                for idx, row in df.iterrows():
+                    data_dict = {}
+                    for col in other_columns:
+                        if pd.notna(row[col]):
+                            data_dict[col] = row[col]
+                    data_dicts.append(json.dumps(data_dict, ensure_ascii=False))
+                
+                # 准备存储数据
+                df_to_save = df[meta_columns].copy()
+                df_to_save['data'] = data_dicts
+                df_to_save['vector'] = vector_data
+                
+                # 存储数据
+                for idx, row in df_to_save.iterrows():
+                    self.db.execute("""
+                        INSERT INTO unified_data 
+                        (_record_id, _file_path, _file_name, _file_type, 
+                         _processed_at, _sub_id, data, vector)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        row['_record_id'],
+                        row['_file_path'],
+                        row['_file_name'],
+                        row['_file_type'],
+                        row['_processed_at'],
+                        row['_sub_id'],
+                        row['data'],
+                        row['vector']
+                    ))
+                
+                # 提交事务
+                self.db.execute("COMMIT")
+                self.logger.info(f"成功存储 {len(df)} 条记录")
+                
+            except Exception as e:
+                # 回滚事务
+                self.db.execute("ROLLBACK")
+                raise e
             
         except Exception as e:
             self.logger.error(f"数据存储失败: {str(e)}", exc_info=True)
@@ -538,14 +689,25 @@ class StorageSystem:
             int: 删除的记录数
         """
         try:
+            # 先计数
             paths_str = ", ".join([f"'{p}'" for p in file_paths])
-            result = self.db.execute(f"""
-                DELETE FROM unified_data 
+            count_result = self.db.execute(f"""
+                SELECT COUNT(*) 
+                FROM unified_data 
                 WHERE _file_path IN ({paths_str})
-                RETURNING COUNT(*)
             """).fetchone()
             
-            return result[0] if result else 0
+            count = count_result[0] if count_result else 0
+            
+            # 再删除
+            if count > 0:
+                self.db.execute(f"""
+                    DELETE FROM unified_data 
+                    WHERE _file_path IN ({paths_str})
+                """)
+                self.logger.info(f"已删除 {count} 条记录")
+            
+            return count
             
         except Exception as e:
             self.logger.error(f"删除记录失败: {str(e)}")
