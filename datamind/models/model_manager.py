@@ -3,7 +3,7 @@ import logging
 from typing import Optional, Dict, Any, Union, Literal
 from sentence_transformers import SentenceTransformer
 from openai import AsyncOpenAI
-from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL
+from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL, DEFAULT_REASONING_MODEL
 from ..utils.common import download_model
 
 ModelType = Literal["local", "api"]
@@ -149,4 +149,63 @@ class ModelManager:
                                          **kwargs) -> Optional[Dict[str, Any]]:
         """使用本地LLM模型生成响应"""
         # 这里可以实现本地模型的调用，比如llama.cpp等
-        raise NotImplementedError("本地LLM模型尚未实现") 
+        raise NotImplementedError("本地LLM模型尚未实现")
+
+    async def generate_reasoned_response(self,
+                                       messages: list,
+                                       model_name: str = DEFAULT_REASONING_MODEL,
+                                       **kwargs) -> Optional[Dict[str, Any]]:
+        """生成带推理过程的LLM响应
+        
+        Args:
+            messages: 对话消息列表
+            model_name: 模型名称，默认使用DEFAULT_REASONING_MODEL
+            **kwargs: 其他参数传递给API
+            
+        Returns:
+            Optional[Dict[str, Any]]: 包含推理内容和最终内容的字典，格式为:
+            {
+                'reasoning_content': str,  # 推理过程
+                'content': str,           # 最终回答
+                'raw_response': dict      # 原始API响应
+            }
+            如果调用失败则返回None
+        """
+        try:
+            # 获取模型配置
+            config = self.model_configs.get(model_name)
+            if not config:
+                self.logger.error(f"未找到模型 {model_name} 的配置")
+                return None
+                
+            if config.model_type != "api":
+                self.logger.error(f"推理模型目前仅支持API调用: {model_name}")
+                return None
+                
+            # 获取API客户端
+            client = self._get_llm_client(model_name)
+            if not client:
+                return None
+                
+            # 调用API
+            response = await client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                **kwargs
+            )
+            
+            # 提取推理内容和最终内容
+            if response and response.choices:
+                first_choice = response.choices[0].message
+                return {
+                    'reasoning_content': first_choice.reasoning_content,
+                    'content': first_choice.content,
+                    'raw_response': response
+                }
+            else:
+                self.logger.error("API响应格式异常")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"推理模型调用失败: {str(e)}")
+            return None 

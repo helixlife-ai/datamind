@@ -745,9 +745,8 @@ class SearchPlanExecutor:
                 data_dicts = []
                 for item in items:
                     row = {
-                        'file_path': item.get('file_path', ''),
-                        'file_type': item.get('file_type', ''),
-
+                        'file_path': item.get('file_path', '') or item.get('_file_path', ''),
+                        'file_type': item.get('file_type', '') or item.get('_file_type', ''),
                     }
                     
                     # 解析data字段

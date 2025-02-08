@@ -34,6 +34,9 @@ DEFAULT_LLM_API_BASE = get_env_var(
     "https://api.deepseek.com"  # 可选的环境变量，有默认值
 )
 
+DEFAULT_CHAT_MODEL = "deepseek-chat"
+DEFAULT_REASONING_MODEL = "deepseek-reasoner"
+
 # 支持的文件类型
 SUPPORTED_FILE_TYPES = ["txt", "pdf", "doc", "docx", "md", "json", "csv", "xlsx"]
 

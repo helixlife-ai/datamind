@@ -13,6 +13,9 @@ from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_DB_PATH
 from ..utils.common import download_model
 import pickle
 from ..models.model_manager import ModelManager, ModelConfig
+import random
+import uuid
+import numpy as np
 
 class FileCache:
     """文件缓存管理器"""
@@ -316,18 +319,6 @@ class FileParser:
         try:
             self.logger.info(f"开始解析文件: {file_path}")
             
-            # 生成基础record_id (作为文档ID)
-            base_record_id = f"{file_path.stem}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
-            
-            # 基础元数据
-            base_metadata = {
-                '_file_path': str(file_path),
-                '_file_name': file_path.name,
-                '_file_type': suffix.lstrip('.'),
-                '_processed_at': pd.Timestamp.now(),
-                '_record_id': base_record_id
-            }
-
             # 解析文件内容
             records = self._parse_file(file_path, suffix)
             if not isinstance(records, list):
@@ -336,12 +327,15 @@ class FileParser:
             # 处理每条记录
             processed_records = []
             for idx, record in enumerate(records, 1):
-                record_data = base_metadata.copy()
-                record_data['_sub_id'] = idx - 1
-                
-                # 如果是分块记录，修改record_id
-                if 'chunk_id' in record:
-                    record_data['_record_id'] = f"{base_record_id}_{idx-1}"
+                # 基础元数据
+                record_data = {
+                    '_file_path': str(file_path),
+                    '_file_name': file_path.name,
+                    '_file_type': suffix.lstrip('.'),
+                    '_processed_at': pd.Timestamp.now(),
+                    '_record_id': str(uuid.uuid4()),
+                    '_sub_id': idx - 1
+                }
                 
                 # 扁平化记录
                 flat_data = self._flatten_record(record)
@@ -397,8 +391,7 @@ class FileParser:
         # 获取文档的基本信息
         base_info = {
             'char_count': len(content),
-            'line_count': len(lines),
-            'full_content': content  # 保存完整内容
+            'line_count': len(lines)
         }
         
         # 分块处理
@@ -414,8 +407,9 @@ class FileParser:
                 'content': chunk,
                 'chunk_char_count': len(chunk)
             })
-            records.append(record)
             
+            records.append(record)
+        
         return records
     
     def _parse_markdown(self, path: Path) -> List[Dict]:
@@ -503,7 +497,8 @@ class FileParser:
         """生成向量表示"""
         if not self.text_model:
             return None
-            
+
+        # 将数据扁平化
         text_parts = []
         for k, v in data.items():
             if isinstance(v, str):
@@ -532,46 +527,56 @@ class FileParser:
         chunks = []
         text_len = len(text)
         
-        # 如果文本太大，增加块大小以减少块数
-        if text_len > 1000000:  # 1MB
+        # 动态调整块大小，根据文本总长度
+        if text_len > 10_000_000:  # 10MB
+            self.chunk_size = 5000
+            self.chunk_overlap = 500
+        elif text_len > 1_000_000:  # 1MB
             self.chunk_size = 2000
             self.chunk_overlap = 400
-            
-        start = 0
-        while start < text_len:
-            # 计算当前块的结束位置
-            end = min(start + self.chunk_size, text_len)
-            
-            # 如果不是最后一块，尝试在句子边界处截断
-            if end < text_len:
-                # 在chunk_size范围内找最后一个句子结束标记
-                found_boundary = False
-                for sep in ['. ', '\n', '。', '！', '？']:
-                    # 限制向前查找的范围，避免处理整个文本
-                    search_start = max(start, end - 100)
-                    chunk_text = text[search_start:end]
-                    last_sep = chunk_text.rfind(sep)
-                    
-                    if last_sep != -1:
-                        end = search_start + last_sep + len(sep)
-                        found_boundary = True
-                        break
+        
+        # 使用生成器逐步读取文本
+        def text_generator():
+            start = 0
+            while start < text_len:
+                # 计算当前块的结束位置
+                end = min(start + self.chunk_size, text_len)
                 
-                # 如果找不到合适的分割点，就强制分割
-                if not found_boundary:
-                    end = min(start + self.chunk_size, text_len)
-            
-            # 提取当前块
-            current_chunk = text[start:end].strip()
-            if current_chunk:  # 只添加非空块
-                chunks.append(current_chunk)
-            
-            # 更新起始位置，确保有重叠
-            start = max(start + 1, end - self.chunk_overlap)
-            
-            # 安全检查：确保进度
-            if start >= end:
-                start = end
+                # 如果不是最后一块，在句子边界处截断
+                if end < text_len:
+                    # 在chunk_size范围内找最后一个句子结束标记
+                    found_boundary = False
+                    search_window = 200  # 限制向前查找的窗口大小
+                    
+                    for boundary_pos in range(end, max(start, end - search_window), -1):
+                        if text[boundary_pos-1:boundary_pos+1] in ['. ', '\n', '。', '！', '？']:
+                            end = boundary_pos
+                            found_boundary = True
+                            break
+                    
+                    # 如果找不到合适的分割点，就强制分割
+                    if not found_boundary:
+                        end = min(start + self.chunk_size, text_len)
+                
+                # 提取当前块
+                current_chunk = text[start:end].strip()
+                if current_chunk:  # 只返回非空块
+                    yield current_chunk
+                
+                # 更新起始位置，确保有重叠但不会产生太小的块
+                next_start = end - self.chunk_overlap
+                if next_start <= start:  # 防止死循环
+                    start = end
+                else:
+                    start = next_start
+        
+        # 使用生成器逐步构建chunks列表
+        for chunk in text_generator():
+            chunks.append(chunk)
+            # 添加内存使用检查
+            if len(chunks) * self.chunk_size > 100_000_000:  # 100MB警戒线
+                self.logger.warning("文本块数量过多，可能导致内存问题")
+                break
         
         return chunks
 
@@ -629,49 +634,42 @@ class StorageSystem:
                     """)
                     self.logger.info(f"已删除 {old_count} 条旧记录")
                 
-                # 处理向量数据
-                vector_data = df['vector'].apply(lambda x: json.dumps(x) if x is not None else None)
-                
-                # 将其他列打包为JSON
-                meta_columns = ['_record_id', '_file_path', '_file_name', 
-                              '_file_type', '_processed_at', '_sub_id']
-                other_columns = [col for col in df.columns 
-                               if col not in meta_columns + ['vector']]
-                
-                data_dicts = []
+                # 准备批量插入数据
+                values = []
                 for idx, row in df.iterrows():
-                    data_dict = {}
-                    for col in other_columns:
-                        if pd.notna(row[col]):
-                            data_dict[col] = row[col]
-                    data_dicts.append(json.dumps(data_dict, ensure_ascii=False))
-                
-                # 准备存储数据
-                df_to_save = df[meta_columns].copy()
-                df_to_save['data'] = data_dicts
-                df_to_save['vector'] = vector_data
-                
-                # 存储数据
-                for idx, row in df_to_save.iterrows():
-                    self.db.execute("""
-                        INSERT INTO unified_data 
-                        (_record_id, _file_path, _file_name, _file_type, 
-                         _processed_at, _sub_id, data, vector)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
+                    # 处理非meta列为JSON
+                    meta_columns = ['_record_id', '_file_path', '_file_name', 
+                                  '_file_type', '_processed_at', '_sub_id', 'vector']
+                    data_dict = {col: row[col] for col in df.columns 
+                                if col not in meta_columns and pd.notna(row[col])}
+                    
+                    # 修改向量处理逻辑
+                    vector_data = None
+                    if 'vector' in row and isinstance(row['vector'], (list, np.ndarray)) and len(row['vector']) > 0:
+                        vector_data = json.dumps(row['vector'].tolist() if isinstance(row['vector'], np.ndarray) else row['vector'])
+                    
+                    values.append((
                         row['_record_id'],
                         row['_file_path'],
                         row['_file_name'],
                         row['_file_type'],
                         row['_processed_at'],
                         row['_sub_id'],
-                        row['data'],
-                        row['vector']
+                        json.dumps(data_dict, ensure_ascii=False),
+                        vector_data
                     ))
+                
+                # 批量插入
+                self.db.executemany("""
+                    INSERT INTO unified_data 
+                    (_record_id, _file_path, _file_name, _file_type, 
+                     _processed_at, _sub_id, data, vector)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, values)
                 
                 # 提交事务
                 self.db.execute("COMMIT")
-                self.logger.info(f"成功存储 {len(df)} 条记录")
+                self.logger.info(f"成功批量存储 {len(df)} 条记录")
                 
             except Exception as e:
                 # 回滚事务
