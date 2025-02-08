@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 def create_test_data_folder():
     """创建测试数据文件夹"""
-    base_path = Path("source/test_data")
+    base_path = Path("work_dir/test_data")
     base_path.mkdir(parents=True, exist_ok=True)
     
     # 创建JSON测试数据

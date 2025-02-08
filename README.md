@@ -1,16 +1,12 @@
 # DataMind
 
-<p align="center">
-  <img src="docs/images/logo.png" alt="DataMind Logo" width="200"/>
-  <br>
-  <em>智能文档处理与语义搜索引擎</em>
-</p>
+![DataMind Logo](docs/images/logo.png)
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-  <a href="#"><img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python"></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-0.2.0-green.svg" alt="Version"></a>
-</p>
+## 智能文档处理与语义搜索引擎
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/helixlife-ai/datamind/releases)
 
 ## 📖 简介
 
@@ -75,15 +71,12 @@ pip install -r requirements.txt
 
 ### 使用示例
 
-1. 环境配置:
-```bash
-# 创建并配置 .env 文件
-DEEPSEEK_API_KEY=your_api_key
-DEEPSEEK_BASE_URL=your_base_url
-```
-
-2. 基础使用:
 ```python
+# 设置环境变量
+import os
+os.environ["DEEPSEEK_API_KEY"] = "your_api_key"
+os.environ["DEEPSEEK_BASE_URL"] = "your_base_url"
+
 from datamind import UnifiedSearchEngine, DataProcessor
 from pathlib import Path
 
@@ -140,13 +133,32 @@ DEFAULT_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
 DEFAULT_DB_PATH = "unified_storage.duckdb"
 ```
 
+### 缓存配置
+```python
+# config.py
+class Config:
+    # 向量模型配置
+    DEFAULT_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
+    
+    # 存储配置
+    DEFAULT_DB_PATH = "unified_storage.duckdb"
+    
+    # 缓存配置
+    CACHE_DIR = ".cache"
+    CACHE_EXPIRY = 86400  # 24小时
+    
+    # API配置
+    API_TIMEOUT = 30
+    MAX_RETRIES = 3
+```
+
 ## 📊 性能指标
 
-- 文档处理速度: ~150文档/秒
-- 向量检索延迟: <30ms
-- 支持文档规模: 百万级
-- 向量维度: 384维
-- 缓存命中率: >90%
+- 文档处理速度: ~150文档/秒 (标准配置下)
+- 向量检索延迟: <30ms (百万级数据规模)
+- 支持文档规模: 百万级 (16GB内存配置)
+- 向量维度: 384维 (使用 MiniLM 模型)
+- 缓存命中率: >90% (正常使用场景)
 
 ## 🗺️ 开发路线
 

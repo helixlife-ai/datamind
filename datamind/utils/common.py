@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
-from ..config.settings import DEFAULT_MODEL
+from ..config.settings import DEFAULT_EMBEDDING_MODEL
 
 def setup_logging():
     """配置日志"""
@@ -17,11 +17,11 @@ def download_model():
     logger = logging.getLogger(__name__)
     try:
         root_dir = Path.cwd()
-        model_cache_dir = root_dir / 'model_cache' / DEFAULT_MODEL
+        model_cache_dir = root_dir / 'model_cache' / DEFAULT_EMBEDDING_MODEL
         model_cache_dir.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"开始下载模型 {DEFAULT_MODEL} ...")
-        model = SentenceTransformer(DEFAULT_MODEL)
+        logger.info(f"开始下载模型 {DEFAULT_EMBEDDING_MODEL} ...")
+        model = SentenceTransformer(DEFAULT_EMBEDDING_MODEL)
         model.save(str(model_cache_dir))
         logger.info(f"模型已成功下载并保存到: {model_cache_dir}")
         

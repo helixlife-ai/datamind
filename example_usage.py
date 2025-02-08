@@ -1,6 +1,7 @@
 from datamind import UnifiedSearchEngine, SearchPlanner, SearchPlanExecutor, DataProcessor, IntentParser, setup_logging
 import os
 import json
+import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -47,7 +48,7 @@ def process_data(processor: DataProcessor, input_dirs: list) -> None:
         logger.error(f"数据处理失败: {str(e)}", exc_info=True)
         raise
 
-def search_test(search_engine: UnifiedSearchEngine) -> None:
+def search_test(search_engine: UnifiedSearchEngine, executor: SearchPlanExecutor) -> None:
     """基础搜索测试"""
     logger = setup_logging()
     
@@ -57,7 +58,7 @@ def search_test(search_engine: UnifiedSearchEngine) -> None:
             "机器学习",
             "人工智能",
             "file:json",
-            "modified:>2024-01-01"  # 测试时间过滤
+            "modified:>2024-01-01"
         ]
         
         for query in queries:
@@ -70,7 +71,7 @@ def search_test(search_engine: UnifiedSearchEngine) -> None:
         logger.error(f"搜索测试失败: {str(e)}", exc_info=True)
         raise
 
-def intelligent_search_test(
+async def intelligent_search_test(
     intent_parser: IntentParser, 
     planner: SearchPlanner,
     executor: SearchPlanExecutor
@@ -81,18 +82,35 @@ def intelligent_search_test(
     try:
         print("\n=== 智能检索测试 ===")
         
-        # 测试查询
-        queries = [
-            "找出上海2025年与人工智能专利技术相似度高的研究报告，要求显示作者和发布日期",
-            "最近一个月新增的机器学习相关文档"  # 测试增量数据查询
-        ]
+        # 确保work_dir存在
+        work_dir = Path("work_dir")
+        work_dir.mkdir(exist_ok=True)
+        
+        # 查询文件路径
+        queries_file = work_dir / "test_queries.txt"
+        
+        # 如果查询文件不存在，创建示例查询
+        if not queries_file.exists():
+            default_queries = [
+                "找出上海2025年与人工智能专利技术相似度高的研究报告，要求显示作者和发布日期",
+                "最近一个月新增的机器学习相关文档"
+            ]
+            queries_file.write_text("\n".join(default_queries), encoding="utf-8")
+            logger.info(f"已创建默认查询文件: {queries_file}")
+        
+        # 从文件加载查询
+        queries = queries_file.read_text(encoding="utf-8").strip().split("\n")
+        queries = [q.strip() for q in queries if q.strip()]
+        
+        output_dir = Path("work_dir/output/intelligent_search")
+        output_dir.mkdir(parents=True, exist_ok=True)
         
         for idx, query in enumerate(queries):
             print(f"\n原始查询: {query}")
             print("-" * 50)
             
-            # 解析查询意图
-            parsed_intent = intent_parser.parse_query(query)
+            # 异步解析查询意图
+            parsed_intent = await intent_parser.parse_query(query)
             print("解析结果:", json.dumps(parsed_intent, indent=2, ensure_ascii=False))
 
             # 构建搜索计划
@@ -104,19 +122,24 @@ def intelligent_search_test(
             print("检索结果:")
             print(executor.format_results(results))
             
-            # 保存结果到CSV文件
-            filename = f"query_{idx + 1}_results.csv"
-            csv_path = executor.save_results_to_csv(results, filename)
-            if csv_path:
-                print(f"结果已保存到: {csv_path}")
+            # 保存不同格式的结果
+            for format in ['json', 'html', 'csv']:
+                try:
+                    filepath = executor.save_results(
+                        results, 
+                        format=format,
+                        output_dir=str(output_dir / f"query_{idx + 1}")
+                    )
+                    print(f"结果已保存为{format}格式: {filepath}")
+                except Exception as e:
+                    logger.error(f"保存{format}格式失败: {str(e)}")
             
     except Exception as e:
         logger.error(f"智能检索测试失败: {str(e)}", exc_info=True)
         raise
 
-def main():
-    """主函数"""
-    # 设置日志
+async def async_main():
+    """异步主函数"""
     logger = setup_logging()
     logger.info("开始运行测试程序")
     
@@ -139,26 +162,29 @@ def main():
         work_dir = Path("work_dir")
         work_dir.mkdir(parents=True, exist_ok=True)
         
-        # 设置executor的输出目录为work_dir下的output目录
+        # 设置executor的输出目录
         executor.work_dir = str(work_dir / "output")
         
-        # 数据处理测试 - 使用相对路径
-        input_dirs = ["source/test_data"]  # 改为使用相对路径
-        # 将相对路径转换为绝对路径
+        # 数据处理测试
+        input_dirs = ["work_dir/test_data"]
         abs_input_dirs = [str(Path(d).resolve()) for d in input_dirs]
         process_data(processor, abs_input_dirs)
 
         # 搜索测试
-        search_test(search_engine)
+        search_test(search_engine, executor)
         
-        # 智能检索测试
-        intelligent_search_test(intent_parser, planner, executor)
+        # 异步执行智能检索测试
+        await intelligent_search_test(intent_parser, planner, executor)
         
         logger.info("测试程序运行完成")
         
     except Exception as e:
         logger.error(f"程序运行失败: {str(e)}", exc_info=True)
         raise
+
+def main():
+    """同步主函数入口"""
+    asyncio.run(async_main())
 
 if __name__ == "__main__":
     main() 

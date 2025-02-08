@@ -1,17 +1,21 @@
 from typing import Dict
-from openai import OpenAI
+from openai import AsyncOpenAI
 import json
 import logging
+import asyncio
+from .cache import QueryCache
 from ..config.settings import (
-    DEEPSEEK_MODEL, 
+    DEFAULT_LLM_MODEL,
     DEFAULT_SIMILARITY_THRESHOLD,
     DEFAULT_TARGET_FIELD,
     QUERY_TEMPLATE,
     SEARCH_TOP_K,
     KEYWORD_EXTRACT_PROMPT,
     REFERENCE_TEXT_EXTRACT_PROMPT,
-    SUPPORTED_FILE_TYPES
+    SUPPORTED_FILE_TYPES,
+    DEFAULT_EMBEDDING_MODEL
 )
+from ..models.model_manager import ModelManager, ModelConfig
 
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""
@@ -23,51 +27,69 @@ class IntentParser:
             api_key: DeepSeek API密钥
         """
         self.logger = logging.getLogger(__name__)
-        self.client = OpenAI(
+        self.model_manager = ModelManager()
+        
+        # 注册LLM模型配置
+        self.model_manager.register_model(ModelConfig(
+            name=DEFAULT_LLM_MODEL,
+            model_type="api",
             api_key=api_key,
-            base_url=base_url
-        )
+            api_base=base_url
+        ))
+        
+        # 注册Embedding模型配置
+        self.model_manager.register_model(ModelConfig(
+            name=DEFAULT_EMBEDDING_MODEL,
+            model_type="local"
+        ))
+        
+        self.cache = QueryCache()
         self.output_template = QUERY_TEMPLATE
         
-    def parse_query(self, query: str) -> Dict:
-        """解析自然语言查询
-        
-        Args:
-            query: 用户输入的自然语言查询
-            
-        Returns:
-            Dict: 结构化查询条件
-        """
+    async def parse_query(self, query: str) -> Dict:
+        """异步解析自然语言查询"""
         try:
-            # 步骤1: 提取结构化查询关键词
-            keywords = self._extract_keywords(query)
-            self.logger.info(f"提取的关键词: {keywords}")
+            # 检查缓存
+            if cached_result := self.cache.get(query):
+                self.logger.info("使用缓存的查询结果")
+                return cached_result
+
+            # 并行执行关键词和参考文本提取
+            keywords_task = self._extract_keywords(query)
+            reference_texts_task = self._extract_reference_texts(query)
             
-            # 步骤2: 提取向量查询参考文本
-            reference_texts = self._extract_reference_texts(query)
-            self.logger.info(f"提取的参考文本: {reference_texts}")
-            # 步骤3: 组装查询条件
-            return self._build_query_conditions(keywords, reference_texts)
+            keywords, reference_texts = await asyncio.gather(
+                keywords_task,
+                reference_texts_task,
+                return_exceptions=True
+            )
+            
+            # 处理可能的异常
+            if isinstance(keywords, Exception):
+                self.logger.error(f"关键词提取失败: {str(keywords)}")
+                keywords = {"keywords": []}
+                
+            if isinstance(reference_texts, Exception):
+                self.logger.error(f"参考文本提取失败: {str(reference_texts)}")
+                reference_texts = {"reference_texts": []}
+
+            # 组装查询条件
+            result = self._build_query_conditions(keywords, reference_texts)
+            
+            # 存入缓存
+            self.cache.store(query, result)
+            
+            return result
             
         except Exception as e:
             self.logger.error(f"查询解析失败: {str(e)}")
             return self.output_template
 
-    def _extract_keywords(self, query: str, max_retries: int = 3) -> list:
-        """提取结构化查询关键词
-        
-        Args:
-            query: 用户查询文本
-            max_retries: 最大重试次数
-            
-        Returns:
-            list: 提取的关键词列表
-        """
-        retry_count = 0
-        while retry_count < max_retries:
+    async def _extract_keywords(self, query: str, max_retries: int = 3) -> Dict:
+        """异步提取结构化查询关键词"""
+        for retry in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=DEEPSEEK_MODEL,
+                response = await self.model_manager.generate_llm_response(
                     messages=[
                         {"role": "system", "content": KEYWORD_EXTRACT_PROMPT},
                         {"role": "user", "content": query}
@@ -77,40 +99,25 @@ class IntentParser:
                     max_tokens=256
                 )
                 
-                # 验证响应格式
                 content = response.choices[0].message.content
                 result = json.loads(content)
+                
                 if not isinstance(result, dict) or "keywords" not in result:
                     raise ValueError("响应格式不正确")
                     
                 return result
                 
-            except (json.JSONDecodeError, ValueError) as e:
-                self.logger.warning(f"关键词提取失败 (尝试 {retry_count + 1}/{max_retries}): {str(e)}")
-                retry_count += 1
-                if retry_count == max_retries:
-                    self.logger.error("关键词提取最终失败")
-                    return {"keywords": []}
-                
             except Exception as e:
-                self.logger.error(f"关键词提取发生未预期错误: {str(e)}")
-                return {"keywords": []}
+                self.logger.warning(f"关键词提取失败 (尝试 {retry + 1}/{max_retries}): {str(e)}")
+                if retry == max_retries - 1:
+                    raise
+                await asyncio.sleep(1)  # 重试前等待
 
-    def _extract_reference_texts(self, query: str, max_retries: int = 3) -> list:
-        """提取向量查询参考文本
-        
-        Args:
-            query: 用户查询文本
-            max_retries: 最大重试次数
-            
-        Returns:
-            list: 提取的参考文本列表
-        """
-        retry_count = 0
-        while retry_count < max_retries:
+    async def _extract_reference_texts(self, query: str, max_retries: int = 3) -> Dict:
+        """异步提取向量查询参考文本"""
+        for retry in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=DEEPSEEK_MODEL,
+                response = await self.model_manager.generate_llm_response(
                     messages=[
                         {"role": "system", "content": REFERENCE_TEXT_EXTRACT_PROMPT},
                         {"role": "user", "content": query}
@@ -120,24 +127,19 @@ class IntentParser:
                     max_tokens=256
                 )
                 
-                # 验证响应格式
                 content = response.choices[0].message.content
                 result = json.loads(content)
+                
                 if not isinstance(result, dict) or "reference_texts" not in result:
                     raise ValueError("响应格式不正确")
                     
                 return result
                 
-            except (json.JSONDecodeError, ValueError) as e:
-                self.logger.warning(f"参考文本提取失败 (尝试 {retry_count + 1}/{max_retries}): {str(e)}")
-                retry_count += 1
-                if retry_count == max_retries:
-                    self.logger.error("参考文本提取最终失败")
-                    return {"reference_texts": []}
-                
             except Exception as e:
-                self.logger.error(f"参考文本提取发生未预期错误: {str(e)}")
-                return {"reference_texts": []}
+                self.logger.warning(f"参考文本提取失败 (尝试 {retry + 1}/{max_retries}): {str(e)}")
+                if retry == max_retries - 1:
+                    raise
+                await asyncio.sleep(1)  # 重试前等待
 
     def _build_query_conditions(self, keywords_json: dict, reference_texts_json: dict) -> Dict:
         """组装最终的查询条件"""

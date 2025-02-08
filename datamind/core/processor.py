@@ -9,9 +9,10 @@ from datetime import datetime, timedelta
 import logging
 from typing import List, Dict, Optional, Set
 from sentence_transformers import SentenceTransformer
-from ..config.settings import DEFAULT_MODEL, DEFAULT_DB_PATH
+from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_DB_PATH
 from ..utils.common import download_model
 import pickle
+from ..models.model_manager import ModelManager, ModelConfig
 
 class FileCache:
     """文件缓存管理器"""
@@ -294,27 +295,16 @@ class FileParser:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.text_model = self._init_model()
+        self.model_manager = ModelManager()
         
-    def _init_model(self) -> Optional[SentenceTransformer]:
-        """初始化模型"""
-        root_dir = Path.cwd()
-        model_path = root_dir / 'model_cache' / DEFAULT_MODEL
+        # 注册Embedding模型配置
+        self.model_manager.register_model(ModelConfig(
+            name=DEFAULT_EMBEDDING_MODEL,
+            model_type="local"
+        ))
         
-        try:
-            if not model_path.exists() or not list(model_path.glob('*')):
-                self.logger.info("模型文件不存在，开始下载...")
-                if not download_model():
-                    raise RuntimeError("模型下载失败")
-            
-            self.logger.info(f"从 {model_path} 加载模型...")
-            model = SentenceTransformer(str(model_path))
-            self.logger.info("模型加载成功")
-            return model
-        except Exception as e:
-            self.logger.error(f"模型加载失败: {str(e)}")
-            return None
-            
+        self.text_model = self.model_manager.get_embedding_model()
+        
     def parse(self, file_path: Path) -> Optional[pd.DataFrame]:
         """统一的文件解析入口"""
         suffix = file_path.suffix.lower()
