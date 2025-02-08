@@ -2,19 +2,11 @@
 
 ![DataMind Logo](docs/images/logo.png)
 
-## Intelligent Document Processing & Semantic Search Engine
+[English](../README.md) | [中文](README_zh.md)
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
-[![Version](https://img.shields.io/badge/version-0.2.1-green.svg)](https://github.com/helixlife-ai/datamind/releases)
+## 智能文档处理与语义搜索引擎
 
-[English](README.md) | [中文](docs/README_zh.md)
-
-## 📖 Introduction
-
-DataMind is a powerful intelligent data processing and semantic search system. It automatically processes documents in various formats, converts unstructured data into structured representations using advanced vectorization techniques, and provides efficient hybrid search functionality.
-
-### 🎯 Key Applications
+## 🎯 Key Applications
 
 - Enterprise Document Management
 - Knowledge Base Semantic Search
@@ -195,25 +187,4 @@ This project is under MIT License - see [LICENSE](LICENSE) file
 Thanks to these open source projects:
 - [Sentence-Transformers](https://github.com/UKPLab/sentence-transformers)
 - [FAISS](https://github.com/facebookresearch/faiss)
-- [DuckDB](https://github.com/duckdb/duckdb)
-
-## 环境变量配置
-
-项目使用以下环境变量：
-
-- `DATAMIND_LLM_API_KEY`: (必需) LLM API密钥
-- `DATAMIND_LLM_API_BASE`: (可选) LLM API基础URL，默认为 "https://api.deepseek.com"
-
-你可以通过以下方式设置环境变量：
-
-1. 创建 `.env` 文件：
-   ```bash
-   cp .env.example .env
-   # 然后编辑 .env 文件填入实际的值
-   ```
-
-2. 或者直接在环境中设置：
-   ```bash
-   export DATAMIND_LLM_API_KEY=your-api-key-here
-   export DATAMIND_LLM_API_BASE=https://api.deepseek.com
-   ```
+- [DuckDB](https://github.com/duckdb/duckdb) 
