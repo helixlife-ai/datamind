@@ -14,6 +14,7 @@ class SearchPlanner:
         Args:
             intent: 查询意图字典
                 {
+                    "original_query": "原始查询文本",
                     "structured_conditions": [{
                         "time_range": {"start": "2023-01", "end": "2023-12"},
                         "file_types": ["json", "txt"],
@@ -36,7 +37,8 @@ class SearchPlanner:
             "vector_queries": [],
             "expected_fields": intent.get("result_format", {}).get("required_fields", ["*"]),
             "metadata": {
-                "generated_at": datetime.now().isoformat()
+                "generated_at": datetime.now().isoformat(),
+                "original_query": intent.get("original_query", "")
             }
         }
         

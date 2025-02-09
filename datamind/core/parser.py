@@ -76,8 +76,8 @@ class IntentParser:
                 self.logger.error(f"参考文本提取失败: {str(reference_texts)}")
                 reference_texts = {"reference_texts": []}
 
-            # 组装查询条件
-            result = self._build_query_conditions(keywords, reference_texts)
+            # 组装查询条件时传入原始查询
+            result = self._build_query_conditions(keywords, reference_texts, query)
             
             # 存入缓存
             self.cache.store(query, result)
@@ -144,9 +144,10 @@ class IntentParser:
                     raise
                 await asyncio.sleep(1)  # 重试前等待
 
-    def _build_query_conditions(self, keywords_json: dict, reference_texts_json: dict) -> Dict:
+    def _build_query_conditions(self, keywords_json: dict, reference_texts_json: dict, original_query: str) -> Dict:
         """组装最终的查询条件"""
         query_conditions = {
+            "original_query": original_query,
             "structured_conditions": [],
             "vector_conditions": [],
             "result_format": {

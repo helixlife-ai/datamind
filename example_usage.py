@@ -64,8 +64,34 @@ def search_test(search_engine: UnifiedSearchEngine, executor: SearchPlanExecutor
         for query in queries:
             print(f"\n查询: {query}")
             print("-" * 50)
-            result = search_engine.search(query)   
-            print(result)
+            
+            # 1. 解析查询并生成搜索计划
+            parsed_query = search_engine.parse_query(query)
+            
+            # 2. 执行搜索
+            structured_results = search_engine.execute_structured_query(parsed_query)
+            vector_results = search_engine.execute_vector_search(query)
+            
+            # 3. 整合结果
+            results = {
+                'structured': structured_results.to_dict('records') if not structured_results.empty else [],
+                'vector': vector_results,
+                'stats': {
+                    'total': len(structured_results) + len(vector_results),
+                    'structured_count': len(structured_results),
+                    'vector_count': len(vector_results)
+                }
+            }
+            
+            # 4. 增强结果
+            enhanced_results = search_engine.enhance_results(results)
+            
+            # 5. 格式化并显示结果
+            formatted_results = search_engine.format_results(enhanced_results)
+            if formatted_results:
+                print(formatted_results)
+            else:
+                print("未找到相关结果")
             
     except Exception as e:
         logger.error(f"搜索测试失败: {str(e)}", exc_info=True)
@@ -120,7 +146,7 @@ async def intelligent_search_test(
             # 执行搜索计划
             results = executor.execute_plan(parsed_plan)
             print("检索结果:")
-            print(executor.format_results(results))
+            print(executor.format_results(results))  
             
             # 保存不同格式的结果
             for format in ['json', 'html', 'csv']:
@@ -166,15 +192,21 @@ async def async_main():
         executor.work_dir = str(work_dir / "output")
         
         # 数据处理测试
+        logger.info("开始数据处理测试")
         input_dirs = ["work_dir/test_data"]
         abs_input_dirs = [str(Path(d).resolve()) for d in input_dirs]
         process_data(processor, abs_input_dirs)
+        logger.info("数据处理测试完成")
 
         # 搜索测试
+        logger.info("开始基础搜索测试")
         search_test(search_engine, executor)
+        logger.info("基础搜索测试完成")
         
         # 异步执行智能检索测试
+        logger.info("开始智能检索测试")
         await intelligent_search_test(intent_parser, planner, executor)
+        logger.info("智能检索测试完成")
         
         logger.info("测试程序运行完成")
         
