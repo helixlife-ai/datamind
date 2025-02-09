@@ -3,8 +3,9 @@ import logging
 from typing import Optional, Dict, Any, Union, Literal
 from sentence_transformers import SentenceTransformer
 from openai import AsyncOpenAI
-from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL, DEFAULT_REASONING_MODEL
+from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL, DEFAULT_REASONING_MODEL, DEFAULT_LLM_API_BASE
 from ..utils.common import download_model
+import asyncio
 
 ModelType = Literal["local", "api"]
 
@@ -20,7 +21,7 @@ class ModelConfig:
         self.name = name
         self.model_type = model_type
         self.model_path = model_path
-        self.api_base = api_base or "https://api.deepseek.com"
+        self.api_base = api_base or DEFAULT_LLM_API_BASE
         self.api_key = api_key
         self.extra_config = kwargs
 
@@ -163,16 +164,10 @@ class ModelManager:
             **kwargs: 其他参数传递给API
             
         Returns:
-            Optional[Dict[str, Any]]: 包含推理内容和最终内容的字典，格式为:
-            {
-                'reasoning_content': str,  # 推理过程
-                'content': str,           # 最终回答
-                'raw_response': dict      # 原始API响应
-            }
+            Optional[Dict[str, Any]]: DeepSeek Reasoner API响应格式，包含reasoning_content
             如果调用失败则返回None
         """
         try:
-            # 获取模型配置
             config = self.model_configs.get(model_name)
             if not config:
                 self.logger.error(f"未找到模型 {model_name} 的配置")
@@ -182,30 +177,40 @@ class ModelManager:
                 self.logger.error(f"推理模型目前仅支持API调用: {model_name}")
                 return None
                 
-            # 获取API客户端
             client = self._get_llm_client(model_name)
             if not client:
                 return None
                 
-            # 调用API
-            response = await client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                **kwargs
-            )
+            self.logger.debug(f"发送请求到API，模型: {model_name}")
+            self.logger.debug(f"请求消息: {messages}")
+            self.logger.debug(f"额外参数: {kwargs}")
             
-            # 提取推理内容和最终内容
-            if response and response.choices:
-                first_choice = response.choices[0].message
-                return {
-                    'reasoning_content': first_choice.reasoning_content,
-                    'content': first_choice.content,
-                    'raw_response': response
-                }
-            else:
-                self.logger.error("API响应格式异常")
-                return None
+            max_retries = 3
+            retry_count = 0
+            
+            while retry_count < max_retries:
+                try:
+                    response = await client.chat.completions.create(
+                        model=model_name,
+                        messages=messages,
+                        **kwargs
+                    )
+                    
+                    if not response:
+                        raise ValueError("API返回空响应")
+                        
+                    self.logger.debug(f"API原始响应内容: {response}")
+                    return response    
+                    
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        self.logger.warning(f"API调用失败，正在进行第{retry_count}次重试: {str(e)}")
+                        await asyncio.sleep(1)
+                    else:
+                        raise
                 
         except Exception as e:
             self.logger.error(f"推理模型调用失败: {str(e)}")
+            self.logger.exception("详细错误信息:")
             return None 

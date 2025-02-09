@@ -1,44 +1,41 @@
 import os
 from typing import Optional
-
-def get_env_var(key: str, default: Optional[str] = None) -> str:
-    """从环境变量获取配置值
-    
-    Args:
-        key: 环境变量名
-        default: 默认值
-        
-    Returns:
-        str: 环境变量值或默认值
-        
-    Raises:
-        ValueError: 如果必需的环境变量未设置且没有默认值
-    """
-    value = os.getenv(key, default)
-    if value is None:
-        raise ValueError(f"必需的环境变量 {key} 未设置")
-    return value
+from dotenv import load_dotenv
+load_dotenv(override=True)
 
 # 全局配置
 DEFAULT_EMBEDDING_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
 DEFAULT_DB_PATH = "unified_storage.duckdb"
 SEARCH_TOP_K = 5
 DEFAULT_SIMILARITY_THRESHOLD = 0.6
+
 DEFAULT_TARGET_FIELD = "abstract_embedding"
 
 # LLM模型配置
-DEFAULT_LLM_MODEL = "deepseek-chat"
-DEFAULT_LLM_API_KEY = get_env_var("DEEPSEEK_API_KEY")  # 必需的环境变量
-DEFAULT_LLM_API_BASE = get_env_var(
-    "DEEPSEEK_BASE_URL", 
-    "https://api.deepseek.com"  # 可选的环境变量，有默认值
-)
+#硅基流动的充值版本
+DEFAULT_LLM_MODEL = "Pro/deepseek-ai/DeepSeek-V3"    
+DEFAULT_LLM_API_KEY = os.getenv("SILICONFLOW_API_KEY")  
+DEFAULT_LLM_API_BASE = os.getenv("SILICONFLOW_BASE_URL") 
+DEFAULT_CHAT_MODEL = "Pro/deepseek-ai/DeepSeek-V3" 
+DEFAULT_REASONING_MODEL = "Pro/deepseek-ai/DeepSeek-R1" 
 
-DEFAULT_CHAT_MODEL = "deepseek-chat"
-DEFAULT_REASONING_MODEL = "deepseek-reasoner"
+#硅基流动的免费版本
+#DEFAULT_LLM_MODEL = "deepseek-ai/DeepSeek-V3"    
+#DEFAULT_LLM_API_KEY = os.getenv("SILICONFLOW_API_KEY")  # 硅基流动的API KEY
+#DEFAULT_LLM_API_BASE = os.getenv("SILICONFLOW_BASE_URL") #硅基流动的API BASE
+#DEFAULT_CHAT_MODEL = "deepseek-ai/DeepSeek-V3" 
+#DEFAULT_REASONING_MODEL = "deepseek-ai/DeepSeek-R1" 
+
+#DeepSeek的免费版本
+#DEFAULT_LLM_MODEL = "deepseek-chat"    
+#DEFAULT_LLM_API_KEY = os.getenv("DEEPSEEK_API_KEY")  
+#DEFAULT_LLM_API_BASE = os.getenv("DEEPSEEK_BASE_URL") 
+#DEFAULT_CHAT_MODEL = "deepseek-chat" 
+#DEFAULT_REASONING_MODEL = "deepseek-reasoner" 
 
 # 支持的文件类型
 SUPPORTED_FILE_TYPES = ["txt", "pdf", "doc", "docx", "md", "json", "csv", "xlsx"]
+
 
 # 查询模板
 QUERY_TEMPLATE = {

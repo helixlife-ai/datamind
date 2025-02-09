@@ -1,6 +1,6 @@
 import logging
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Optional
 import os
 from datetime import datetime, date
 from collections import defaultdict
@@ -43,6 +43,12 @@ class SearchPlanExecutor:
             # 添加其他保存器...
         }
 
+    def set_work_dir(self, work_dir: str):
+        """设置工作目录"""
+        self.work_dir = work_dir
+        for saver in self.savers.values():
+            saver.work_dir = work_dir
+            
     def execute_plan(self, plan: Dict) -> Dict:
         """执行检索计划"""
         try:
@@ -82,7 +88,7 @@ class SearchPlanExecutor:
             return results
             
         except Exception as e:
-            self.logger.error(f"执行检索计划失败: {str(e)}", exc_info=True)  # 添加完整的错误堆栈
+            self.logger.error(f"执行检索计划失败: {str(e)}", exc_info=True)
             # 返回一个基本的结果结构而不是None
             return {
                 "structured": [],
@@ -134,7 +140,6 @@ class SearchPlanExecutor:
 
     def _initialize_results(self, plan: Dict) -> Dict:
         """初始化结果结构"""
-        # 实现结果初始化逻辑
         results = {
             "structured": [],
             "vector": [],

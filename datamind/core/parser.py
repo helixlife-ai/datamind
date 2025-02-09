@@ -97,7 +97,7 @@ class IntentParser:
                         {"role": "system", "content": KEYWORD_EXTRACT_PROMPT},
                         {"role": "user", "content": query}
                     ],
-                    response_format={"type": "json_object"},
+                    #response_format={"type": "json_object"},
                     temperature=0.1,
                     max_tokens=256
                 )
@@ -125,7 +125,7 @@ class IntentParser:
                         {"role": "system", "content": REFERENCE_TEXT_EXTRACT_PROMPT},
                         {"role": "user", "content": query}
                     ],
-                    response_format={"type": "json_object"},
+                    #response_format={"type": "json_object"},
                     temperature=0.1,
                     max_tokens=256
                 )

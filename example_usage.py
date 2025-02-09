@@ -1,9 +1,9 @@
 from datamind import UnifiedSearchEngine, SearchPlanner, SearchPlanExecutor, DataProcessor, IntentParser, setup_logging
+from datamind.core.delivery_planner import DeliveryPlanner
 import os
 import json
 import asyncio
 from pathlib import Path
-from dotenv import load_dotenv
 
 def process_data(processor: DataProcessor, input_dirs: list) -> None:
     """处理数据目录
@@ -131,6 +131,9 @@ async def intelligent_search_test(
         output_dir = Path("work_dir/output/intelligent_search")
         output_dir.mkdir(parents=True, exist_ok=True)
         
+        # 初始化交付计划生成器
+        delivery_planner = DeliveryPlanner(work_dir=str(output_dir))
+        
         for idx, query in enumerate(queries):
             print(f"\n原始查询: {query}")
             print("-" * 50)
@@ -147,6 +150,28 @@ async def intelligent_search_test(
             results = executor.execute_plan(parsed_plan)
             print("检索结果:")
             print(executor.format_results(results))  
+            
+            # 生成交付计划
+            if results['stats']['total'] > 0:
+                try:
+                    delivery_plan = await delivery_planner.generate_plan(
+                        original_plan=parsed_plan,
+                        search_results=results
+                    )
+                    
+                    if delivery_plan:
+                        print("\n交付计划生成成功！")
+                        print(f"相关文件保存在: {delivery_plan['_file_paths']['base_dir']}")
+                        print("\n交付计划内容:")
+                        print(json.dumps(delivery_plan, indent=2, ensure_ascii=False))
+                    else:
+                        print("\n交付计划生成失败")
+                        
+                except Exception as e:
+                    logger.error(f"生成交付计划时发生错误: {str(e)}")
+                    print(f"\n生成交付计划失败: {str(e)}")
+            else:
+                print("\n未找到检索结果，跳过交付计划生成")
             
             # 保存不同格式的结果
             for format in ['json', 'html', 'csv']:
@@ -169,18 +194,11 @@ async def async_main():
     logger = setup_logging()
     logger.info("开始运行测试程序")
     
-    try:
-        # 加载环境变量
-        load_dotenv()
-        api_key = os.getenv("DEEPSEEK_API_KEY")
-        base_url = os.getenv("DEEPSEEK_BASE_URL")
-        if not api_key:
-            raise ValueError("未找到 DEEPSEEK_API_KEY 环境变量")
-        
+    try:        
         # 初始化组件
         processor = DataProcessor()
         search_engine = UnifiedSearchEngine()
-        intent_parser = IntentParser(api_key=api_key, base_url=base_url)
+        intent_parser = IntentParser()
         planner = SearchPlanner()
         executor = SearchPlanExecutor(search_engine)
         
