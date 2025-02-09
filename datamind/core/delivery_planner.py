@@ -65,7 +65,11 @@ class DeliveryPlanner:
                         },
                         "visualization": {
                             "charts": [],          // 建议的图表
-                            "layout": {},          // 布局建议
+                            "layout": {            // 布局建议，注意：使用标准的键值对格式
+                                "main_structure": "",  // 主要布局结构
+                                "interaction": "",     // 交互设计
+                                "focus": ""           // 视觉重点
+                            },
                             "highlights": []       // 重点突出建议
                         },
                         "delivery_format": {
@@ -73,8 +77,37 @@ class DeliveryPlanner:
                             "sections": [],        // 章节安排
                             "emphasis": []         // 重点标注建议
                         },
-                        "additional_suggestions": []  // 补充建议
-                    }"""
+                        "additional_suggestions": [],  // 补充建议
+                        "delivery_files": {
+                            "<file_purpose>": {    // 文件用途
+                                "file_name": "",   // 文件名，必须以.html/.md/.csv结尾
+                                "topic": "",       // 文件内容主题
+                                "description": "", // 文件用途说明
+                                "content_structure": {
+                                    "sections": [],    // 章节或数据组织方式
+                                    "focus_points": [] // 重点关注内容
+                                }
+                            }
+                        }
+                    }
+                    
+                    注意事项：
+                    1. 所有JSON字段必须使用标准的键值对格式
+                    2. 不要在键名中使用冒号或其他特殊字符
+                    3. 所有字符串值使用双引号
+                    4. 数组值使用方括号
+                    5. 对象值使用花括号
+                    6. 确保JSON格式的严格正确性
+                    
+                    在生成delivery_files时，请注意：
+                    1. 分析用户原始检索需求里包含的真实意图，确定需要交付的内容
+                    2. 根据要交付的内容特点选择合适的文件格式：
+                       - .md: 适用于报告、分析说明等富文本内容
+                       - .html: 适用于交互式展示、可视化等
+                       - .csv: 适用于结构化数据、统计结果等
+                    3. 文件命名要清晰表达用途
+                    4. 内容结构要符合内容特点和用户需求
+                    5. 文件内容要符合用户需求，不要包含无关内容"""
                 },
                 {
                     "role": "user",
