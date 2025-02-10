@@ -60,26 +60,16 @@ class SearchResultFormatter(BaseFormatter):
 
 class HTMLFormatter(BaseFormatter):
     """HTML格式化器"""
-    def format(self, results: Dict) -> str:
-        """生成HTML格式的报告"""
-        from .templates.base_template import SearchResultTemplate
-        
-        stats = results.get("stats", {})
-        metadata = results.get("metadata", {})
-        original_query = metadata.get("original_query", "")
-        
-        template = SearchResultTemplate()
-        context = {
+    def format(self, results: Dict) -> Dict[str, Any]:
+        """格式化为HTML模板所需的数据结构"""
+        return {
             'title': '搜索结果报告',
-            'metadata': metadata,
-            'stats': stats,
+            'metadata': results.get('metadata', {}),
+            'stats': results.get('stats', {}),
             'structured_results': results.get('structured', []),
             'vector_results': results.get('vector', []),
-            'insights': results.get('insights', {}),
-            'original_query': escape(original_query)
+            'insights': results.get('insights', {})
         }
-        
-        return template.render(context)
 
 class MarkdownFormatter(BaseFormatter):
     """Markdown格式化器"""
