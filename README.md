@@ -63,6 +63,41 @@ Think of it as having a dedicated research assistant who:
   * Generate consistent documentation from various sources
   * Maintain living documents that evolve with your content
 
+## System Architecture
+
+The following diagram illustrates the workflow of the system:
+
+```mermaid
+graph TD
+    A[User Query] --> B[Data Processing]
+    B --> C[Intent Parsing]
+    C --> D[Search Planning]
+    D --> E[Search Execution]
+    E --> F[Result Analysis]
+    F --> G[Delivery Planning]
+    G --> H[Deliverable Generation]
+    
+    subgraph Data Processing
+        B1[File Scanning] --> B2[File Parsing]
+        B2 --> B3[Data Vectorization]
+        B3 --> B4[Database Storage]
+        style B fill:#f9f,stroke:#333
+    end
+    
+    subgraph Search Execution
+        E1[Structured Search] --> E2[Vector Search]
+        E2 --> E3[Result Deduplication]
+        style E fill:#bbf,stroke:#333
+    end
+    
+    subgraph Deliverables
+        H1[Markdown Reports] --> H2[HTML Pages]
+        H2 --> H3[CSV/Excel Data]
+        H3 --> H4[Analysis Insights]
+        style H fill:#9f9,stroke:#333
+    end
+```
+
 ## ✨ Core Features
 
 ### 🔄 Intelligent Document Processing
