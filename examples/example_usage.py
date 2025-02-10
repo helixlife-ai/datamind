@@ -1,9 +1,16 @@
-from datamind import UnifiedSearchEngine, SearchPlanner, SearchPlanExecutor, DataProcessor, IntentParser, setup_logging
-from datamind.core.delivery_planner import DeliveryPlanner
 import os
+import sys
 import json
 import asyncio
 from pathlib import Path
+
+# 添加项目根目录到Python路径
+script_dir = Path(__file__).parent
+project_root = script_dir.parent
+sys.path.insert(0, str(project_root))
+
+from datamind import UnifiedSearchEngine, SearchPlanner, SearchPlanExecutor, DataProcessor, IntentParser, setup_logging
+from datamind.core.delivery_planner import DeliveryPlanner
 
 def process_data(processor: DataProcessor, input_dirs: list) -> None:
     """处理数据目录
@@ -19,8 +26,11 @@ def process_data(processor: DataProcessor, input_dirs: list) -> None:
         dirs = [Path(d.strip()) for d in input_dirs]
         
         # 首次运行使用全量更新
-        if not Path(processor.db_path).exists():
+        db_path = Path(processor.db_path)
+        if not db_path.exists():
             logger.info("首次运行，执行全量更新")
+            # 确保数据库目录存在
+            db_path.parent.mkdir(parents=True, exist_ok=True)
             stats = processor.process_directory(dirs, incremental=False)
         else:
             # 后续运行使用增量更新
@@ -100,7 +110,8 @@ def search_test(search_engine: UnifiedSearchEngine, executor: SearchPlanExecutor
 async def intelligent_search_test(
     intent_parser: IntentParser, 
     planner: SearchPlanner,
-    executor: SearchPlanExecutor
+    executor: SearchPlanExecutor,
+    work_dir: Path = None
 ) -> None:
     """智能检索测试"""
     logger = setup_logging()
@@ -109,7 +120,12 @@ async def intelligent_search_test(
         print("\n=== 智能检索测试 ===")
         
         # 确保work_dir存在
-        work_dir = Path("work_dir")
+        if work_dir is None:
+            script_dir = Path(__file__).parent
+            if script_dir.name == 'examples':
+                work_dir = script_dir.parent / "work_dir"
+            else:
+                work_dir = Path("work_dir")
         work_dir.mkdir(exist_ok=True)
         
         # 查询文件路径
@@ -128,7 +144,7 @@ async def intelligent_search_test(
         queries = queries_file.read_text(encoding="utf-8").strip().split("\n")
         queries = [q.strip() for q in queries if q.strip()]
         
-        output_dir = Path("work_dir/output/intelligent_search")
+        output_dir = work_dir / "output/intelligent_search"
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # 初始化交付计划生成器
@@ -209,23 +225,37 @@ async def async_main():
     logger.info("开始运行测试程序")
     
     try:        
+        # 创建工作目录
+        script_dir = Path(__file__).parent
+        if script_dir.name == 'examples':
+            work_dir = script_dir.parent / "work_dir"
+            data_dir = script_dir.parent / "data"
+        else:
+            work_dir = Path("work_dir")
+            data_dir = Path("data")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 设置数据库和缓存路径
+        db_path = str(data_dir / "unified_storage.duckdb")
+        cache_file = str(data_dir / "file_cache.pkl")
+        
         # 初始化组件
-        processor = DataProcessor()
-        search_engine = UnifiedSearchEngine()
+        from datamind.core.processor import FileCache
+        processor = DataProcessor(db_path=db_path)
+        processor.file_cache = FileCache(cache_file=cache_file)  # 重新创建FileCache实例
+        search_engine = UnifiedSearchEngine(db_path=db_path)
         intent_parser = IntentParser()
         planner = SearchPlanner()
         executor = SearchPlanExecutor(search_engine)
-        
-        # 创建工作目录
-        work_dir = Path("work_dir")
-        work_dir.mkdir(parents=True, exist_ok=True)
         
         # 设置executor的输出目录
         executor.work_dir = str(work_dir / "output")
         
         # 数据处理测试
         logger.info("开始数据处理测试")
-        input_dirs = ["work_dir/test_data"]
+        test_data_dir = work_dir / "test_data"
+        input_dirs = [str(test_data_dir)]
         abs_input_dirs = [str(Path(d).resolve()) for d in input_dirs]
         process_data(processor, abs_input_dirs)
         logger.info("数据处理测试完成")
@@ -237,7 +267,7 @@ async def async_main():
         
         # 异步执行智能检索测试
         logger.info("开始智能检索测试")
-        await intelligent_search_test(intent_parser, planner, executor)
+        await intelligent_search_test(intent_parser, planner, executor, work_dir=work_dir)
         logger.info("智能检索测试完成")
         
         logger.info("测试程序运行完成")

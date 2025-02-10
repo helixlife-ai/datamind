@@ -217,3 +217,29 @@ Thanks to these open source projects:
    export DATAMIND_LLM_API_KEY=your-api-key-here
    export DATAMIND_LLM_API_BASE=https://api.deepseek.com
    ```
+
+## 项目结构
+
+```
+datamind/
+├── api/              # 对外接口层
+├── core/             # 核心功能实现
+├── config/           # 配置文件
+├── models/           # 模型定义
+├── services/         # 业务逻辑层
+└── utils/            # 工具函数
+
+data/                 # 数据文件存储
+├── unified_storage.duckdb
+└── file_cache.pkl
+
+docs/                 # 文档
+examples/             # 示例代码
+├── example_usage.py
+└── ...
+
+tests/               # 测试文件
+work_dir/            # 工作目录
+scripts/             # 脚本文件
+model_cache/         # 模型缓存
+```
