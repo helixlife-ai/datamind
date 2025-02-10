@@ -1,7 +1,7 @@
 import json
 import pandas as pd
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Any
 from html import escape
 import logging
 import numpy as np
@@ -10,18 +10,19 @@ from abc import ABC, abstractmethod
 
 class BaseFormatter(ABC):
     """格式化器基类"""
+    def __init__(self, work_dir: str = None):
+        self.logger = logging.getLogger(__name__)
+        self.work_dir = work_dir
+
     @abstractmethod
-    def format_results(self, results: Dict) -> List[Dict]:
-        """格式化搜索结果"""
+    def format(self, results: Dict) -> Any:
+        """格式化结果的抽象方法"""
         pass
 
 class SearchResultFormatter(BaseFormatter):
-    """搜索结果格式化器"""
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-
-    def format_results(self, results: Dict) -> List[Dict]:
-        """格式化搜索结果"""
+    """搜索结果格式化器 - 用于CSV等表格格式"""
+    def format(self, results: Dict) -> List[Dict]:
+        """格式化搜索结果为列表字典格式"""
         formatted_results = []
         
         # 处理结构化搜索结果
@@ -57,65 +58,31 @@ class SearchResultFormatter(BaseFormatter):
             
         return formatted
 
-class ResultFormatter:
-    """结果格式化器基类"""
-    def __init__(self, work_dir: str = None):
-        self.logger = logging.getLogger(__name__)
-        self.work_dir = work_dir
-
-    def format(self, results: Dict) -> str:
-        """格式化结果的抽象方法"""
-        raise NotImplementedError
-
-class HTMLFormatter(ResultFormatter):
+class HTMLFormatter(BaseFormatter):
     """HTML格式化器"""
-    def __init__(self, work_dir: str = None):
-        super().__init__(work_dir)
-    
     def format(self, results: Dict) -> str:
         """生成HTML格式的报告"""
-        try:
-            stats = results.get("stats", {})
-            metadata = results.get("metadata", {})
-            
-            insights_section = self._generate_insights_section(results)
-            results_section = self._generate_results_section(results)
-            
-            return self._generate_html_template(
-                metadata=metadata,
-                stats=stats,
-                insights_section=insights_section,
-                results_section=results_section
-            )
-        except Exception as e:
-            self.logger.error(f"HTML格式化失败: {str(e)}")
-            return self._generate_error_html(str(e), results)
+        from .templates.base_template import SearchResultTemplate
+        
+        stats = results.get("stats", {})
+        metadata = results.get("metadata", {})
+        original_query = metadata.get("original_query", "")
+        
+        template = SearchResultTemplate()
+        context = {
+            'title': '搜索结果报告',
+            'metadata': metadata,
+            'stats': stats,
+            'structured_results': results.get('structured', []),
+            'vector_results': results.get('vector', []),
+            'insights': results.get('insights', {}),
+            'original_query': escape(original_query)
+        }
+        
+        return template.render(context)
 
-    def _generate_insights_section(self, results: Dict) -> str:
-        """生成洞察部分HTML"""
-        # 实现从executor.py移动的_generate_html_insights逻辑
-        pass
-
-    def _generate_results_section(self, results: Dict) -> str:
-        """生成结果部分HTML"""
-        # 实现从executor.py移动的_generate_html_results逻辑
-        pass
-
-    def _generate_html_template(self, **kwargs) -> str:
-        """生成HTML模板"""
-        # 实现HTML模板生成逻辑
-        pass
-
-    def _generate_error_html(self, error_msg: str, results: Dict) -> str:
-        """生成错误HTML报告"""
-        # 实现错误报告生成逻辑
-        pass
-
-class MarkdownFormatter(ResultFormatter):
+class MarkdownFormatter(BaseFormatter):
     """Markdown格式化器"""
-    def __init__(self, work_dir: str = None):
-        super().__init__(work_dir)
-    
     def format(self, results: Dict) -> str:
         """生成Markdown格式的报告"""
         try:
@@ -201,139 +168,89 @@ class MarkdownFormatter(ResultFormatter):
             self.logger.error(f"Markdown格式化失败: {str(e)}")
             return f"# 错误\n\n格式化失败: {str(e)}"
 
-class JSONFormatter(ResultFormatter):
+class JSONFormatter(BaseFormatter):
     """JSON格式化器"""
-    
-    def format(self, results: Dict) -> str:
-        """生成JSON格式的报告
-        
-        Args:
-            results: 搜索结果字典
-            
-        Returns:
-            str: 格式化后的JSON字符串
-        """
-        try:
-            # 准备输出结构
-            output = {
-                "summary": {
-                    "total_results": results.get("stats", {}).get("total", 0),
-                    "structured_count": results.get("stats", {}).get("structured_count", 0),
-                    "vector_count": results.get("stats", {}).get("vector_count", 0)
-                },
-                "metadata": results.get("metadata", {}),
-                "results": {
-                    "structured": self._format_structured_results(results.get("structured", [])),
-                    "vector": self._format_vector_results(results.get("vector", []))
-                },
-                "insights": self._format_insights(results.get("insights", {}))
-            }
-            
-            # 转换为格式化的JSON字符串
-            return json.dumps(output, ensure_ascii=False, indent=2, default=self._json_serializer)
-            
-        except Exception as e:
-            self.logger.error(f"JSON格式化失败: {str(e)}")
-            return json.dumps({
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }, ensure_ascii=False)
-
-    def _format_structured_results(self, items: List[Dict]) -> List[Dict]:
-        """格式化结构化搜索结果"""
-        formatted = []
-        for item in items:
-            result = {
-                "file_info": {
-                    "name": item.get("_file_name", ""),
-                    "path": item.get("_file_path", ""),
-                    "type": item.get("_file_type", ""),
-                    "processed_at": item.get("_processed_at", "")
-                }
-            }
-            
-            # 处理data字段
-            if isinstance(item.get("data"), str):
-                try:
-                    result["content"] = json.loads(item["data"])
-                except json.JSONDecodeError:
-                    result["content"] = item.get("data", "")
-            else:
-                result["content"] = item.get("data", {})
-                
-            formatted.append(result)
-        return formatted
-
-    def _format_vector_results(self, items: List[Dict]) -> List[Dict]:
-        """格式化向量搜索结果"""
-        formatted = []
-        for item in items:
-            result = {
-                "similarity": item.get("similarity", 0),
-                "file_info": {
-                    "name": item.get("file_name", ""),
-                    "path": item.get("file_path", ""),
-                    "type": item.get("file_type", ""),
-                    "processed_at": item.get("processed_at", "")
-                }
-            }
-            
-            # 处理data字段
-            if isinstance(item.get("data"), str):
-                try:
-                    result["content"] = json.loads(item["data"])
-                except json.JSONDecodeError:
-                    result["content"] = item.get("data", "")
-            else:
-                result["content"] = item.get("data", {})
-                
-            formatted.append(result)
-        return formatted
-
-    def _format_insights(self, insights: Dict) -> Dict:
-        """格式化洞察结果"""
+    def format(self, results: Dict) -> Dict:
         return {
-            "key_concepts": insights.get("key_concepts", []),
-            "relationships": insights.get("relationships", []),
-            "timeline": [
-                {
-                    "date": event.get("date", ""),
-                    "event": event.get("event", ""),
-                    "source": event.get("source", "")
+            "metadata": {
+                "original_query": results.get("metadata", {}).get("original_query", ""),
+                "generated_at": datetime.now().isoformat(),
+                "version": "1.0",
+                "summary": {
+                    "total_results": results["stats"]["total"],
+                    "structured_count": results["stats"]["structured_count"],
+                    "vector_count": results["stats"]["vector_count"]
                 }
-                for event in insights.get("timeline", [])
-            ],
-            "importance_ranking": [
-                {
-                    "score": item.get("score", 0),
-                    "content": self._summarize_content(item.get("item", {}))
-                }
-                for item in insights.get("importance_ranking", [])
-            ]
+            },
+            "results": {
+                "structured": results.get("structured", []),
+                "vector": results.get("vector", []),
+                "insights": results.get("insights", {})
+            }
         }
 
-    def _json_serializer(self, obj):
-        """自定义JSON序列化处理"""
-        if isinstance(obj, (datetime, date)):
-            return obj.isoformat()
-        if isinstance(obj, pd.Timestamp):
-            return obj.isoformat()
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        if pd.isna(obj):
-            return None
-        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
-    def _summarize_content(self, item: Dict) -> str:
-        """生成内容摘要"""
-        if isinstance(item.get("data"), str):
-            content = item["data"]
-        else:
-            content = json.dumps(item.get("data", {}), ensure_ascii=False)
-        return content[:200] + "..." if len(content) > 200 else content
+class ExcelFormatter(BaseFormatter):
+    """Excel格式化器"""
+    def format(self, results: Dict) -> Dict[str, Any]:
+        """格式化为Excel格式所需的数据结构"""
+        # 概述数据
+        summary_data = {
+            "指标": ["总结果数", "结构化结果数", "向量结果数"],
+            "数值": [
+                results["stats"]["total"],
+                results["stats"]["structured_count"],
+                results["stats"]["vector_count"]
+            ]
+        }
+        
+        # 处理搜索结果
+        def process_results(items: List[Dict]) -> List[Dict]:
+            if not items:
+                return []
+            
+            rows = []
+            for item in items:
+                row = {
+                    'file_name': item.get('_file_name', '') or item.get('file_name', ''),
+                    'file_path': item.get('_file_path', '') or item.get('file_path', ''),
+                    'file_type': item.get('_file_type', '') or item.get('file_type', ''),
+                    'processed_at': item.get('_processed_at', '') or item.get('processed_at', ''),
+                    'similarity': item.get('similarity', 'N/A')
+                }
+                
+                # 解析data字段
+                if isinstance(item.get('data'), str):
+                    try:
+                        data_dict = json.loads(item['data'])
+                        row.update(data_dict)
+                    except json.JSONDecodeError:
+                        row['raw_content'] = item.get('data', '')
+                elif isinstance(item.get('data'), dict):
+                    row.update(item['data'])
+                
+                rows.append(row)
+            
+            return rows
+        
+        # 处理洞察数据
+        insights_data = []
+        for concept in results.get("insights", {}).get("key_concepts", []):
+            insights_data.append({
+                "类型": "关键概念",
+                "内容": concept
+            })
+        
+        for relation in results.get("insights", {}).get("relationships", []):
+            insights_data.append({
+                "类型": "关系发现",
+                "内容": f"{relation['type']}: {relation['doc1']} - {relation['doc2']}"
+            })
+        
+        return {
+            'summary': summary_data,
+            'structured_results': process_results(results.get("structured", [])),
+            'vector_results': process_results(results.get("vector", [])),
+            'insights': insights_data
+        }
 
 # 其他格式化器类... 

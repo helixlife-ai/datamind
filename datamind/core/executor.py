@@ -10,8 +10,21 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import hashlib
-from .formatters import HTMLFormatter, MarkdownFormatter, JSONFormatter
-from .savers import JSONSaver, CSVSaver, ExcelSaver, HTMLSaver
+from .formatters import (
+    HTMLFormatter, 
+    MarkdownFormatter, 
+    JSONFormatter, 
+    ExcelFormatter,
+    SearchResultFormatter
+)
+from .savers import (
+    SaverFactory, 
+    JSONSaver, 
+    CSVSaver, 
+    ExcelSaver, 
+    HTMLSaver,
+    MarkdownSaver  # 添加 MarkdownSaver
+)
 from .analyzers import ResultAnalyzer
 
 class SearchPlanExecutor:
@@ -23,29 +36,37 @@ class SearchPlanExecutor:
         self.work_dir = "output"  # 默认输出目录
         self.nlp_processor = None  # 用于文本分析，后续初始化
         self.knowledge_graph = None  # 用于关系分析，后续初始化
-        self.supported_formats = ['csv', 'json', 'xml', 'html', 'md', 'xlsx']
+        self.supported_formats = ['csv', 'json', 'excel', 'html', 'md']
         
-        # 初始化分析器和格式化器
+        # 初始化分析器
         self.analyzer = ResultAnalyzer()
+        
+        # 初始化保存器工厂
+        self.saver_factory = SaverFactory()
+        
+        # 初始化格式化器字典
         self.formatters = {
             'html': HTMLFormatter(),
             'md': MarkdownFormatter(),
             'json': JSONFormatter(),
+            'excel': ExcelFormatter(),
+            'csv': SearchResultFormatter()
         }
         
-        # 初始化保存器
+        # 使用工厂创建保存器
         self.savers = {
-            'json': JSONSaver(work_dir=self.work_dir),
-            'csv': CSVSaver(work_dir=self.work_dir),
-            'excel': ExcelSaver(work_dir=self.work_dir),
-            'html': HTMLSaver(work_dir=self.work_dir),
+            format_type: self.saver_factory.create_saver(format_type, self.work_dir)
+            for format_type in self.supported_formats
         }
 
     def set_work_dir(self, work_dir: str):
         """设置工作目录"""
         self.work_dir = work_dir
-        for saver in self.savers.values():
-            saver.work_dir = work_dir
+        # 重新创建所有保存器
+        self.savers = {
+            format_type: self.saver_factory.create_saver(format_type, self.work_dir)
+            for format_type in self.supported_formats
+        }
             
     def execute_plan(self, plan: Dict) -> Dict:
         """执行检索计划"""

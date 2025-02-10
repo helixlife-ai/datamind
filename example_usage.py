@@ -164,6 +164,20 @@ async def intelligent_search_test(
                         print(f"相关文件保存在: {delivery_plan['_file_paths']['base_dir']}")
                         print("\n交付计划内容:")
                         print(json.dumps(delivery_plan, indent=2, ensure_ascii=False))
+                        
+                        # 生成交付文件
+                        from datamind.core.delivery_generator import DeliveryGenerator
+                        generator = DeliveryGenerator()
+                        try:
+                            generated_files = await generator.generate_deliverables(
+                                delivery_plan['_file_paths']['base_dir']
+                            )
+                            print("\n已生成以下交付文件:")
+                            for file_path in generated_files:
+                                print(f"- {file_path}")
+                        except Exception as e:
+                            logger.error(f"生成交付文件失败: {str(e)}")
+                            print(f"\n生成交付文件失败: {str(e)}")
                     else:
                         print("\n交付计划生成失败")
                         
@@ -174,7 +188,7 @@ async def intelligent_search_test(
                 print("\n未找到检索结果，跳过交付计划生成")
             
             # 保存不同格式的结果
-            for format in ['json', 'html', 'csv']:
+            for format in ['json', 'html', 'csv', 'excel']:
                 try:
                     filepath = executor.save_results(
                         results, 
