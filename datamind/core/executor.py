@@ -31,16 +31,14 @@ class SearchPlanExecutor:
             'html': HTMLFormatter(),
             'md': MarkdownFormatter(),
             'json': JSONFormatter(),
-            # 添加其他格式化器...
         }
         
         # 初始化保存器
         self.savers = {
-            'json': JSONSaver(self.work_dir),
-            'csv': CSVSaver(self.work_dir),
-            'xlsx': ExcelSaver(self.work_dir),
-            'html': HTMLSaver(self.work_dir),  # 添加HTML保存器
-            # 添加其他保存器...
+            'json': JSONSaver(work_dir=self.work_dir),
+            'csv': CSVSaver(work_dir=self.work_dir),
+            'excel': ExcelSaver(work_dir=self.work_dir),
+            'html': HTMLSaver(work_dir=self.work_dir),
         }
 
     def set_work_dir(self, work_dir: str):
