@@ -2,25 +2,66 @@
 
 ![DataMind Logo](docs/images/logo.png)
 
-## Intelligent Document Processing & Semantic Search Engine
+## Your AI-Powered Document Intelligence Assistant
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
-[![Version](https://img.shields.io/badge/version-0.2.1-green.svg)](https://github.com/helixlife-ai/datamind/releases)
+[![Version](https://img.shields.io/badge/version-0.2.2-green.svg)](https://github.com/helixlife-ai/datamind/releases)
 
 [English](README.md) | [中文](docs/README_zh.md)
 
 ## 📖 Introduction
 
-DataMind is a powerful intelligent data processing and semantic search system. It automatically processes documents in various formats, converts unstructured data into structured representations using advanced vectorization techniques, and provides efficient hybrid search functionality.
+DataMind is your intelligent document assistant that transforms how you interact with your knowledge base. Powered by DeepSeek R1, a state-of-the-art reasoning model, it understands your documents at a deep semantic level and generates insights with remarkable accuracy.
+
+Think of DataMind as your knowledge alchemy cauldron - simply toss in your documents, data, and files, express what you need, and watch as it automatically distills them into valuable deliverables. Like a master alchemist, it:
+- Transforms raw documents into refined knowledge
+- Extracts golden insights from information ore
+- Synthesizes scattered facts into coherent wisdom
+- Crystallizes complex data into clear understanding
+
+For example:
+- Need a market analysis? Throw in industry reports, news articles, and data sheets - get a comprehensive market landscape report
+- Building technical documentation? Add your codebase, API docs, and user feedback - receive a well-structured technical manual
+- Researching competitors? Input competitor websites, product docs, and social media data - obtain detailed competitive analysis
+- Planning a project? Include past project files, team discussions, and requirements docs - get an organized project blueprint
+
+Put your documents in, state your needs, and let DataMind's AI alchemy work its magic to deliver exactly what you're looking for.
+
+Think of it as having a dedicated research assistant who:
+- Thoroughly understands your document collection using advanced AI reasoning
+- Intelligently processes your natural language requests
+- Automatically generates professional reports and insights
+- Delivers results in your preferred format
+- Maintains logical coherence and factual accuracy through AI-powered reasoning
 
 ### 🎯 Key Applications
 
-- Enterprise Document Management
-- Knowledge Base Semantic Search
-- Data Asset Unified Management
-- Intelligent Document Analysis
-- Incremental Data Updates
+- **AI-Powered Research & Analysis**
+  * Generate comprehensive research reports with deep semantic understanding
+  * Extract insights and patterns through advanced reasoning
+  * Create timeline-based analysis with logical connections
+  * Ensure factual accuracy through AI verification
+
+- **Knowledge Base Intelligence**
+  * Transform static document repositories into interactive knowledge bases
+  * Get instant, context-aware answers from your documentation
+  * Generate structured summaries and insights from unstructured content
+
+- **Smart Content Delivery**
+  * Automatically generate reports in multiple formats (Markdown, HTML, PDF)
+  * Create custom deliverables based on specific requirements
+  * Maintain source traceability with automatic reference management
+
+- **Document Analytics**
+  * Analyze document relationships and knowledge graphs
+  * Track content evolution and updates over time
+  * Generate statistical insights about your knowledge base
+
+- **Enterprise Documentation**
+  * Streamline technical documentation workflows
+  * Generate consistent documentation from various sources
+  * Maintain living documents that evolve with your content
 
 ## ✨ Core Features
 
@@ -38,17 +79,32 @@ DataMind is a powerful intelligent data processing and semantic search system. I
 - **Aggregation Analysis**: Supports multi-dimensional data analysis and visualization
 - **Smart Caching**: File processing cache mechanism for improved retrieval performance
 
-### 🎨 New Features (v0.2.1)
-- **Model Management**: Unified model management system, supports both local and API calls
-- **Environment Config**: Optimized environment variable configuration for improved security
-- **Async Support**: Enhanced asynchronous API call support
-- **Error Handling**: Improved error handling and logging
-- **Search Enhancement**: 
-  * Intelligent content deduplication and similarity analysis
-  * Deep insights and relationship discovery
-  * Multi-format result export
-  * Timeline analysis
-  * Improved result summarization
+### 🎨 New Features (v0.2.2)
+- **Intelligent Search Pipeline**: 
+  * Enhanced search planning and execution workflow
+  * Improved query intent parsing and understanding
+  * Smart delivery plan generation
+  * Customizable result formatting
+- **Intelligent Delivery System**:
+  * Advanced delivery planning with DeliveryPlanner
+  * Automated content organization and structuring
+  * Smart template selection and adaptation
+  * Context-aware content generation
+- **Document Analysis**: 
+  * Advanced document structure analysis
+  * Multi-dimensional data insights
+  * Automated report generation
+  * Timeline-based content organization
+- **Result Processing**:
+  * Flexible result saving mechanisms
+  * Multiple output format support (Markdown, CSV, JSON)
+  * Enhanced result formatting and presentation
+  * Customizable delivery templates
+- **System Optimization**:
+  * Improved error handling and recovery
+  * Enhanced logging and monitoring
+  * Better resource management
+  * Optimized cache utilization
 
 ## 🚀 Quick Start
 
@@ -77,85 +133,180 @@ Generated test data includes AI-related documents in various formats:
 
 ### Usage Example
 
-```python
-# Set environment variables
-import os
-os.environ["DEEPSEEK_API_KEY"] = "your_api_key"
-os.environ["DEEPSEEK_BASE_URL"] = "your_base_url"
+The easiest way to get started is to run the example script:
 
-from datamind import UnifiedSearchEngine, DataProcessor
-from pathlib import Path
-
-# Initialize components
-processor = DataProcessor()
-search_engine = UnifiedSearchEngine()
-
-# Process data directory
-input_dirs = ["work_dir/test_data"]  # Test data directory
-stats = processor.process_directory(input_dirs)
-
-# Execute search
-# Search for machine learning related content
-results = search_engine.search("machine learning algorithms and applications")
-print(results)
-
-# Supports various query types
-results = search_engine.search("type:markdown")  # Search Markdown files
-results = search_engine.search("company:OpenAI")  # Search specific company
-results = search_engine.search("file:json")  # Search by file type
-results = search_engine.search("modified:>2024-01-01")  # Search by date
+```bash
+# Run the example script
+python examples/example_usage.py
 ```
 
-### Intelligent Search Example
-```python
-from datamind import IntentParser, SearchPlanner, SearchPlanExecutor
+This script demonstrates:
+- Data processing with incremental updates
+- Basic search functionality with various query types
+- Intelligent search with query intent parsing
+- Delivery plan generation and execution
+- Multi-format result export
 
-# Initialize intelligent search components
-intent_parser = IntentParser()
-planner = SearchPlanner()
-executor = SearchPlanExecutor(search_engine)
+For more detailed examples, check out the `examples` directory.
 
-# Execute intelligent search
-query = "Find recent technological advances in deep learning and large language models"
-parsed_intent = intent_parser.parse_query(query)
-results = executor.execute_plan(planner.build_search_plan(parsed_intent))
+### Work Directory Structure
 
-# Export results
-csv_path = executor.save_results_to_csv(results, "search_results.csv")
-print(f"Results saved to: {csv_path}")
+After running the example script, the following directory structure will be created:
 
-# View statistics
-print(f"Found {results['stats']['total']} relevant records")
-print(f"Structured queries: {results['stats']['structured_count']}")
-print(f"Vector queries: {results['stats']['vector_count']}")
-
-# View key findings
-for idx, concept in enumerate(results['insights']['key_concepts'][:3], 1):
-    print(f"Finding {idx}: {concept}")
 ```
+work_dir/
+├── test_data/              # Test data directory
+│   ├── ai_guide.md
+│   ├── ai_models.json
+│   └── ...
+├── test_queries.txt        # Example search queries
+├── context.txt            # Search context information
+└── output/
+    └── intelligent_search/
+        └── delivery_plans/
+            └── plan_[timestamp]/
+                ├── plan.json         # Delivery plan configuration
+                ├── search_results/   # Raw search results
+                │   ├── results.json
+                │   ├── results.html
+                │   ├── results.csv
+                │   └── results.xlsx
+                └── deliverables/     # Generated deliverables
+                    ├── report.md     # Main report
+                    ├── insights.md   # Key insights
+                    ├── timeline.md   # Timeline analysis
+                    └── references.md # Source references
+
+data/                      # Data storage
+├── unified_storage.duckdb # Vector database
+└── file_cache.pkl        # File processing cache
+```
+
+### Generated Deliverables
+
+The system generates several types of deliverables:
+
+1. Search Results:
+   - JSON format: Complete structured data
+   - HTML format: Interactive web view
+   - CSV/Excel: Tabular data for analysis
+   - Timeline view: Time-based visualization
+
+2. Analysis Reports:
+   - Main report: Comprehensive analysis
+   - Key insights: Important findings
+   - Timeline analysis: Time-based patterns
+   - Source references: Original document links
+
+3. Metadata:
+   - Delivery plan configuration
+   - Search statistics
+   - Processing metrics
+   - Cache information
+
+### Example Features
+
+1. Basic Search:
+   - Content-based search: "machine learning", "artificial intelligence"
+   - File type search: "file:json", "file:markdown"
+   - Field search: "company:OpenAI", "author:Zhang"
+   - Date filters: "modified:>2024-01-01"
+
+2. Intelligent Search:
+   - Natural language queries
+   - Automatic query intent parsing
+   - Smart search plan generation
+   - Context-aware result organization
+
+3. Result Delivery:
+   - Multiple output formats (JSON, HTML, CSV, Excel)
+   - Customizable report templates
+   - Automated insight generation
+   - Source reference management
 
 ## ⚙️ Configuration
 
 ### Environment Variables
 
-The project uses the following environment variables:
+The project uses environment variables for configuration. You can set them up in two ways:
 
-- `DEEPSEEK_API_KEY`: (Required) LLM API key
-- `DEEPSEEK_BASE_URL`: (Optional) LLM API base URL, defaults to "https://api.deepseek.com"
-
-You can set these variables by:
-
-1. Creating a `.env` file:
+1. Using `.env` file (recommended):
    ```bash
    cp .env.example .env
-   # Then edit .env with actual values
+   # Then edit .env with your values
    ```
 
-2. Or setting them directly:
+2. Setting directly in environment:
    ```bash
-   export DEEPSEEK_API_KEY=your-api-key-here
-   export DEEPSEEK_BASE_URL=https://api.deepseek.com
+   export DATAMIND_LLM_API_KEY=your-api-key-here
+   export DATAMIND_LLM_API_BASE=https://api.deepseek.com
    ```
+
+Available environment variables:
+
+1. LLM API Configuration:
+   ```bash
+   # Deepseek API (Required)
+   DATAMIND_LLM_API_KEY=your-deepseek-api-key-here
+   DATAMIND_LLM_API_BASE=https://api.deepseek.com
+
+   # SiliconFlow API (Optional)
+   DATAMIND_SILICONFLOW_API_KEY=your-siliconflow-api-key-here
+   DATAMIND_SILICONFLOW_API_BASE=https://api.siliconflow.cn/v1
+   ```
+
+2. Storage Configuration:
+   ```bash
+   # Database and cache paths
+   DATAMIND_DB_PATH=data/unified_storage.duckdb
+   DATAMIND_CACHE_PATH=data/file_cache.pkl
+   ```
+
+3. Directory Configuration:
+   ```bash
+   # Working directories
+   DATAMIND_WORK_DIR=work_dir
+   DATAMIND_OUTPUT_DIR=work_dir/output
+   ```
+
+### System Settings
+
+The system settings are managed in `datamind/config/settings.py`. Key configurations include:
+
+1. Model Settings:
+   ```python
+   # Embedding model
+   DEFAULT_EMBEDDING_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
+   
+   # LLM models
+   DEFAULT_LLM_MODEL = "Pro/deepseek-ai/DeepSeek-V3"    
+   DEFAULT_CHAT_MODEL = "Pro/deepseek-ai/DeepSeek-V3" 
+   DEFAULT_REASONING_MODEL = "Pro/deepseek-ai/DeepSeek-R1" 
+   ```
+
+2. Search Parameters:
+   ```python
+   # Search configuration
+   SEARCH_TOP_K = 5
+   DEFAULT_SIMILARITY_THRESHOLD = 0.6
+   DEFAULT_TARGET_FIELD = "abstract_embedding"
+   ```
+
+3. File Support:
+   ```python
+   # Supported file types
+   SUPPORTED_FILE_TYPES = [
+       "txt", "pdf", "doc", "docx", 
+       "md", "json", "csv", "xlsx"
+   ]
+   ```
+
+4. Query Templates:
+   - Structured query templates for different search types
+   - Prompt templates for intent parsing
+   - Reference text extraction templates
+
+You can customize these settings by modifying the settings file or overriding them through environment variables.
 
 ## 📊 Performance Metrics
 

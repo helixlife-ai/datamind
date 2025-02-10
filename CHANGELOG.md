@@ -2,6 +2,48 @@
 
 [English](CHANGELOG.md) | [中文](docs/CHANGELOG_zh.md)
 
+## [0.2.2] - 2025-02-10
+
+### Added
+- Implemented intelligent search pipeline with enhanced planning and execution
+- Added DeliveryPlanner for automated content delivery planning
+- Added DeliveryGenerator for intelligent content generation
+- Introduced flexible result processing and delivery system
+- Added customizable delivery plan templates
+
+### Improvements
+- Enhanced query intent parsing and understanding
+- Improved document structure analysis and insights generation
+- Advanced content organization and structuring capabilities
+- Optimized result formatting and presentation
+- Enhanced system stability and resource management
+
+### Technical Details
+- Added SearchPlanner for intelligent search strategy generation
+- Implemented DeliveryPlanner with the following features:
+  * Smart template selection and adaptation
+  * Context-aware content organization
+  * Multi-format output support
+  * Customizable delivery rules
+- Implemented DeliveryGenerator with capabilities:
+  * Template-based content generation
+  * Dynamic content structuring
+  * Source reference management
+  * Quality assurance checks
+- Enhanced Executor with improved error handling and recovery
+- Added support for multiple output formats
+- Implemented timeline-based content organization
+- Added automated report generation capabilities
+- Enhanced result saving mechanisms with multiple format support
+- Improved system logging and monitoring
+
+### Performance
+- Optimized cache utilization
+- Improved resource management
+- Enhanced error recovery mechanisms
+- Better handling of large-scale data processing
+- Optimized delivery plan generation speed
+
 ## [0.2.1] - 2025-02-08
 
 ### Improvements
@@ -64,4 +106,37 @@
 - Implemented basic search execution engine
 - Added support for hybrid structured and vector queries
 - Added search result formatting functionality
-- Implemented detailed logging 
+- Implemented detailed logging
+
+### Improvements
+- Enhanced query intent parsing and understanding
+- Improved document structure analysis and insights generation
+- Advanced content organization and structuring capabilities
+- Optimized result formatting and presentation
+- Enhanced system stability and resource management
+
+### Technical Details
+- Added SearchPlanner for intelligent search strategy generation
+- Implemented DeliveryPlanner with the following features:
+  * Smart template selection and adaptation
+  * Context-aware content organization
+  * Multi-format output support
+  * Customizable delivery rules
+- Implemented DeliveryGenerator with capabilities:
+  * Template-based content generation
+  * Dynamic content structuring
+  * Source reference management
+  * Quality assurance checks
+- Enhanced Executor with improved error handling and recovery
+- Added support for multiple output formats
+- Implemented timeline-based content organization
+- Added automated report generation capabilities
+- Enhanced result saving mechanisms with multiple format support
+- Improved system logging and monitoring
+
+### Performance
+- Optimized cache utilization
+- Improved resource management
+- Enhanced error recovery mechanisms
+- Better handling of large-scale data processing
+- Optimized delivery plan generation speed 
