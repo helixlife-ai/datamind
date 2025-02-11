@@ -146,25 +146,9 @@ async def datamind_alchemy_test(
                 # 如果有检索结果，生成交付计划
                 if results['stats']['total'] > 0:
                     try:
-                        # 使用 planner 构建原始计划
-                        original_plan = planner.build_delivery_plan(
-                            query=query,
-                            intent=parsed_intent,
-                            results=results,
-                            config={
-                                'formats': ['md', 'html'],
-                                'sections': ['摘要', '主要发现', '详细分析', '结论建议'],
-                                'style_preferences': {
-                                    'language': 'zh_CN',
-                                    'tone': 'professional',
-                                    'detail_level': 'comprehensive'
-                                }
-                            }
-                        )
-                        
-                        # 使用 DeliveryPlanner 生成交付计划
+                        # 直接使用 parsed_plan 作为 original_plan
                         delivery_plan = await delivery_planner.generate_plan(
-                            original_plan=original_plan,
+                            original_plan=parsed_plan,
                             search_results=results
                         )
                         

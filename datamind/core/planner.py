@@ -128,41 +128,4 @@ class SearchPlanner:
             }
         except Exception as e:
             self.logger.error(f"构建向量查询失败: {str(e)}")
-            return None
-
-    def build_delivery_plan(self, query: str, intent: Dict, results: Dict, config: Dict) -> Dict:
-        """构建交付计划
-        
-        Args:
-            query: 原始查询
-            intent: 解析后的查询意图
-            results: 搜索结果
-            config: 交付配置
-            
-        Returns:
-            Dict: 交付计划
-        """
-        # 从意图中提取时间范围和关键词
-        structured_conditions = intent.get('structured_conditions', [{}])[0]
-        
-        return {
-            'metadata': {
-                'original_query': query,
-                'generated_at': results.get('metadata', {}).get('execution_time', '')
-            },
-            'query_params': {
-                'query': query,
-                'keywords': structured_conditions.get('keywords', []),
-                'reference_text': query,
-                'filters': {
-                    'time_range': structured_conditions.get('time_range', {}),
-                    'sections': ['摘要', '分析', '结论']
-                },
-                'weights': {
-                    '相关性': 1.0,
-                    '时效性': 0.8,
-                    '权威性': 0.7
-                }
-            },
-            'delivery_config': config
-        } 
+            return None 
