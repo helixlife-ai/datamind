@@ -153,13 +153,12 @@ async def datamind_alchemy_test(
                         
                         if delivery_plan:
                             print("\n交付计划生成成功！")
-                            print(f"相关文件保存在: {delivery_plan['_file_paths']['base_dir']}")
-                            print("\n交付计划内容:")
-                            print(json.dumps(delivery_plan, indent=2, ensure_ascii=False))
+                            delivery_dir = delivery_plan['_file_paths']['base_dir']
+                            print(f"相关文件保存在: {delivery_dir}")
                             
-                            # 使用 DeliveryGenerator 生成交付文件
+                            # 生成交付文件
                             generated_files = await delivery_generator.generate_deliverables(
-                                delivery_plan['_file_paths']['base_dir'],
+                                delivery_dir,
                                 results,
                                 delivery_plan.get('delivery_config')
                             )
@@ -167,8 +166,8 @@ async def datamind_alchemy_test(
                             for file_path in generated_files:
                                 print(f"- {file_path}")
                                 
-                            # 使用 FeedbackOptimizer 执行反馈优化测试
-                            await feedback_optimizer.run_test_optimization(delivery_plan)
+                            # 运行反馈优化测试
+                            await feedback_optimizer.run_test_optimization(delivery_dir)
                                 
                         else:
                             print("\n交付计划生成失败")
