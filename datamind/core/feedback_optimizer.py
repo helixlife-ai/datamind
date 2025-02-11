@@ -1,102 +1,139 @@
 """
-反馈优化工作流模块，用于处理用户反馈并生成优化后的交付物
+反馈优化工作流模块，用于处理用户反馈并生成新的查询
 """
 from typing import Dict, List, Optional, Any
 import json
 from pathlib import Path
 import logging
-import asyncio
 from datetime import datetime
 
-from .delivery_generator import DeliveryGenerator
+from ..models.model_manager import ModelManager, ModelConfig
+from ..config.settings import (
+    DEFAULT_REASONING_MODEL,
+    DEFAULT_LLM_API_KEY,
+    DEFAULT_LLM_API_BASE
+)
 
 logger = logging.getLogger(__name__)
 
 class FeedbackOptimizer:
     """反馈优化工作流管理器"""
     
-    def __init__(self, work_dir: str, search_engine=None):
+    def __init__(self, work_dir: str):
         self.work_dir = Path(work_dir)
-        self.search_engine = search_engine
-        self.delivery_generator = DeliveryGenerator()
-        self.max_retries = 5
-        self.retry_interval = 1  # 秒
+        self.model_manager = ModelManager()
         
-    def set_search_engine(self, search_engine):
-        """设置搜索引擎实例"""
-        self.search_engine = search_engine
-
-    async def optimize_delivery(self, delivery_dir: str, feedback: str) -> Dict[str, Any]:
-        """根据用户反馈优化交付内容
+        # 注册推理模型配置
+        self.model_manager.register_model(ModelConfig(
+            name=DEFAULT_REASONING_MODEL,
+            model_type="api",
+            api_key=DEFAULT_LLM_API_KEY,
+            api_base=DEFAULT_LLM_API_BASE
+        ))
+        
+    async def feedback_to_query(self, delivery_dir: str, feedback: str) -> Dict[str, Any]:
+        """将用户反馈转换为新的查询
         
         Args:
             delivery_dir: 原始交付文件目录
             feedback: 用户反馈内容
             
         Returns:
-            Dict[str, Any]: 包含优化结果的字典
+            Dict[str, Any]: 包含新查询的字典
             {
                 'status': 'success' | 'error',
                 'message': str,
-                'new_delivery_dir': str,  # 新的交付文件目录
-                'generated_files': List[str]  # 生成的文件列表
+                'query': str  # 新的查询文本
             }
         """
         try:
-            if not self.search_engine:
-                return {'status': 'error', 'message': 'Search engine not initialized'}
-
             delivery_path = Path(delivery_dir)
             if not delivery_path.exists():
-                return {'status': 'error', 'message': f'Delivery directory not found: {delivery_dir}'}
+                return {
+                    'status': 'error',
+                    'message': f'Delivery directory not found: {delivery_dir}'
+                }
 
             # 加载原始交付计划
             plan_file = delivery_path / 'delivery_plan.json'
             if not plan_file.exists():
-                return {'status': 'error', 'message': 'Delivery plan not found'}
+                return {
+                    'status': 'error',
+                    'message': 'Delivery plan not found'
+                }
 
             with open(plan_file, 'r', encoding='utf-8') as f:
                 original_plan = json.load(f)
 
-            # 创建新的交付目录
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            new_delivery_dir = delivery_path.parent / f"{delivery_path.name}_optimized_{timestamp}"
-            new_delivery_dir.mkdir(parents=True, exist_ok=True)
-
-            # 复制并更新交付计划
-            updated_plan = original_plan.copy()
-            updated_plan['feedback'] = feedback
-            updated_plan['original_delivery_dir'] = str(delivery_path)
-            updated_plan['_file_paths']['base_dir'] = str(new_delivery_dir)
-
-            # 保存更新后的计划
-            with open(new_delivery_dir / 'delivery_plan.json', 'w', encoding='utf-8') as f:
-                json.dump(updated_plan, f, ensure_ascii=False, indent=2)
-
-            # 重新生成交付文件
-            try:
-                generated_files = await self.delivery_generator.generate_deliverables(
-                    str(new_delivery_dir),
-                    updated_plan['search_results'],
-                    updated_plan.get('delivery_config')
-                )
-
+            # 构建提示信息
+            messages = [
+                {
+                    "role": "system",
+                    "content": """你是一个专业的查询优化专家。请基于用户的反馈和原始查询上下文，
+                    生成一个新的查询文本。新查询应该：
+                    1. 保留原始查询的核心意图
+                    2. 融入用户反馈中的新需求
+                    3. 使用清晰、结构化的语言
+                    4. 确保查询的完整性和可执行性
+                    
+                    请直接输出优化后的查询文本，不需要其他解释。"""
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+                    原始查询：{original_plan.get('metadata', {}).get('original_query', '')}
+                    
+                    用户反馈：{feedback}
+                    
+                    请生成一个新的查询文本，要求：
+                    1. 融合原始查询的目标和用户的反馈建议
+                    2. 使用清晰的自然语言表达
+                    3. 保持查询的可执行性
+                    """
+                }
+            ]
+            
+            # 调用推理模型
+            response = await self.model_manager.generate_reasoned_response(
+                messages=messages,
+                temperature=0.7,
+                max_tokens=500
+            )
+            
+            if response and response.choices:
+                new_query = response.choices[0].message.content.strip()
+                
+                # 记录优化过程
+                log_dir = delivery_path / "feedback_logs"
+                log_dir.mkdir(exist_ok=True)
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                log_file = log_dir / f"feedback_optimization_{timestamp}.json"
+                
+                log_data = {
+                    "timestamp": timestamp,
+                    "original_query": original_plan.get('metadata', {}).get('original_query', ''),
+                    "user_feedback": feedback,
+                    "new_query": new_query,
+                    "prompt": messages
+                }
+                
+                with open(log_file, 'w', encoding='utf-8') as f:
+                    json.dump(log_data, f, ensure_ascii=False, indent=2)
+                
                 return {
                     'status': 'success',
-                    'message': 'Successfully optimized delivery files',
-                    'new_delivery_dir': str(new_delivery_dir),
-                    'generated_files': generated_files
+                    'message': 'Successfully generated new query',
+                    'query': new_query
                 }
-
-            except Exception as e:
-                logger.error(f"生成优化后的交付文件失败: {str(e)}")
+            else:
                 return {
                     'status': 'error',
-                    'message': f'Failed to generate optimized deliverables: {str(e)}'
+                    'message': 'Failed to generate new query'
                 }
 
         except Exception as e:
-            logger.error(f"优化交付内容失败: {str(e)}", exc_info=True)
+            logger.error(f"处理反馈失败: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)

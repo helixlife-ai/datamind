@@ -295,7 +295,6 @@ class Executor:
         self.logger = logging.getLogger(__name__)
         self.feedback_optimizer = FeedbackOptimizer(work_dir)
         if search_engine:
-            self.feedback_optimizer.set_search_engine(search_engine)
             self.search_executor = SearchPlanExecutor(search_engine)
         
     def set_work_dir(self, work_dir: str):
@@ -303,12 +302,11 @@ class Executor:
         self.work_dir = Path(work_dir)
         self.feedback_optimizer = FeedbackOptimizer(work_dir)
         if self.search_engine:
-            self.feedback_optimizer.set_search_engine(self.search_engine)
+            self.search_executor = SearchPlanExecutor(self.search_engine)
             
     def set_search_engine(self, search_engine):
         """设置搜索引擎"""
         self.search_engine = search_engine
-        self.feedback_optimizer.set_search_engine(search_engine)
         self.search_executor = SearchPlanExecutor(search_engine)
         
     def execute_search(self, query_params: Dict[str, Any]) -> Dict[str, Any]:
