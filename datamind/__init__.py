@@ -1,16 +1,19 @@
-from .core.search import UnifiedSearchEngine
+"""DataMind package initialization"""
+
+from .core.search import SearchEngine
+from .core.planner import SearchPlanner
+from .core.executor import SearchPlanExecutor, Executor
 from .core.processor import DataProcessor
 from .core.parser import IntentParser
-from .core.planner import SearchPlanner
-from .core.executor import SearchPlanExecutor
-from .utils.common import setup_logging, download_model
+from .utils.common import setup_logging
+
+__version__ = "0.1.0"
 
 __all__ = [
-    'UnifiedSearchEngine',
+    'SearchEngine',
     'SearchPlanner',
     'SearchPlanExecutor',
     'DataProcessor',
     'IntentParser',
-    'setup_logging',
-    'download_model'
+    'setup_logging'
 ] 

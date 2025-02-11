@@ -11,10 +11,9 @@ import logging
 from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_DB_PATH, SEARCH_TOP_K
 from ..utils.common import download_model
 from .planner import SearchPlanner
-from .executor import SearchPlanExecutor
 from ..models.model_manager import ModelManager, ModelConfig
 
-class UnifiedSearchEngine:
+class SearchEngine:
     """统一搜索引擎，支持结构化查询和向量相似度搜索"""
     
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
@@ -39,8 +38,7 @@ class UnifiedSearchEngine:
         self.vectors_map = {}
         self.load_vectors()
         self.planner = SearchPlanner()
-        self.executor = SearchPlanExecutor(self)
-        
+
     def load_vectors(self):
         """加载并处理向量数据"""
         try:

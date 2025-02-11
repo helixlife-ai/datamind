@@ -180,8 +180,7 @@ class DeliveryPlanner:
             
             if response:
                 try:
-                    
-                    # 解析响应内容 - 更新字段访问方式
+                    # 解析响应内容
                     reasoning_content = response.choices[0].message.reasoning_content
                     content = response.choices[0].message.content
                     self.logger.info(f"推理内容: {reasoning_content}")
@@ -190,18 +189,16 @@ class DeliveryPlanner:
                     try:
                         # 使用正则表达式提取JSON内容
                         import re
-                        # 匹配```json后的换行符到下一个```之间的内容
                         json_pattern = r'```json\n([\s\S]*?)\n```'
                         json_match = re.search(json_pattern, content)
                         
                         if json_match:
-                            json_content = json_match.group(1).strip()  # 获取第一个捕获组并去除首尾空白
+                            json_content = json_match.group(1).strip()
                             try:
                                 delivery_plan = json.loads(json_content)
                                 self.logger.debug(f"成功从markdown格式解析JSON")
                             except json.JSONDecodeError as je:
                                 self.logger.warning(f"从markdown格式解析JSON失败: {str(je)}")
-                                # 尝试清理内容中的特殊字符
                                 cleaned_content = json_content.replace('\r', '').replace('\t', '  ')
                                 try:
                                     delivery_plan = json.loads(cleaned_content)
@@ -211,7 +208,6 @@ class DeliveryPlanner:
                                     self.logger.debug(f"问题内容: {cleaned_content}")
                                     raise
                         else:
-                            # 如果没有找到markdown格式的JSON，尝试直接解析整个响应
                             self.logger.warning("未找到markdown格式的JSON，尝试直接解析响应内容")
                             try:
                                 delivery_plan = json.loads(content)
@@ -238,7 +234,7 @@ class DeliveryPlanner:
                         self.logger.error("响应内容为空或格式错误")
                         return None
                         
-                    # 保存推理过程 - 使用reasoning_content
+                    # 保存推理过程
                     reasoning_file = plan_dir / "reasoning_process.md"
                     with reasoning_file.open('w', encoding='utf-8') as f:
                         f.write("# 交付计划推理过程\n\n")
@@ -289,7 +285,6 @@ class DeliveryPlanner:
                                 return obj.isoformat()
                             elif hasattr(obj, 'timestamp'):
                                 return obj.timestamp()
-                            # 处理numpy数值类型
                             elif isinstance(obj, (np.int8, np.int16, np.int32, np.int64,
                                                np.uint8, np.uint16, np.uint32, np.uint64)):
                                 return int(obj)
@@ -299,7 +294,6 @@ class DeliveryPlanner:
                                 return obj.tolist()
                             elif isinstance(obj, np.bool_):
                                 return bool(obj)
-                            # 处理其他numpy标量类型
                             elif np.isscalar(obj):
                                 return obj.item()
                             return super().default(obj)
@@ -310,8 +304,16 @@ class DeliveryPlanner:
                     
                     # 保存交付计划
                     plan_file = plan_dir / "delivery_plan.json"
+                    
+                    # 合并原始计划中的query_params和delivery_config
+                    final_delivery_plan = {
+                        **delivery_plan,
+                        'query_params': original_plan.get('query_params', {}),
+                        'delivery_config': original_plan.get('delivery_config', {})
+                    }
+                    
                     with plan_file.open('w', encoding='utf-8') as f:
-                        json.dump(delivery_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+                        json.dump(final_delivery_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
                     
                     # 生成README文件
                     readme_file = plan_dir / "README.md"
@@ -326,7 +328,7 @@ class DeliveryPlanner:
                         f.write("- delivery_plan.json: 生成的交付计划\n")
                     
                     # 更新文件路径
-                    delivery_plan['_file_paths'] = {
+                    final_delivery_plan['_file_paths'] = {
                         'base_dir': str(plan_dir),
                         'reasoning_process': str(reasoning_file),
                         'delivery_plan': str(plan_file),
@@ -335,7 +337,7 @@ class DeliveryPlanner:
                         'prompts': str(prompts_file)
                     }
                     
-                    return delivery_plan
+                    return final_delivery_plan
                     
                 except Exception as e:
                     self.logger.error(f"处理模型响应时发生错误: {str(e)}")

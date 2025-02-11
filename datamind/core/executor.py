@@ -1,6 +1,9 @@
+"""
+执行器模块，负责协调搜索和交付物生成
+"""
 import logging
 import pandas as pd
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import os
 from datetime import datetime, date
 from collections import defaultdict
@@ -10,6 +13,7 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import hashlib
+
 from .formatters import (
     HTMLFormatter, 
     MarkdownFormatter, 
@@ -23,9 +27,13 @@ from .savers import (
     CSVSaver, 
     ExcelSaver, 
     HTMLSaver,
-    MarkdownSaver  # 添加 MarkdownSaver
+    MarkdownSaver
 )
 from .analyzers import ResultAnalyzer
+from .delivery_generator import DeliveryGenerator
+from .feedback_optimizer import FeedbackOptimizer
+
+logger = logging.getLogger(__name__)
 
 class SearchPlanExecutor:
     """搜索计划执行器"""
@@ -276,3 +284,125 @@ class SearchPlanExecutor:
         
         # 生成MD5指纹
         return hashlib.md5(processed_content.encode('utf-8')).hexdigest()
+
+class Executor:
+    """执行器主类"""
+    
+    def __init__(self, work_dir: str = "work_dir", search_engine=None):
+        self.work_dir = Path(work_dir)
+        self.search_engine = search_engine
+        self.delivery_generator = DeliveryGenerator()
+        self.logger = logging.getLogger(__name__)
+        self.feedback_optimizer = FeedbackOptimizer(work_dir)
+        if search_engine:
+            self.feedback_optimizer.set_search_engine(search_engine)
+            self.search_executor = SearchPlanExecutor(search_engine)
+        
+    def set_work_dir(self, work_dir: str):
+        """设置工作目录"""
+        self.work_dir = Path(work_dir)
+        self.feedback_optimizer = FeedbackOptimizer(work_dir)
+        if self.search_engine:
+            self.feedback_optimizer.set_search_engine(self.search_engine)
+            
+    def set_search_engine(self, search_engine):
+        """设置搜索引擎"""
+        self.search_engine = search_engine
+        self.feedback_optimizer.set_search_engine(search_engine)
+        self.search_executor = SearchPlanExecutor(search_engine)
+        
+    def execute_search(self, query_params: Dict[str, Any]) -> Dict[str, Any]:
+        """执行搜索
+        
+        Args:
+            query_params: 查询参数
+            
+        Returns:
+            搜索结果
+        """
+        try:
+            if not self.search_engine:
+                raise ValueError("Search engine not initialized")
+                
+            # 构建搜索计划
+            plan = self._build_search_plan(query_params)
+            
+            # 执行搜索计划
+            results = self.search_executor.execute_plan(plan)
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"执行搜索失败: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+            
+    async def process_feedback(self, plan_id: str, feedback: str) -> Dict[str, Any]:
+        """处理用户反馈，生成优化后的交付物
+        
+        Args:
+            plan_id: 原始交付计划ID
+            feedback: 用户反馈文本
+            
+        Returns:
+            包含新生成交付物信息的字典
+        """
+        try:
+            if not self.search_engine:
+                return {'status': 'error', 'message': 'Search engine not initialized'}
+                
+            # 使用await调用异步方法
+            result = await self.feedback_optimizer.process_feedback(plan_id, feedback)
+            
+            if result['status'] == 'success':
+                self.logger.info(f"成功处理反馈并生成新的交付物，新计划ID: {result['plan_id']}")
+            else:
+                self.logger.warning(f"处理反馈时出现问题: {result.get('message', '未知错误')}")
+                
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"处理反馈失败: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+            
+    def _build_search_plan(self, query_params: Dict[str, Any]) -> Dict[str, Any]:
+        """构建搜索计划
+        
+        Args:
+            query_params: 查询参数
+            
+        Returns:
+            搜索计划
+        """
+        # 构建结构化查询
+        structured_queries = []
+        if 'keywords' in query_params:
+            structured_queries.append({
+                'type': 'keyword',
+                'keywords': query_params['keywords'],
+                'filters': query_params.get('filters', {}),
+                'weights': query_params.get('weights', {})
+            })
+            
+        # 构建向量查询
+        vector_queries = []
+        if 'reference_text' in query_params:
+            vector_queries.append({
+                'reference_text': query_params['reference_text'],
+                'top_k': query_params.get('top_k', 10),
+                'similarity_threshold': query_params.get('similarity_threshold', 0.7)
+            })
+            
+        return {
+            'structured_queries': structured_queries,
+            'vector_queries': vector_queries,
+            'metadata': {
+                'original_query': query_params.get('query', ''),
+                'generated_at': datetime.now().isoformat()
+            }
+        }

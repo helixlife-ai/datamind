@@ -272,22 +272,38 @@ class DeliveryGenerator:
             self.logger.error(f"生成CSV内容时发生错误: {str(e)}")
             return pd.DataFrame()
     
-    async def generate_deliverables(self, plan_dir: str) -> List[str]:
+    async def generate_deliverables(self, 
+                                  plan_id: str,
+                                  search_results: Dict,
+                                  delivery_config: Dict = None,
+                                  output_dir: str = None) -> List[str]:
         """生成交付文件
         
         Args:
-            plan_dir: 交付计划目录路径
+            plan_id: 交付计划ID
+            search_results: 搜索结果
+            delivery_config: 交付配置
+            output_dir: 输出目录，如果为None则使用plan_id目录
             
         Returns:
             List[str]: 生成的文件路径列表
         """
         try:
-            plan_path = Path(plan_dir)
+            # 如果没有指定output_dir，则使用plan_id目录
+            if output_dir is None:
+                plan_path = Path(plan_id)
+            else:
+                plan_path = Path(output_dir) / plan_id
+                
             if not plan_path.exists():
-                raise ValueError(f"交付计划目录不存在: {plan_dir}")
+                raise ValueError(f"交付计划目录不存在: {plan_id}")
             
             # 加载上下文
             context = self._load_context(plan_path)
+            
+            # 如果提供了delivery_config，更新上下文中的配置
+            if delivery_config:
+                context['delivery_plan']['delivery_config'] = delivery_config
             
             # 创建输出目录
             output_dir = plan_path / "deliverables"
@@ -314,7 +330,6 @@ class DeliveryGenerator:
                         
                     elif file_name.endswith('.csv'):
                         df = self._generate_csv_content(file_config, context)
-                        # 使用utf-8-sig编码保存CSV，以支持Excel正确显示中文
                         df.to_csv(file_path, index=False, encoding='utf-8-sig')
                     
                     generated_files.append(str(file_path))

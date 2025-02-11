@@ -3,14 +3,23 @@ import sys
 import json
 import asyncio
 from pathlib import Path
+import time
 
 # 添加项目根目录到Python路径
 script_dir = Path(__file__).parent
 project_root = script_dir.parent
 sys.path.insert(0, str(project_root))
 
-from datamind import UnifiedSearchEngine, SearchPlanner, SearchPlanExecutor, DataProcessor, IntentParser, setup_logging
+from datamind import (
+    SearchEngine,
+    SearchPlanner, 
+    SearchPlanExecutor, 
+    DataProcessor, 
+    IntentParser, 
+    setup_logging
+)
 from datamind.core.delivery_planner import DeliveryPlanner
+from datamind.core.executor import Executor
 
 def process_data(processor: DataProcessor, input_dirs: list) -> None:
     """处理数据目录
@@ -58,7 +67,7 @@ def process_data(processor: DataProcessor, input_dirs: list) -> None:
         logger.error(f"数据处理失败: {str(e)}", exc_info=True)
         raise
 
-def search_test(search_engine: UnifiedSearchEngine, executor: SearchPlanExecutor) -> None:
+def search_test(search_engine: SearchEngine, executor: SearchPlanExecutor) -> None:
     """基础搜索测试"""
     logger = setup_logging()
     
@@ -147,8 +156,10 @@ async def intelligent_search_test(
         output_dir = work_dir / "output/intelligent_search"
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # 初始化交付计划生成器
+        # 初始化交付计划生成器和执行器
         delivery_planner = DeliveryPlanner(work_dir=str(output_dir))
+        main_executor = Executor(work_dir=str(work_dir))
+        main_executor.set_search_engine(executor.engine)  # 设置搜索引擎
         
         for idx, query in enumerate(queries):
             print(f"\n原始查询: {query}")
@@ -170,8 +181,39 @@ async def intelligent_search_test(
             # 生成交付计划
             if results['stats']['total'] > 0:
                 try:
+                    # 构建完整的原始计划
+                    original_plan = {
+                        'metadata': {
+                            'original_query': query,
+                            'generated_at': results.get('metadata', {}).get('execution_time', '')
+                        },
+                        'query_params': {  # 添加查询参数
+                            'query': query,
+                            'keywords': parsed_intent.get('structured_conditions', [{}])[0].get('keywords', []),
+                            'reference_text': query,
+                            'filters': {
+                                'time_range': parsed_intent.get('structured_conditions', [{}])[0].get('time_range', {}),
+                                'sections': ['摘要', '分析', '结论']
+                            },
+                            'weights': {
+                                '相关性': 1.0,
+                                '时效性': 0.8,
+                                '权威性': 0.7
+                            }
+                        },
+                        'delivery_config': {  # 添加交付配置
+                            'formats': ['md', 'html'],
+                            'sections': ['摘要', '主要发现', '详细分析', '结论建议'],
+                            'style_preferences': {
+                                'language': 'zh_CN',
+                                'tone': 'professional',
+                                'detail_level': 'comprehensive'
+                            }
+                        }
+                    }
+                    
                     delivery_plan = await delivery_planner.generate_plan(
-                        original_plan=parsed_plan,
+                        original_plan=original_plan,
                         search_results=results
                     )
                     
@@ -186,11 +228,71 @@ async def intelligent_search_test(
                         generator = DeliveryGenerator()
                         try:
                             generated_files = await generator.generate_deliverables(
-                                delivery_plan['_file_paths']['base_dir']
+                                delivery_plan['_file_paths']['base_dir'],  # plan_id：交付计划目录
+                                results,                                # search_results：搜索结果
+                                delivery_plan.get('delivery_config')    # delivery_config：交付配置（可选）
                             )
                             print("\n已生成以下交付文件:")
                             for file_path in generated_files:
                                 print(f"- {file_path}")
+                                
+                            # 模拟用户反馈优化流程
+                            print("\n=== 开始反馈优化流程测试 ===")
+                            
+                            # 等待原始交付文件生成完成
+                            max_retries = 5
+                            retry_interval = 1  # 秒
+                            
+                            for retry in range(max_retries):
+                                plan_dir = Path(delivery_plan['_file_paths']['base_dir'])
+                                required_files = [
+                                    plan_dir / 'delivery_plan.json',
+                                    plan_dir / 'search_results.json',
+                                    plan_dir / 'reasoning_process.md'
+                                ]
+                                
+                                if all(f.exists() for f in required_files):
+                                    print("交付文件已就绪，开始反馈优化流程")
+                                    break
+                                    
+                                if retry < max_retries - 1:
+                                    print(f"等待交付文件生成完成，将在 {retry_interval} 秒后重试...")
+                                    time.sleep(retry_interval)
+                                else:
+                                    print("等待交付文件超时，跳过反馈优化流程")
+                                    continue
+                            
+                            # 示例反馈
+                            test_feedbacks = [
+                                "请在AI趋势分析中增加更多关于大模型发展的内容",
+                                "建议删除过时的技术参考",
+                                "希望在报告中补充更多实际应用案例"
+                            ]
+                            
+                            # 获取计划ID
+                            plan_id = Path(delivery_plan['_file_paths']['base_dir']).name
+                            
+                            # 执行多轮反馈优化
+                            for i, feedback in enumerate(test_feedbacks, 1):
+                                print(f"\n第{i}轮反馈优化:")
+                                print(f"用户反馈: {feedback}")
+                                
+                                # 使用main_executor处理反馈
+                                feedback_result = await main_executor.process_feedback(plan_id, feedback)
+                                
+                                if feedback_result['status'] == 'success':
+                                    print(f"反馈处理成功！新计划ID: {feedback_result['plan_id']}")
+                                    print("已生成优化后的交付物:")
+                                    for deliverable in feedback_result['deliverables']:
+                                        print(f"- {deliverable}")
+                                    # 更新计划ID用于下一轮优化
+                                    plan_id = feedback_result['plan_id']
+                                else:
+                                    print(f"反馈处理失败: {feedback_result.get('message', '未知错误')}")
+                                    break
+                                    
+                            print("\n反馈优化流程测试完成")
+                            
                         except Exception as e:
                             logger.error(f"生成交付文件失败: {str(e)}")
                             print(f"\n生成交付文件失败: {str(e)}")
@@ -244,13 +346,15 @@ async def async_main():
         from datamind.core.processor import FileCache
         processor = DataProcessor(db_path=db_path)
         processor.file_cache = FileCache(cache_file=cache_file)  # 重新创建FileCache实例
-        search_engine = UnifiedSearchEngine(db_path=db_path)
+        search_engine = SearchEngine(db_path=db_path)
         intent_parser = IntentParser()
         planner = SearchPlanner()
-        executor = SearchPlanExecutor(search_engine)
+        executor = Executor(work_dir=str(work_dir), search_engine=search_engine)
+        search_plan_executor = SearchPlanExecutor(search_engine)
         
         # 设置executor的输出目录
-        executor.work_dir = str(work_dir / "output")
+        executor.set_work_dir(str(work_dir / "output"))
+        search_plan_executor.set_work_dir(str(work_dir / "output"))
         
         # 数据处理测试
         logger.info("开始数据处理测试")
@@ -262,12 +366,12 @@ async def async_main():
 
         # 搜索测试
         logger.info("开始基础搜索测试")
-        search_test(search_engine, executor)
+        search_test(search_engine, search_plan_executor)
         logger.info("基础搜索测试完成")
         
         # 异步执行智能检索测试
         logger.info("开始智能检索测试")
-        await intelligent_search_test(intent_parser, planner, executor, work_dir=work_dir)
+        await intelligent_search_test(intent_parser, planner, search_plan_executor, work_dir=work_dir)
         logger.info("智能检索测试完成")
         
         logger.info("测试程序运行完成")
