@@ -70,6 +70,46 @@ def process_data(processor: DataProcessor, input_dirs: list) -> None:
         logger.error(f"数据处理失败: {str(e)}", exc_info=True)
         raise
 
+async def run_test_optimization(feedback_optimizer: FeedbackOptimizer, delivery_dir: str) -> None:
+    """运行反馈优化测试流程
+    
+    Args:
+        feedback_optimizer: 反馈优化器实例
+        delivery_dir: 交付文件目录
+    """
+    print("\n=== 开始反馈优化流程测试 ===")
+    
+    # 示例反馈
+    test_feedbacks = [
+        "请在AI趋势分析中增加更多关于大模型发展的内容",
+        "建议删除过时的技术参考",
+        "希望在报告中补充更多实际应用案例"
+    ]
+    
+    current_dir = delivery_dir
+    
+    # 执行多轮反馈优化
+    for i, feedback in enumerate(test_feedbacks, 1):
+        print(f"\n第{i}轮反馈优化:")
+        print(f"用户反馈: {feedback}")
+        
+        # 处理反馈
+        result = await feedback_optimizer.optimize_delivery(current_dir, feedback)
+        
+        if result['status'] == 'success':
+            print(f"反馈处理成功！")
+            print(f"新的交付目录: {result['new_delivery_dir']}")
+            print("已生成以下文件:")
+            for file_path in result['generated_files']:
+                print(f"- {file_path}")
+            # 更新当前目录用于下一轮优化
+            current_dir = result['new_delivery_dir']
+        else:
+            print(f"反馈处理失败: {result['message']}")
+            break
+            
+    print("\n反馈优化流程测试完成")
+
 async def datamind_alchemy_test(
     intent_parser: IntentParser, 
     planner: SearchPlanner,
@@ -167,7 +207,7 @@ async def datamind_alchemy_test(
                                 print(f"- {file_path}")
                                 
                             # 运行反馈优化测试
-                            await feedback_optimizer.run_test_optimization(delivery_dir)
+                            await run_test_optimization(feedback_optimizer, delivery_dir)
                                 
                         else:
                             print("\n交付计划生成失败")
