@@ -146,7 +146,6 @@ async def datamind_alchemy_test(
                 # 如果有检索结果，生成交付计划
                 if results['stats']['total'] > 0:
                     try:
-                        # 直接使用 parsed_plan 作为 original_plan
                         delivery_plan = await delivery_planner.generate_plan(
                             original_plan=parsed_plan,
                             search_results=results
@@ -168,8 +167,8 @@ async def datamind_alchemy_test(
                             for file_path in generated_files:
                                 print(f"- {file_path}")
                                 
-                            # 使用 FeedbackOptimizer 执行反馈优化流程
-                            await _run_feedback_optimization(delivery_plan, feedback_optimizer)
+                            # 使用 FeedbackOptimizer 执行反馈优化测试
+                            await feedback_optimizer.run_test_optimization(delivery_plan)
                                 
                         else:
                             print("\n交付计划生成失败")
@@ -199,64 +198,6 @@ async def datamind_alchemy_test(
     except Exception as e:
         logger.error(f"数据炼丹测试失败: {str(e)}", exc_info=True)
         raise
-
-async def _run_feedback_optimization(delivery_plan: Dict, feedback_optimizer: FeedbackOptimizer) -> None:
-    """执行反馈优化流程"""
-    print("\n=== 开始反馈优化流程测试 ===")
-    
-    # 等待原始交付文件生成完成
-    max_retries = 5
-    retry_interval = 1  # 秒
-    
-    for retry in range(max_retries):
-        plan_dir = Path(delivery_plan['_file_paths']['base_dir'])
-        required_files = [
-            plan_dir / 'delivery_plan.json',
-            plan_dir / 'search_results.json',
-            plan_dir / 'reasoning_process.md'
-        ]
-        
-        if all(f.exists() for f in required_files):
-            print("交付文件已就绪，开始反馈优化流程")
-            break
-            
-        if retry < max_retries - 1:
-            print(f"等待交付文件生成完成，将在 {retry_interval} 秒后重试...")
-            await asyncio.sleep(retry_interval)
-        else:
-            print("等待交付文件超时，跳过反馈优化流程")
-            return
-    
-    # 示例反馈
-    test_feedbacks = [
-        "请在AI趋势分析中增加更多关于大模型发展的内容",
-        "建议删除过时的技术参考",
-        "希望在报告中补充更多实际应用案例"
-    ]
-    
-    # 获取计划ID
-    plan_id = Path(delivery_plan['_file_paths']['base_dir']).name
-    
-    # 执行多轮反馈优化
-    for i, feedback in enumerate(test_feedbacks, 1):
-        print(f"\n第{i}轮反馈优化:")
-        print(f"用户反馈: {feedback}")
-        
-        # 使用 FeedbackOptimizer 处理反馈
-        feedback_result = await feedback_optimizer.process_feedback(plan_id, feedback)
-        
-        if feedback_result['status'] == 'success':
-            print(f"反馈处理成功！新计划ID: {feedback_result['plan_id']}")
-            print("已生成优化后的交付物:")
-            for deliverable in feedback_result['deliverables']:
-                print(f"- {deliverable}")
-            # 更新计划ID用于下一轮优化
-            plan_id = feedback_result['plan_id']
-        else:
-            print(f"反馈处理失败: {feedback_result.get('message', '未知错误')}")
-            break
-            
-    print("\n反馈优化流程测试完成")
 
 async def async_main():
     """异步主函数"""

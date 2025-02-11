@@ -1,12 +1,13 @@
 """
 反馈优化工作流模块，用于处理用户反馈并生成优化后的交付物
 """
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import json
 from pathlib import Path
 import logging
 from datetime import datetime
 import numpy as np
+import asyncio
 
 from .delivery_generator import DeliveryGenerator
 
@@ -147,11 +148,156 @@ class FeedbackOptimizer:
         self.feedback_analyzer = FeedbackAnalyzer()
         self.query_optimizer = QueryOptimizer()
         self.max_iterations = 5
+        self.max_retries = 5
+        self.retry_interval = 1  # 秒
+        
+        # 默认的必需文件
+        self.required_files = [
+            'delivery_plan.json',
+            'search_results.json',
+            'reasoning_process.md'
+        ]
         
     def set_search_engine(self, search_engine):
         """设置搜索引擎实例"""
         self.search_engine = search_engine
         
+    async def wait_for_files(self, plan_dir: Path, required_files: List[str] = None) -> bool:
+        """等待必需文件生成完成
+        
+        Args:
+            plan_dir: 计划目录
+            required_files: 需要等待的文件列表，如果为None则使用默认列表
+            
+        Returns:
+            bool: 文件是否就绪
+        """
+        if required_files is None:
+            required_files = self.required_files
+            
+        file_paths = [plan_dir / f for f in required_files]
+        
+        for retry in range(self.max_retries):
+            if all(f.exists() for f in file_paths):
+                logger.info("所需文件已就绪")
+                return True
+                
+            if retry < self.max_retries - 1:
+                logger.info(f"等待文件生成完成，{self.retry_interval}秒后重试...")
+                await asyncio.sleep(self.retry_interval)
+                
+        logger.warning("等待文件超时")
+        return False
+        
+    def _get_plan_dir(self, plan_id: str) -> Path:
+        """获取计划目录路径
+        
+        Args:
+            plan_id: 计划ID
+            
+        Returns:
+            Path: 计划目录路径
+        """
+        return Path(self.work_dir) / 'output' / 'delivery_plans' / plan_id
+        
+    def _convert_numpy_types(self, obj: Any) -> Any:
+        """转换numpy类型为Python原生类型
+        
+        Args:
+            obj: 需要转换的对象
+            
+        Returns:
+            转换后的对象
+        """
+        if isinstance(obj, dict):
+            return {key: self._convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        elif isinstance(obj, (np.int8, np.int16, np.int32, np.int64,
+                            np.uint8, np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        elif isinstance(obj, (np.float16, np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif hasattr(obj, 'dtype') and np.isscalar(obj):
+            return obj.item()
+        return obj
+        
+    def _load_delivery_plan(self, plan_id: str) -> Optional[Dict[str, Any]]:
+        """加载交付计划
+        
+        Args:
+            plan_id: 计划ID
+            
+        Returns:
+            Optional[Dict[str, Any]]: 交付计划数据，如果加载失败则返回None
+        """
+        try:
+            plan_dir = self._get_plan_dir(plan_id)
+            plan_file = plan_dir / 'delivery_plan.json'
+            
+            if not plan_file.exists():
+                logger.error(f"交付计划文件不存在: {plan_file}")
+                return None
+            
+            with open(plan_file, 'r', encoding='utf-8') as f:
+                plan_data = json.load(f)
+                
+            # 确保计划数据包含必要的文件路径信息
+            if '_file_paths' not in plan_data:
+                plan_data['_file_paths'] = {
+                    'base_dir': str(plan_dir),
+                    'delivery_plan': str(plan_file),
+                    'search_results': str(plan_dir / 'search_results.json'),
+                    'reasoning_process': str(plan_dir / 'reasoning_process.md')
+                }
+                self._save_delivery_plan(plan_id, plan_data)
+            
+            return plan_data
+            
+        except Exception as e:
+            logger.error(f"加载交付计划失败: {str(e)}", exc_info=True)
+            return None
+
+    def _save_delivery_plan(self, plan_id: str, plan_data: Dict[str, Any]) -> bool:
+        """保存交付计划
+        
+        Args:
+            plan_id: 计划ID
+            plan_data: 计划数据
+            
+        Returns:
+            bool: 保存是否成功
+        """
+        try:
+            plan_dir = self._get_plan_dir(plan_id)
+            plan_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 确保计划数据包含文件路径信息
+            if '_file_paths' not in plan_data:
+                plan_data['_file_paths'] = {
+                    'base_dir': str(plan_dir),
+                    'delivery_plan': str(plan_dir / 'delivery_plan.json'),
+                    'search_results': str(plan_dir / 'search_results.json'),
+                    'reasoning_process': str(plan_dir / 'reasoning_process.md')
+                }
+            
+            # 转换数据中的numpy类型
+            converted_data = self._convert_numpy_types(plan_data)
+            
+            # 保存计划文件
+            with open(plan_dir / 'delivery_plan.json', 'w', encoding='utf-8') as f:
+                json.dump(converted_data, f, ensure_ascii=False, indent=2)
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"保存交付计划失败: {str(e)}", exc_info=True)
+            return False
+
     async def process_feedback(self, 
                              original_plan_id: str,
                              feedback: str,
@@ -180,97 +326,25 @@ class FeedbackOptimizer:
                 analysis
             )
             
-            # 在原始计划目录下创建新的迭代子目录
-            original_plan_dir = Path(original_plan['_file_paths']['base_dir'])
-            iteration_dir = original_plan_dir / f"iteration_{iteration + 1}"
-            iteration_dir.mkdir(parents=True, exist_ok=True)
+            # 创建新的迭代计划
+            iteration_plan = await self._create_iteration_plan(
+                original_plan_id, 
+                original_plan,
+                iteration,
+                feedback,
+                analysis,
+                optimized_query
+            )
             
-            try:
-                # 执行优化后的查询
-                search_results = self.search_engine.execute_structured_query({
-                    'type': 'text',
-                    'content': optimized_query['query']
-                })
+            if not iteration_plan:
+                return {'status': 'error', 'message': '创建迭代计划失败'}
                 
-                # 执行向量搜索
-                vector_results = self.search_engine.execute_vector_search(
-                    optimized_query['reference_text']
-                )
-                
-                # 整合结果
-                results = {
-                    'structured': search_results.to_dict('records') if not search_results.empty else [],
-                    'vector': vector_results,
-                    'stats': {
-                        'total': len(search_results) + len(vector_results),
-                        'structured_count': len(search_results),
-                        'vector_count': len(vector_results)
-                    },
-                    'insights': {},
-                    'context': {}
-                }
-                
-                # 创建新的迭代计划
-                iteration_plan = {
-                    'original_plan_id': original_plan_id,
-                    'iteration': iteration + 1,
-                    'feedback': feedback,
-                    'analysis': analysis,
-                    'query_params': optimized_query,
-                    'delivery_config': original_plan['delivery_config'],
-                    'search_results': results,
-                    '_file_paths': {
-                        'base_dir': str(iteration_dir),
-                        'delivery_plan': str(iteration_dir / 'delivery_plan.json'),
-                        'search_results': str(iteration_dir / 'search_results.json'),
-                        'reasoning_process': str(iteration_dir / 'reasoning_process.md')
-                    }
-                }
-                
-                # 先保存迭代计划
-                new_plan_id = f"{original_plan_id}_iteration_{iteration + 1}"
-                if not self._save_delivery_plan(new_plan_id, iteration_plan):
-                    return {'status': 'error', 'message': '保存迭代计划失败'}
-                
-                # 更新原始计划以包含迭代信息
-                if 'iterations' not in original_plan:
-                    original_plan['iterations'] = []
-                original_plan['iterations'].append({
-                    'iteration': iteration + 1,
-                    'feedback': feedback,
-                    'plan_id': new_plan_id,
-                    'directory': str(iteration_dir)
-                })
-                if not self._save_delivery_plan(original_plan_id, original_plan):
-                    return {'status': 'error', 'message': '更新原始计划失败'}
-                
-                try:
-                    # 生成新的交付物
-                    new_deliverables = await self.delivery_generator.generate_deliverables(
-                        plan_id=str(iteration_dir),
-                        search_results=results,
-                        delivery_config=original_plan.get('delivery_config')
-                    )
-                    
-                    # 更新迭代计划以包含交付物信息
-                    iteration_plan['deliverables'] = new_deliverables
-                    if not self._save_delivery_plan(new_plan_id, iteration_plan):
-                        return {'status': 'error', 'message': '更新迭代计划交付物信息失败'}
-                    
-                    return {
-                        'status': 'success',
-                        'plan_id': new_plan_id,
-                        'deliverables': new_deliverables,
-                        'iteration_dir': str(iteration_dir)
-                    }
-                    
-                except Exception as e:
-                    logger.error(f"生成交付物失败: {str(e)}")
-                    return {'status': 'error', 'message': str(e)}
-                
-            except Exception as e:
-                logger.error(f"搜索过程中发生错误: {str(e)}")
-                return {'status': 'error', 'message': str(e)}
+            return {
+                'status': 'success',
+                'plan_id': iteration_plan['plan_id'],
+                'deliverables': iteration_plan.get('deliverables', []),
+                'iteration_dir': iteration_plan['_file_paths']['base_dir']
+            }
             
         except Exception as e:
             logger.error(f"处理反馈失败: {str(e)}", exc_info=True)
@@ -278,102 +352,50 @@ class FeedbackOptimizer:
                 'status': 'error',
                 'message': str(e)
             }
-    
-    def _load_delivery_plan(self, plan_id: str) -> Optional[Dict[str, Any]]:
-        """加载交付计划
-        
-        Args:
-            plan_id: 计划ID
-            
-        Returns:
-            Optional[Dict[str, Any]]: 交付计划数据，如果加载失败则返回None
-        """
-        try:
-            # 构建计划目录路径
-            plan_base_dir = Path(self.work_dir) / 'output' / 'intelligent_search' / 'delivery_plans'
-            plan_dir = plan_base_dir / plan_id
-            plan_file = plan_dir / 'delivery_plan.json'
-            
-            if not plan_file.exists():
-                logger.error(f"交付计划文件不存在: {plan_file}")
-                return None
-            
-            # 加载计划数据
-            with open(plan_file, 'r', encoding='utf-8') as f:
-                plan_data = json.load(f)
-                
-            # 确保计划数据包含必要的文件路径信息
-            if '_file_paths' not in plan_data:
-                plan_data['_file_paths'] = {
-                    'base_dir': str(plan_dir),
-                    'delivery_plan': str(plan_file),
-                    'search_results': str(plan_dir / 'search_results.json'),
-                    'reasoning_process': str(plan_dir / 'reasoning_process.md')
-                }
-                
-                # 保存更新后的计划数据
-                with open(plan_file, 'w', encoding='utf-8') as f:
-                    json.dump(plan_data, f, ensure_ascii=False, indent=2)
-            
-            return plan_data
-            
-        except Exception as e:
-            logger.error(f"加载交付计划失败: {str(e)}", exc_info=True)
-            return None
 
-    def _save_delivery_plan(self, plan_id: str, plan_data: Dict[str, Any]) -> bool:
-        """保存交付计划
+    async def run_test_optimization(self, delivery_plan: Dict) -> None:
+        """运行反馈优化测试流程
         
         Args:
-            plan_id: 计划ID
-            plan_data: 计划数据
-            
-        Returns:
-            bool: 保存是否成功
+            delivery_plan: 原始交付计划
         """
-        try:
-            # 构建计划目录路径
-            plan_base_dir = Path(self.work_dir) / 'output' / 'intelligent_search' / 'delivery_plans'
-            plan_dir = plan_base_dir / plan_id
-            plan_dir.mkdir(parents=True, exist_ok=True)
+        print("\n=== 开始反馈优化流程测试 ===")
+        
+        # 等待原始交付文件生成完成
+        plan_dir = Path(delivery_plan['_file_paths']['base_dir'])
+        if not await self.wait_for_files(plan_dir):
+            print("等待交付文件超时，跳过反馈优化流程")
+            return
             
-            # 确保计划数据包含文件路径信息
-            if '_file_paths' not in plan_data:
-                plan_data['_file_paths'] = {
-                    'base_dir': str(plan_dir),
-                    'delivery_plan': str(plan_dir / 'delivery_plan.json'),
-                    'search_results': str(plan_dir / 'search_results.json'),
-                    'reasoning_process': str(plan_dir / 'reasoning_process.md')
-                }
+        print("交付文件已就绪，开始反馈优化流程")
+        
+        # 示例反馈
+        test_feedbacks = [
+            "请在AI趋势分析中增加更多关于大模型发展的内容",
+            "建议删除过时的技术参考",
+            "希望在报告中补充更多实际应用案例"
+        ]
+        
+        # 获取计划ID
+        plan_id = plan_dir.name
+        
+        # 执行多轮反馈优化
+        for i, feedback in enumerate(test_feedbacks, 1):
+            print(f"\n第{i}轮反馈优化:")
+            print(f"用户反馈: {feedback}")
             
-            # 转换numpy类型为Python原生类型
-            def convert_numpy_types(obj):
-                if isinstance(obj, dict):
-                    return {key: convert_numpy_types(value) for key, value in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_numpy_types(item) for item in obj]
-                elif isinstance(obj, (np.int8, np.int16, np.int32, np.int64,
-                                   np.uint8, np.uint16, np.uint32, np.uint64)):
-                    return int(obj)
-                elif isinstance(obj, (np.float16, np.float32, np.float64)):
-                    return float(obj)
-                elif isinstance(obj, np.ndarray):
-                    return obj.tolist()
-                elif isinstance(obj, np.bool_):
-                    return bool(obj)
-                elif hasattr(obj, 'dtype') and np.isscalar(obj):
-                    return obj.item()
-                return obj
+            # 处理反馈
+            feedback_result = await self.process_feedback(plan_id, feedback)
             
-            # 转换数据中的numpy类型
-            converted_data = convert_numpy_types(plan_data)
-            
-            # 保存计划文件
-            with open(plan_dir / 'delivery_plan.json', 'w', encoding='utf-8') as f:
-                json.dump(converted_data, f, ensure_ascii=False, indent=2)
+            if feedback_result['status'] == 'success':
+                print(f"反馈处理成功！新计划ID: {feedback_result['plan_id']}")
+                print("已生成优化后的交付物:")
+                for deliverable in feedback_result['deliverables']:
+                    print(f"- {deliverable}")
+                # 更新计划ID用于下一轮优化
+                plan_id = feedback_result['plan_id']
+            else:
+                print(f"反馈处理失败: {feedback_result.get('message', '未知错误')}")
+                break
                 
-            return True
-            
-        except Exception as e:
-            logger.error(f"保存交付计划失败: {str(e)}", exc_info=True)
-            return False 
+        print("\n反馈优化流程测试完成") 
