@@ -10,6 +10,20 @@ from ..config.settings import (
 )
 from ..models.model_manager import ModelManager, ModelConfig
 import re
+import numpy as np
+
+class DateTimeEncoder(json.JSONEncoder):
+    """增强版JSON编码器，处理datetime和numpy类型"""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 class DeliveryPlanner:
     """交付计划生成器"""
@@ -28,12 +42,12 @@ class DeliveryPlanner:
         ))
         
     async def generate_plan(self, 
-                          original_plan: Dict,
+                          search_plan: Dict,
                           search_results: Dict) -> Optional[Dict]:
         """生成交付计划
         
         Args:
-            original_plan: 原始检索计划
+            search_plan: 原始检索计划
             search_results: 检索结果
             
         Returns:
@@ -113,7 +127,7 @@ class DeliveryPlanner:
                 {
                     "role": "user",
                     "content": f"""
-                    原始检索需求：{original_plan.get('metadata', {}).get('original_query', '')}
+                    原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}
                     
                     检索结果统计：
                     - 结构化数据：{search_results['stats']['structured_count']}条
@@ -151,7 +165,6 @@ class DeliveryPlanner:
                 f.write(f"生成时间：{timestamp}\n")
                 f.write(f"模型：{DEFAULT_REASONING_MODEL}\n")
                 f.write(f"温度：0.7\n")
-                f.write(f"最大tokens：2000\n\n")
                 
                 f.write("## System Message\n\n")
                 f.write("```\n")
@@ -170,7 +183,6 @@ class DeliveryPlanner:
                     "messages": messages,
                     "model": DEFAULT_REASONING_MODEL,
                     "temperature": 0.7,
-                    "max_tokens": 2000
                 }, ensure_ascii=False, indent=2))
                 f.write("\n```\n")
             
@@ -239,7 +251,7 @@ class DeliveryPlanner:
                     with reasoning_file.open('w', encoding='utf-8') as f:
                         f.write("# 交付计划推理过程\n\n")
                         f.write("## 输入信息\n")
-                        f.write(f"- 原始检索需求：{original_plan.get('metadata', {}).get('original_query', '')}\n")
+                        f.write(f"- 原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}\n")
                         f.write(f"- 结构化数据数量：{search_results['stats']['structured_count']}\n")
                         f.write(f"- 向量数据数量：{search_results['stats']['vector_count']}\n")
                         
@@ -277,26 +289,10 @@ class DeliveryPlanner:
                         "context": search_results["context"]
                     }
 
-                    # 添加JSON序列化器来处理datetime、Timestamp和numpy数值类型
-                    class DateTimeEncoder(json.JSONEncoder):
-                        def default(self, obj):
-                            import numpy as np
-                            if hasattr(obj, 'isoformat'):
-                                return obj.isoformat()
-                            elif hasattr(obj, 'timestamp'):
-                                return obj.timestamp()
-                            elif isinstance(obj, (np.int8, np.int16, np.int32, np.int64,
-                                               np.uint8, np.uint16, np.uint32, np.uint64)):
-                                return int(obj)
-                            elif isinstance(obj, (np.float16, np.float32, np.float64)):
-                                return float(obj)
-                            elif isinstance(obj, np.ndarray):
-                                return obj.tolist()
-                            elif isinstance(obj, np.bool_):
-                                return bool(obj)
-                            elif np.isscalar(obj):
-                                return obj.item()
-                            return super().default(obj)
+                    # 新增：保存原始检索计划
+                    search_plan_file = plan_dir / "search_plan.json"
+                    with search_plan_file.open('w', encoding='utf-8') as f:
+                        json.dump(search_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
 
                     # 使用自定义编码器保存JSON
                     with search_results_file.open('w', encoding='utf-8') as f:
@@ -308,13 +304,13 @@ class DeliveryPlanner:
                     # 合并原始计划中的query_params和delivery_config
                     final_delivery_plan = {
                         'metadata': {
-                            'original_query': original_plan.get('metadata', {}).get('original_query', ''),
+                            'original_query': search_plan.get('metadata', {}).get('original_query', ''),
                             'generated_at': datetime.now().isoformat(),
                             'iteration': int(re.search(r'iter_(\d+)', str(plan_dir)).group(1)) if 'iter_' in str(plan_dir) else 0
                         },
                         **delivery_plan,
-                        'query_params': original_plan.get('query_params', {}),
-                        'delivery_config': original_plan.get('delivery_config', {})
+                        'query_params': search_plan.get('query_params', {}),
+                        'delivery_config': search_plan.get('delivery_config', {})
                     }
                     
                     with plan_file.open('w', encoding='utf-8') as f:
@@ -325,9 +321,10 @@ class DeliveryPlanner:
                     with readme_file.open('w', encoding='utf-8') as f:
                         f.write("# 检索结果与交付计划\n\n")
                         f.write(f"生成时间：{timestamp}\n\n")
-                        f.write(f"原始检索需求：{original_plan.get('metadata', {}).get('original_query', '')}\n\n")
+                        f.write(f"原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}\n\n")
                         f.write("## 文件说明\n\n")
-                        f.write("- prompts.md: 推理提示词配置（便于复制使用）\n")
+                        f.write("- prompts.md: 推理提示词配置\n")
+                        f.write("- search_plan.json: 原始检索计划\n")
                         f.write("- search_results.json: 检索结果数据\n")
                         f.write("- reasoning_process.md: 推理过程详情\n")
                         f.write("- delivery_plan.json: 生成的交付计划\n")
@@ -338,6 +335,7 @@ class DeliveryPlanner:
                         'reasoning_process': str(reasoning_file),
                         'delivery_plan': str(plan_file),
                         'search_results': str(search_results_file),
+                        'search_plan': str(search_plan_file),
                         'readme': str(readme_file),
                         'prompts': str(prompts_file)
                     }

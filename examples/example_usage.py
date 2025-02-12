@@ -203,7 +203,7 @@ async def datamind_alchemy(
             # 如果有检索结果，生成交付计划
             if search_results['stats']['total'] > 0:
                 delivery_plan = await delivery_planner.generate_plan(
-                    original_plan=parsed_plan,
+                    search_plan=parsed_plan,
                     search_results=search_results
                 )
                 
