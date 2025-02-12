@@ -2,7 +2,7 @@
 
 from .core.search import SearchEngine
 from .core.planner import SearchPlanner
-from .core.executor import SearchPlanExecutor, Executor
+from .core.executor import SearchPlanExecutor
 from .core.processor import DataProcessor
 from .core.parser import IntentParser
 from .core.feedback_optimizer import FeedbackOptimizer

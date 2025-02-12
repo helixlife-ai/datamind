@@ -21,7 +21,6 @@ from datamind import (
     setup_logging
 )
 from datamind.core.delivery_planner import DeliveryPlanner
-from datamind.core.executor import Executor
 from datamind.core.delivery_generator import DeliveryGenerator
 from datamind.core.feedback_optimizer import FeedbackOptimizer
 
@@ -197,7 +196,7 @@ async def datamind_alchemy(
             results['results']['search_plan'] = parsed_plan
             
             # 执行搜索计划
-            search_results = executor.execute_plan(parsed_plan)
+            search_results = await executor.execute_plan(parsed_plan)
             results['results']['search_results'] = search_results
             
             # 如果有检索结果，生成交付计划
@@ -358,15 +357,10 @@ async def async_main():
         search_engine = SearchEngine(db_path=db_path)
         intent_parser = IntentParser()
         planner = SearchPlanner()
-        executor = Executor(work_dir=str(work_dir), search_engine=search_engine)
-        search_plan_executor = SearchPlanExecutor(search_engine)
-        delivery_planner = DeliveryPlanner(work_dir=str(work_dir / "output"))
-        delivery_generator = DeliveryGenerator()
-        feedback_optimizer = FeedbackOptimizer(work_dir=str(work_dir))
-        
-        # 设置executor的输出目录
-        executor.set_work_dir(str(work_dir / "output"))
-        search_plan_executor.set_work_dir(str(work_dir / "output"))
+        executor = SearchPlanExecutor(
+            search_engine=search_engine,
+            work_dir=str(work_dir / "output")  # 保持目录结构一致
+        )
         
         # 数据处理测试
         logger.info("开始数据处理测试")
@@ -381,10 +375,10 @@ async def async_main():
         await datamind_alchemy_test(
             intent_parser=intent_parser,
             planner=planner,
-            executor=search_plan_executor,
-            delivery_planner=delivery_planner,
-            delivery_generator=delivery_generator,
-            feedback_optimizer=feedback_optimizer,
+            executor=executor,
+            delivery_planner=DeliveryPlanner(work_dir=str(work_dir / "output")),
+            delivery_generator=DeliveryGenerator(),
+            feedback_optimizer=FeedbackOptimizer(work_dir=str(work_dir)),
             work_dir=work_dir
         )
         logger.info("数据炼丹测试完成")
