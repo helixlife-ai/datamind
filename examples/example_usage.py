@@ -71,12 +71,26 @@ def process_data(processor: DataProcessor, input_dirs: list) -> None:
         logger.error(f"数据处理失败: {str(e)}", exc_info=True)
         raise
 
-async def run_test_optimization(feedback_optimizer: FeedbackOptimizer, delivery_dir: str) -> None:
+async def run_test_optimization(
+    feedback_optimizer: FeedbackOptimizer, 
+    delivery_dir: str,
+    # 添加必要的组件参数
+    intent_parser: IntentParser,
+    planner: SearchPlanner,
+    executor: SearchPlanExecutor,
+    delivery_planner: DeliveryPlanner,
+    delivery_generator: DeliveryGenerator
+) -> None:
     """运行反馈优化测试流程
     
     Args:
         feedback_optimizer: 反馈优化器实例
         delivery_dir: 交付文件目录
+        intent_parser: 意图解析器
+        planner: 搜索计划生成器
+        executor: 搜索执行器
+        delivery_planner: 交付计划生成器
+        delivery_generator: 交付文件生成器
     """
     print("\n=== 开始反馈优化流程测试 ===")
     
@@ -101,9 +115,26 @@ async def run_test_optimization(feedback_optimizer: FeedbackOptimizer, delivery_
             print(f"反馈处理成功！")
             print(f"生成的新查询: {result['query']}")
             
-            # 这里可以调用 datamind_alchemy 处理新查询
-            # TODO: 使用新查询重新执行 datamind_alchemy 工作流
+            # 使用新查询重新执行 datamind_alchemy 工作流
+            alchemy_result = await datamind_alchemy(
+                intent_parser=intent_parser,
+                planner=planner,
+                executor=executor,
+                delivery_planner=delivery_planner,
+                delivery_generator=delivery_generator,
+                query=result['query'],
+                work_dir=Path(current_dir).parent  # 使用父目录作为工作目录
+            )
             
+            if alchemy_result['status'] == 'success':
+                print("基于反馈的新一轮处理成功！")
+                if alchemy_result['results']['delivery_plan']:
+                    # 更新当前目录为新生成的交付目录
+                    current_dir = alchemy_result['results']['delivery_plan']['_file_paths']['base_dir']
+                    print(f"新的交付文件保存在: {current_dir}")
+            else:
+                print(f"新一轮处理失败: {alchemy_result['message']}")
+                break
         else:
             print(f"反馈处理失败: {result['message']}")
             break
@@ -135,17 +166,6 @@ async def datamind_alchemy(
         
     Returns:
         Dict: 包含处理结果的字典
-        {
-            'status': 'success' | 'error',
-            'message': str,
-            'results': {
-                'parsed_intent': Dict,  # 解析结果
-                'search_plan': Dict,    # 检索计划
-                'search_results': Dict,  # 检索结果
-                'delivery_plan': Dict,   # 交付计划
-                'generated_files': List[str]  # 生成的文件列表
-            }
-        }
     """
     logger = logging.getLogger(__name__)
     
@@ -154,10 +174,6 @@ async def datamind_alchemy(
         if work_dir is None:
             work_dir = Path("work_dir")
         work_dir.mkdir(exist_ok=True)
-        
-        # 创建输出目录
-        output_dir = work_dir / "output/datamind_alchemy"
-        output_dir.mkdir(parents=True, exist_ok=True)
         
         results = {
             'status': 'success',
@@ -251,10 +267,6 @@ async def datamind_alchemy_test(
                 work_dir = Path("work_dir")
         work_dir.mkdir(exist_ok=True)
         
-        # 创建输出目录
-        output_dir = work_dir / "output/datamind_alchemy_test"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
         # 加载测试查询
         queries_file = work_dir / "test_queries.txt"
         if not queries_file.exists():
@@ -302,7 +314,15 @@ async def datamind_alchemy_test(
                             print(f"- {file_path}")
                             
                         # 运行反馈优化测试
-                        await run_test_optimization(feedback_optimizer, delivery_dir)
+                        await run_test_optimization(
+                            feedback_optimizer=feedback_optimizer, 
+                            delivery_dir=delivery_dir,
+                            intent_parser=intent_parser,
+                            planner=planner,
+                            executor=executor,
+                            delivery_planner=delivery_planner,
+                            delivery_generator=delivery_generator
+                        )
             else:
                 print(f"\n处理失败: {result['message']}")
             

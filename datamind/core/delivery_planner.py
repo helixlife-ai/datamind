@@ -9,6 +9,7 @@ from ..config.settings import (
     DEFAULT_LLM_API_BASE
 )
 from ..models.model_manager import ModelManager, ModelConfig
+import re
 
 class DeliveryPlanner:
     """交付计划生成器"""
@@ -188,7 +189,6 @@ class DeliveryPlanner:
                     
                     try:
                         # 使用正则表达式提取JSON内容
-                        import re
                         json_pattern = r'```json\n([\s\S]*?)\n```'
                         json_match = re.search(json_pattern, content)
                         
@@ -307,6 +307,11 @@ class DeliveryPlanner:
                     
                     # 合并原始计划中的query_params和delivery_config
                     final_delivery_plan = {
+                        'metadata': {
+                            'original_query': original_plan.get('metadata', {}).get('original_query', ''),
+                            'generated_at': datetime.now().isoformat(),
+                            'iteration': int(re.search(r'iter_(\d+)', str(plan_dir)).group(1)) if 'iter_' in str(plan_dir) else 0
+                        },
                         **delivery_plan,
                         'query_params': original_plan.get('query_params', {}),
                         'delivery_config': original_plan.get('delivery_config', {})

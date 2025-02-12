@@ -22,6 +22,7 @@ class FeedbackOptimizer:
     def __init__(self, work_dir: str):
         self.work_dir = Path(work_dir)
         self.model_manager = ModelManager()
+        self.feedback_stack = []  # 改为栈结构记录待处理反馈
         
         # 注册推理模型配置
         self.model_manager.register_model(ModelConfig(
@@ -31,6 +32,30 @@ class FeedbackOptimizer:
             api_base=DEFAULT_LLM_API_BASE
         ))
         
+    async def push_feedback(self, feedback: str, delivery_dir: str):
+        """压入新反馈到处理队列"""
+        self.feedback_stack.append({
+            'delivery_dir': delivery_dir,
+            'feedback': feedback,
+            'status': 'pending'
+        })
+        
+    async def process_next_feedback(self) -> Dict[str, Any]:
+        """处理下一个待处理反馈"""
+        if not self.feedback_stack:
+            return {'status': 'error', 'message': 'No pending feedback'}
+            
+        current_fb = self.feedback_stack.pop(0)
+        result = await self.feedback_to_query(
+            current_fb['delivery_dir'], 
+            current_fb['feedback']
+        )
+        current_fb.update({
+            'processed_at': datetime.now().isoformat(),
+            'result': result
+        })
+        return result
+
     async def feedback_to_query(self, delivery_dir: str, feedback: str) -> Dict[str, Any]:
         """将用户反馈转换为新的查询
         
@@ -47,41 +72,22 @@ class FeedbackOptimizer:
             }
         """
         try:
-            delivery_path = Path(delivery_dir)
-            if not delivery_path.exists():
-                return {
-                    'status': 'error',
-                    'message': f'Delivery directory not found: {delivery_dir}'
-                }
-
-            # 加载原始交付计划
-            plan_file = delivery_path / 'delivery_plan.json'
-            if not plan_file.exists():
-                return {
-                    'status': 'error',
-                    'message': 'Delivery plan not found'
-                }
-
-            with open(plan_file, 'r', encoding='utf-8') as f:
-                original_plan = json.load(f)
-
-            # 构建提示信息
+            # 加载当前迭代上下文
+            context = self._load_current_context(delivery_dir)
+            
+            # 构建包含历史记录的提示语
             messages = [
                 {
                     "role": "system",
-                    "content": """你是一个专业的查询优化专家。请基于用户的反馈和原始查询上下文，
-                    生成一个新的查询文本。新查询应该：
-                    1. 保留原始查询的核心意图
-                    2. 融入用户反馈中的新需求
-                    3. 使用清晰、结构化的语言
-                    4. 确保查询的完整性和可执行性
-                    
-                    请直接输出优化后的查询文本，不需要其他解释。"""
+                    "content": f"""你是一个专业的查询优化专家。当前为第{context['iteration']}次迭代，请基于以下内容生成新查询：
+                    1. 原始查询：{context['original_query']}
+                    2. 历史反馈：{json.dumps(context['previous_feedbacks'], ensure_ascii=False)}
+                    3. 本次反馈：{feedback}"""
                 },
                 {
                     "role": "user",
                     "content": f"""
-                    原始查询：{original_plan.get('metadata', {}).get('original_query', '')}
+                    原始查询：{context['original_query']}
                     
                     用户反馈：{feedback}
                     
@@ -104,7 +110,7 @@ class FeedbackOptimizer:
                 new_query = response.choices[0].message.content.strip()
                 
                 # 记录优化过程
-                log_dir = delivery_path / "feedback_logs"
+                log_dir = Path(delivery_dir) / "feedback_logs"
                 log_dir.mkdir(exist_ok=True)
                 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -112,7 +118,7 @@ class FeedbackOptimizer:
                 
                 log_data = {
                     "timestamp": timestamp,
-                    "original_query": original_plan.get('metadata', {}).get('original_query', ''),
+                    "original_query": context['original_query'],
                     "user_feedback": feedback,
                     "new_query": new_query,
                     "prompt": messages
@@ -138,3 +144,61 @@ class FeedbackOptimizer:
                 'status': 'error',
                 'message': str(e)
             } 
+
+    def _load_current_context(self, delivery_dir: str) -> dict:
+        """加载当前迭代上下文"""
+        delivery_path = Path(delivery_dir)
+        return {
+            'iteration': int(delivery_path.name.split('_')[-1]),  # 从目录名获取迭代次数
+            'original_query': self._get_original_query(delivery_path),
+            'previous_feedbacks': self._get_feedback_history(delivery_path.parent)
+        }
+
+    def _get_original_query(self, delivery_path: Path) -> str:
+        """从交付目录获取原始查询"""
+        try:
+            # 从交付计划文件中获取原始查询
+            plan_file = delivery_path / "delivery_plan.json"
+            if not plan_file.exists():
+                raise FileNotFoundError(f"交付计划文件不存在: {plan_file}")
+
+            with open(plan_file, 'r', encoding='utf-8') as f:
+                delivery_plan = json.load(f)
+                return delivery_plan.get('metadata', {}).get('original_query', '')
+            
+        except Exception as e:
+            logger.error(f"获取原始查询失败: {str(e)}")
+            return ""
+
+    def _get_feedback_history(self, parent_dir: Path) -> List[Dict]:
+        """获取历史反馈记录"""
+        feedback_history = []
+        
+        try:
+            # 遍历所有迭代目录
+            for iter_dir in parent_dir.glob("iter_*"):
+                feedback_logs_dir = iter_dir / "feedback_logs"
+                
+                if feedback_logs_dir.exists():
+                    # 按时间顺序处理日志文件
+                    for log_file in sorted(feedback_logs_dir.glob("*.json")):
+                        try:
+                            with open(log_file, 'r', encoding='utf-8') as f:
+                                log_data = json.load(f)
+                                feedback_history.append({
+                                    'iteration': int(iter_dir.name.split('_')[-1]),
+                                    'timestamp': log_data['timestamp'],
+                                    'feedback': log_data['user_feedback'],
+                                    'new_query': log_data['new_query']
+                                })
+                        except Exception as e:
+                            logger.warning(f"加载反馈日志失败 {log_file}: {str(e)}")
+                            continue
+                            
+            # 按迭代次数排序
+            feedback_history.sort(key=lambda x: x['iteration'])
+            return feedback_history
+            
+        except Exception as e:
+            logger.error(f"获取反馈历史失败: {str(e)}")
+            return [] 
