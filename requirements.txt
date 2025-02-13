@@ -25,3 +25,4 @@ flake8>=3.9.0
 
 # 新增依赖
 python-dotenv 
+python-docx

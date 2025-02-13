@@ -11,6 +11,7 @@ from ..config.settings import (
 from ..models.model_manager import ModelManager, ModelConfig
 import re
 import numpy as np
+import asyncio
 
 class DateTimeEncoder(json.JSONEncoder):
     """增强版JSON编码器，处理datetime和numpy类型"""
@@ -51,48 +52,42 @@ class DeliveryPlanner:
             search_results: 检索结果
             
         Returns:
-            Optional[Dict]: 交付计划，包含建议的数据组织和展示方式
+            Optional[Dict]: 交付计划
         """
         try:
             # 构建提示信息
             messages = [
                 {
                     "role": "system",
-                    "content": """你是一个专业的数据分析和内容组织专家。请根据用户的检索需求和获得的结果，
-                    生成一个详细的交付计划。计划应包含：
-                    1. 数据组织方式：如何对结构化数据和向量检索结果进行分类、聚合和关联
-                    2. 内容提取建议：重点内容、关键观点、核心论述等
-                    3. 可视化建议：合适的图表类型、展示重点、布局建议等
-                    4. 交付格式建议：文档结构、展示顺序、重点突出方式等
-                    5. 补充建议：额外的分析维度、关联信息等
+                    "content": """
+                    <rule>
+                    1. 交付计划是指你准备生成的交付文件的结构和内容
+                    2. 交付文件的结构和内容需要符合用户的需求
+                    3. 说人话
+                    </rule>
+                    """
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+                    原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}
                     
+                    检索结果统计：
+                    - 结构化数据：{search_results['stats']['structured_count']}条
+                    - 向量数据：{search_results['stats']['vector_count']}条
+                    - 总计：{search_results['stats']['total']}条
+                    
+                    数据：
+                    1. 结构化数据前3条：
+                    {json.dumps([x.get('data', '') for x in search_results['structured'][:3]], ensure_ascii=False, indent=2)}
+                    
+                    2. 向量数据前3条：
+                    {json.dumps([x.get('data', '') for x in search_results['vector'][:3]], ensure_ascii=False, indent=2)}                    
+                    """+
+                    """
+                    根据用户的检索需求和检索结果，生成一份详细的交付计划。                  
                     请以JSON格式输出，包含以下字段：
                     {
-                        "data_organization": {
-                            "structured_data": [],  // 结构化数据组织方式
-                            "vector_data": [],     // 向量数据组织方式
-                            "data_relations": []   // 数据关联建议
-                        },
-                        "key_insights": {
-                            "main_points": [],     // 主要观点
-                            "quotes": [],          // 关键引用
-                            "trends": []           // 趋势和规律
-                        },
-                        "visualization": {
-                            "charts": [],          // 建议的图表
-                            "layout": {            // 布局建议，注意：使用标准的键值对格式
-                                "main_structure": "",  // 主要布局结构
-                                "interaction": "",     // 交互设计
-                                "focus": ""           // 视觉重点
-                            },
-                            "highlights": []       // 重点突出建议
-                        },
-                        "delivery_format": {
-                            "structure": [],       // 文档结构
-                            "sections": [],        // 章节安排
-                            "emphasis": []         // 重点标注建议
-                        },
-                        "additional_suggestions": [],  // 补充建议
                         "delivery_files": {
                             "<file_purpose>": {    // 文件用途
                                 "file_name": "",   // 文件名，必须以.html/.md/.csv结尾
@@ -115,36 +110,13 @@ class DeliveryPlanner:
                     6. 确保JSON格式的严格正确性
                     
                     在生成delivery_files时，请注意：
-                    1. 分析用户原始检索需求里包含的真实意图，确定需要交付的内容
-                    2. 根据要交付的内容特点选择合适的文件格式：
+                    1. 根据要交付的内容特点选择合适的文件格式：
                        - .md: 适用于报告、分析说明等富文本内容
                        - .html: 适用于交互式展示、可视化等
                        - .csv: 适用于结构化数据、统计结果等
-                    3. 文件命名要清晰表达用途
-                    4. 内容结构要符合内容特点和用户需求
-                    5. 文件内容要符合用户需求，不要包含无关内容"""
-                },
-                {
-                    "role": "user",
-                    "content": f"""
-                    原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}
-                    
-                    检索结果统计：
-                    - 结构化数据：{search_results['stats']['structured_count']}条
-                    - 向量数据：{search_results['stats']['vector_count']}条
-                    - 总计：{search_results['stats']['total']}条
-                    
-                    数据示例：
-                    1. 结构化数据前3条：
-                    {json.dumps([x.get('data', '') for x in search_results['structured'][:3]], ensure_ascii=False, indent=2)}
-                    
-                    2. 向量数据前3条：
-                    {json.dumps([x.get('data', '') for x in search_results['vector'][:3]], ensure_ascii=False, indent=2)}
-                    
-                    请基于以上信息生成详细的交付计划。重点关注：
-                    1. 如何有效组织和展示这些数据
-                    2. 如何突出重要观点和见解
-                    3. 如何让最终交付物更有价值
+                    2. 文件命名要清晰表达用途
+                    3. 内容结构要符合内容特点和用户需求
+                    4. 文件内容要符合用户需求，不要包含无关内容
                     """
                 }
             ]
@@ -186,13 +158,21 @@ class DeliveryPlanner:
                 }, ensure_ascii=False, indent=2))
                 f.write("\n```\n")
             
-            # 调用推理模型
-            response = await self.model_manager.generate_reasoned_response(
-                messages=messages
-            )
+            max_retries = 3
+            retry_delay = 1  # 初始重试延迟1秒
+            delivery_plan = None
             
-            if response:
+            for attempt in range(max_retries):
                 try:
+                    # 调用推理模型
+                    response = await self.model_manager.generate_reasoned_response(
+                        messages=messages
+                    )
+                    
+                    if not response:
+                        self.logger.error(f"模型未返回响应（尝试 {attempt+1}/{max_retries}）")
+                        continue
+                    
                     # 解析响应内容
                     reasoning_content = response.choices[0].message.reasoning_content
                     content = response.choices[0].message.content
@@ -242,113 +222,115 @@ class DeliveryPlanner:
                         self.logger.error(f"处理响应内容时发生未预期的错误: {str(e)}")
                         return None
                     
-                    if not delivery_plan:
-                        self.logger.error("响应内容为空或格式错误")
+                    if delivery_plan:
+                        break
+                    
+                except (json.JSONDecodeError, ConnectionError, TimeoutError) as e:
+                    self.logger.warning(f"尝试 {attempt+1}/{max_retries} 失败: {str(e)}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # 指数退避
+                        continue
+                    else:
+                        self.logger.error("达到最大重试次数")
                         return None
-                        
-                    # 保存推理过程
-                    reasoning_file = plan_dir / "reasoning_process.md"
-                    with reasoning_file.open('w', encoding='utf-8') as f:
-                        f.write("# 交付计划推理过程\n\n")
-                        f.write("## 输入信息\n")
-                        f.write(f"- 原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}\n")
-                        f.write(f"- 结构化数据数量：{search_results['stats']['structured_count']}\n")
-                        f.write(f"- 向量数据数量：{search_results['stats']['vector_count']}\n")
-                        
-                        f.write("\n## 数据分析\n")
-                        if search_results["structured"]:
-                            f.write("\n### 结构化数据示例\n")
-                            for i, item in enumerate(search_results["structured"][:3], 1):
-                                content = json.loads(item.get('data', '{}')).get('content', '')
-                                f.write(f"\n{i}. {content[:200]}...\n")
-                        
-                        if search_results["vector"]:
-                            f.write("\n### 向量数据示例\n")
-                            for i, item in enumerate(search_results["vector"][:3], 1):
-                                content = json.loads(item.get('data', '{}')).get('content', '')
-                                f.write(f"\n{i}. {content[:200]}...\n")
-                        
-                        f.write("\n## 推理过程\n")
-                        if reasoning_content:
-                            f.write(reasoning_content)
-                        else:
-                            f.write("(推理过程未提供)\n")
-                        
-                        f.write("\n## 模型响应\n")
-                        f.write("```json\n")
-                        f.write(json.dumps(delivery_plan, ensure_ascii=False, indent=2))
-                        f.write("\n```\n")
                     
-                    # 保存检索结果
-                    search_results_file = plan_dir / "search_results.json"
-                    results_to_save = {
-                        "structured_results": search_results["structured"][:10],
-                        "vector_results": search_results["vector"][:10],
-                        "stats": search_results["stats"],
-                        "insights": search_results["insights"],
-                        "context": search_results["context"]
-                    }
-
-                    # 新增：保存原始检索计划
-                    search_plan_file = plan_dir / "search_plan.json"
-                    with search_plan_file.open('w', encoding='utf-8') as f:
-                        json.dump(search_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
-
-                    # 使用自定义编码器保存JSON
-                    with search_results_file.open('w', encoding='utf-8') as f:
-                        json.dump(results_to_save, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
-                    
-                    # 保存交付计划
-                    plan_file = plan_dir / "delivery_plan.json"
-                    
-                    # 合并原始计划中的query_params和delivery_config
-                    final_delivery_plan = {
-                        'metadata': {
-                            'original_query': search_plan.get('metadata', {}).get('original_query', ''),
-                            'generated_at': datetime.now().isoformat(),
-                            'iteration': int(re.search(r'iter_(\d+)', str(plan_dir)).group(1)) if 'iter_' in str(plan_dir) else 0
-                        },
-                        **delivery_plan,
-                        'query_params': search_plan.get('query_params', {}),
-                        'delivery_config': search_plan.get('delivery_config', {})
-                    }
-                    
-                    with plan_file.open('w', encoding='utf-8') as f:
-                        json.dump(final_delivery_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
-                    
-                    # 生成README文件
-                    readme_file = plan_dir / "README.md"
-                    with readme_file.open('w', encoding='utf-8') as f:
-                        f.write("# 检索结果与交付计划\n\n")
-                        f.write(f"生成时间：{timestamp}\n\n")
-                        f.write(f"原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}\n\n")
-                        f.write("## 文件说明\n\n")
-                        f.write("- prompts.md: 推理提示词配置\n")
-                        f.write("- search_plan.json: 原始检索计划\n")
-                        f.write("- search_results.json: 检索结果数据\n")
-                        f.write("- reasoning_process.md: 推理过程详情\n")
-                        f.write("- delivery_plan.json: 生成的交付计划\n")
-                    
-                    # 更新文件路径
-                    final_delivery_plan['_file_paths'] = {
-                        'base_dir': str(plan_dir),
-                        'reasoning_process': str(reasoning_file),
-                        'delivery_plan': str(plan_file),
-                        'search_results': str(search_results_file),
-                        'search_plan': str(search_plan_file),
-                        'readme': str(readme_file),
-                        'prompts': str(prompts_file)
-                    }
-                    
-                    return final_delivery_plan
-                    
-                except Exception as e:
-                    self.logger.error(f"处理模型响应时发生错误: {str(e)}")
-                    return None
-            else:
-                self.logger.error("模型未返回响应")
+            if not delivery_plan:
+                self.logger.error("所有重试尝试均失败")
                 return None
+            
+            # 保存推理过程
+            reasoning_file = plan_dir / "reasoning_process.md"
+            with reasoning_file.open('w', encoding='utf-8') as f:
+                f.write("# 交付计划推理过程\n\n")
+                f.write("## 输入信息\n")
+                f.write(f"- 原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}\n")
+                f.write(f"- 结构化数据数量：{search_results['stats']['structured_count']}\n")
+                f.write(f"- 向量数据数量：{search_results['stats']['vector_count']}\n")
                 
+                f.write("\n## 数据分析\n")
+                if search_results["structured"]:
+                    f.write("\n### 结构化数据示例\n")
+                    for i, item in enumerate(search_results["structured"][:3], 1):
+                        content = json.loads(item.get('data', '{}')).get('content', '')
+                        f.write(f"\n{i}. {content[:200]}...\n")
+                
+                if search_results["vector"]:
+                    f.write("\n### 向量数据示例\n")
+                    for i, item in enumerate(search_results["vector"][:3], 1):
+                        content = json.loads(item.get('data', '{}')).get('content', '')
+                        f.write(f"\n{i}. {content[:200]}...\n")
+                
+                f.write("\n## 推理过程\n")
+                if reasoning_content:
+                    f.write(reasoning_content)
+                else:
+                    f.write("(推理过程未提供)\n")
+                
+                f.write("\n## 模型响应\n")
+                f.write("```json\n")
+                f.write(json.dumps(delivery_plan, ensure_ascii=False, indent=2))
+                f.write("\n```\n")
+            
+            # 保存检索结果
+            search_results_file = plan_dir / "search_results.json"
+            results_to_save = {
+                "structured_results": search_results["structured"][:10],
+                "vector_results": search_results["vector"][:10],
+                "stats": search_results["stats"],
+                "insights": search_results["insights"],
+                "context": search_results["context"]
+            }
+
+            # 新增：保存原始检索计划
+            search_plan_file = plan_dir / "search_plan.json"
+            with search_plan_file.open('w', encoding='utf-8') as f:
+                json.dump(search_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+
+            # 使用自定义编码器保存JSON
+            with search_results_file.open('w', encoding='utf-8') as f:
+                json.dump(results_to_save, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            
+            # 保存交付计划
+            plan_file = plan_dir / "delivery_plan.json"
+            
+            final_delivery_plan = {
+                'metadata': {
+                    'original_query': search_plan.get('metadata', {}).get('original_query', ''),
+                    'generated_at': datetime.now().isoformat()
+                },
+                **delivery_plan
+            }
+            
+            with plan_file.open('w', encoding='utf-8') as f:
+                json.dump(final_delivery_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            
+            # 生成README文件
+            readme_file = plan_dir / "README.md"
+            with readme_file.open('w', encoding='utf-8') as f:
+                f.write("# 检索结果与交付计划\n\n")
+                f.write(f"生成时间：{timestamp}\n\n")
+                f.write(f"原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}\n\n")
+                f.write("## 文件说明\n\n")
+                f.write("- prompts.md: 推理提示词配置\n")
+                f.write("- search_plan.json: 原始检索计划\n")
+                f.write("- search_results.json: 检索结果数据\n")
+                f.write("- reasoning_process.md: 推理过程详情\n")
+                f.write("- delivery_plan.json: 生成的交付计划\n")
+            
+            # 更新文件路径
+            final_delivery_plan['_file_paths'] = {
+                'base_dir': str(plan_dir),
+                'reasoning_process': str(reasoning_file),
+                'delivery_plan': str(plan_file),
+                'search_results': str(search_results_file),
+                'search_plan': str(search_plan_file),
+                'readme': str(readme_file),
+                'prompts': str(prompts_file)
+            }
+            
+            return final_delivery_plan
+            
         except Exception as e:
             self.logger.error(f"生成交付计划时发生错误: {str(e)}")
             return None 

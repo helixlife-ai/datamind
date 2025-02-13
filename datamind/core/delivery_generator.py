@@ -11,6 +11,7 @@ from ..config.settings import (
     DEFAULT_LLM_API_BASE
 )
 from ..models.model_manager import ModelManager, ModelConfig
+from io import StringIO
 
 class DeliveryGenerator:
     """交付文件生成器"""
@@ -55,34 +56,32 @@ class DeliveryGenerator:
         messages = [
             {
                 "role": "system",
-                "content": """你是一个专业的技术文档撰写专家。请根据提供的上下文信息，
-                生成一份结构清晰、重点突出的Markdown格式文档。要求：
-                1. 使用标准Markdown语法
-                2. 合理使用标题层级
-                3. 适当添加表格、列表等元素
-                4. 突出重要内容
-                5. 保持专业性和可读性"""
+                "content": """
+                <rule>
+                1. 文章内容需要符合用户的需求
+                2. 说人话
+                </rule>
+                """
             },
             {
                 "role": "user",
                 "content": f"""
-                请根据以下信息生成文档内容：
+                请根据以下信息写一篇文章：
                 
-                文档主题：{file_config['topic']}
-                文档用途：{file_config['description']}
+                主题：{file_config['topic']}
+                用途：{file_config['description']}
                 
-                内容结构：
+                结构：
                 {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
                 
-                上下文数据：
+                上下文：
                 1. 检索结果统计：
                 - 结构化数据：{len(context['search_results'].get('structured_results', []))}条
                 - 向量数据：{len(context['search_results'].get('vector_results', []))}条
                 
-                2. 数据示例：
+                2. 数据：
                 {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
                 
-                请生成完整的Markdown文档内容。
                 """
             }
         ]
@@ -99,8 +98,8 @@ class DeliveryGenerator:
         messages = [
             {
                 "role": "system",
-                "content": """你是一个专业的Web内容开发专家。请根据提供的上下文信息，
-                生成一份美观、交互性好的HTML文档。要求：
+                "content": """根据提供的上下文信息，
+                生成一份美观、交互性好的HTML。要求：
                 1. 使用现代HTML5语法
                 2. 包含基础的CSS样式
                 3. 适当添加图表和交互元素
@@ -127,12 +126,12 @@ class DeliveryGenerator:
                 内容结构：
                 {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
                 
-                上下文数据：
+                上下文：
                 1. 检索结果统计：
                 - 结构化数据：{len(context['search_results'].get('structured_results', []))}条
                 - 向量数据：{len(context['search_results'].get('vector_results', []))}条
                 
-                2. 数据示例：
+                2. 数据：
                 {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
                 
                 请生成完整的HTML文档内容，包含必要的CSS样式。
@@ -223,65 +222,169 @@ class DeliveryGenerator:
 </body>
 </html>"""
     
-    def _generate_csv_content(self,
-                            file_config: Dict,
-                            context: Dict) -> pd.DataFrame:
-        """生成CSV格式的内容"""
+    async def _generate_csv_content(self,
+                                  file_config: Dict,
+                                  context: Dict) -> pd.DataFrame:
+        """生成CSV格式的内容（通过模型生成）"""
         try:
-            # 从检索结果中提取结构化数据
-            structured_data = context['search_results'].get('structured_results', [])
+            messages = [
+                {
+                    "role": "system",
+                    "content": """请根据上下文生成结构化CSV数据，要求：
+1. 生成真实有效的数据，符合行业标准
+2. 包含至少5列有意义的中文列名
+3. 数据量在20-50行之间
+4. 确保数据类型合理（数值、日期、分类等）
+5. 包含必要的空值模拟真实数据
+6. 输出时使用CSV格式并用```csv代码块包裹
+"""
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+生成CSV数据要求：
+主题：{file_config['topic']}
+用途：{file_config['description']}
+
+数据结构要求：
+{json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
+
+上下文数据：
+{json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
+"""
+                }
+            ]
             
-            # 转换为DataFrame，确保正确解析JSON中的中文
-            rows = []
-            for item in structured_data:
-                try:
-                    if isinstance(item['data'], str):
-                        # 确保字符串格式的JSON数据被正确解析
-                        data = json.loads(item['data'])
-                    else:
-                        # 如果已经是字典格式，直接使用
-                        data = item['data']
-                    rows.append(data)
-                except Exception as e:
-                    self.logger.warning(f"解析数据行时出错: {str(e)}")
-                    continue
-            
-            df = pd.DataFrame(rows)
-            
-            # 根据content_structure进行数据处理
-            sections = file_config['content_structure']['sections']
-            if sections:
-                # 选择指定的列
-                if 'columns' in sections[0]:
-                    df = df[sections[0]['columns']]
+            response = await self.model_manager.generate_reasoned_response(messages=messages)
+            if response and response.choices:
+                content = response.choices[0].message.content
                 
-                # 排序
-                if 'sort_by' in sections[0]:
-                    df = df.sort_values(by=sections[0]['sort_by'])
-                    
-                # 过滤
-                if 'filters' in sections[0]:
-                    for filter_rule in sections[0]['filters']:
-                        if 'column' in filter_rule and 'condition' in filter_rule:
-                            df = df[df[filter_rule['column']].apply(
-                                lambda x: eval(f"x {filter_rule['condition']}")
-                            )]
-            
-            return df
+                # 提取CSV内容
+                csv_pattern = r'```csv\n([\s\S]*?)\n```'
+                csv_match = re.search(csv_pattern, content)
+                if csv_match:
+                    csv_data = csv_match.group(1).strip()
+                    return pd.read_csv(StringIO(csv_data))
+                
+                # 直接尝试解析为CSV
+                if any([',' in line for line in content.split('\n')[:3]]):
+                    return pd.read_csv(StringIO(content))
+                
+                self.logger.warning("未找到有效的CSV内容")
+                return pd.DataFrame()
+
+            return pd.DataFrame()
         except Exception as e:
             self.logger.error(f"生成CSV内容时发生错误: {str(e)}")
             return pd.DataFrame()
     
+    async def _generate_docx_content(self,
+                                   file_config: Dict,
+                                   context: Dict) -> bytes:
+        """生成DOCX格式的内容（基于Markdown内容转换）"""
+        try:
+            # 先获取Markdown内容
+            md_content = await self._generate_markdown_content(file_config, context)
+            
+            # 创建Word文档
+            from docx import Document
+            from docx.shared import Pt, Inches
+            from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+            
+            doc = Document()
+            
+            # 设置基本样式
+            doc.styles['Normal'].font.name = '微软雅黑'
+            doc.styles['Normal'].font.size = Pt(11)
+            
+            # 添加标题
+            title = doc.add_heading(file_config['topic'], level=0)
+            title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            
+            # 添加分隔线
+            doc.add_paragraph().add_run('').add_break()
+            
+            # 解析Markdown内容
+            current_list = []
+            in_code_block = False
+            
+            for line in md_content.split('\n'):
+                line = line.strip()
+                
+                # 跳过空行
+                if not line:
+                    doc.add_paragraph()
+                    continue
+                    
+                # 处理代码块
+                if line.startswith('```'):
+                    in_code_block = not in_code_block
+                    if in_code_block:
+                        p = doc.add_paragraph()
+                        p.style = 'Normal'
+                        continue
+                    else:
+                        doc.add_paragraph()
+                        continue
+                
+                if in_code_block:
+                    p = doc.add_paragraph(line)
+                    p.style = 'Normal'
+                    continue
+                
+                # 处理标题
+                if line.startswith('#'):
+                    level = len(line.split()[0])  # 计算#的数量
+                    text = line.lstrip('#').strip()
+                    doc.add_heading(text, level=min(level, 9))
+                    continue
+                
+                # 处理列表
+                if line.startswith('- ') or line.startswith('* '):
+                    text = line[2:].strip()
+                    p = doc.add_paragraph(text)
+                    p.style = 'List Bullet'
+                    continue
+                
+                if line.startswith('1. ') or re.match(r'^\d+\. ', line):
+                    text = line.split('. ', 1)[1].strip()
+                    p = doc.add_paragraph(text)
+                    p.style = 'List Number'
+                    continue
+                
+                # 处理加粗文本
+                if '**' in line:
+                    p = doc.add_paragraph()
+                    parts = line.split('**')
+                    for i, part in enumerate(parts):
+                        run = p.add_run(part)
+                        if i % 2 == 1:  # 奇数索引表示加粗部分
+                            run.bold = True
+                    continue
+                
+                # 处理普通段落
+                p = doc.add_paragraph(line)
+                p.style = 'Normal'
+            
+            # 保存到字节流
+            from io import BytesIO
+            buffer = BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+            return buffer.read()
+            
+        except Exception as e:
+            self.logger.error(f"生成DOCX内容时发生错误: {str(e)}")
+            return b''
+    
     async def generate_deliverables(self, 
                                   plan_id: str,
-                                  search_results: Dict,
                                   delivery_config: Dict = None,
                                   output_dir: str = None) -> List[str]:
         """生成交付文件
         
         Args:
             plan_id: 交付计划ID
-            search_results: 搜索结果
             delivery_config: 交付配置
             output_dir: 输出目录，如果为None则使用plan_id目录
             
@@ -323,14 +426,27 @@ class DeliveryGenerator:
                     if file_name.endswith('.md'):
                         content = await self._generate_markdown_content(file_config, context)
                         file_path.write_text(content, encoding='utf-8')
+                        generated_files.append(str(file_path))
+                        
+                        # 同时生成对应的docx文件
+                        docx_file_name = file_name.replace('.md', '.docx')
+                        docx_file_path = output_dir / docx_file_name
+                        docx_content = await self._generate_docx_content(file_config, context)
+                        docx_file_path.write_bytes(docx_content)
+                        generated_files.append(str(docx_file_path))
+                        self.logger.info(f"已生成Markdown对应的Word文件: {docx_file_path}")
                         
                     elif file_name.endswith('.html'):
                         content = await self._generate_html_content(file_config, context)
                         file_path.write_text(content, encoding='utf-8')
                         
                     elif file_name.endswith('.csv'):
-                        df = self._generate_csv_content(file_config, context)
+                        df = await self._generate_csv_content(file_config, context)
                         df.to_csv(file_path, index=False, encoding='utf-8-sig')
+                    
+                    elif file_name.endswith('.docx'):
+                        content = await self._generate_docx_content(file_config, context)
+                        file_path.write_bytes(content)
                     
                     generated_files.append(str(file_path))
                     self.logger.info(f"已生成文件: {file_path}")
@@ -347,11 +463,16 @@ class DeliveryGenerator:
                 f.write("## 文件列表\n\n")
                 for file_path in generated_files:
                     file_name = Path(file_path).name
+                    # 查找文件用途，如果找不到则使用默认描述
                     purpose = next((k for k, v in delivery_files.items() 
-                                 if v['file_name'] == file_name), "未知用途")
+                                 if v['file_name'] == file_name), None)
                     f.write(f"- {file_name}\n")
-                    f.write(f"  - 用途：{purpose}\n")
-                    f.write(f"  - 说明：{delivery_files[purpose]['description']}\n\n")
+                    if purpose and purpose in delivery_files:
+                        f.write(f"  - 用途：{purpose}\n")
+                        f.write(f"  - 说明：{delivery_files[purpose]['description']}\n\n")
+                    else:
+                        f.write("  - 用途：自动生成的补充文件\n")
+                        f.write("  - 说明：根据主文件自动生成的配套文件\n\n")
             
             generated_files.append(str(readme_path))
             
