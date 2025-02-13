@@ -16,6 +16,8 @@ from ..models.model_manager import ModelManager, ModelConfig
 import random
 import uuid
 import numpy as np
+from docling.document_converter import DocumentConverter
+from ..core.search import SearchEngine
 
 class FileCache:
     """文件缓存管理器"""
@@ -107,7 +109,8 @@ class DataProcessor:
         self.logger = logging.getLogger(__name__)
         self.db_path = db_path
         self.parser = FileParser()
-        self.storage = StorageSystem(db_path)
+        self.search_engine = SearchEngine(db_path)  # 创建SearchEngine实例
+        self.storage = StorageSystem(db_path, search_engine=self.search_engine)  # 传入SearchEngine实例
         self.file_cache = FileCache()
         
     def process_directory(self, input_dirs: List[str], max_depth: int = 3, 
@@ -369,6 +372,10 @@ class FileParser:
             return self._parse_excel(path)
         elif suffix in ['.xml']:
             return self._parse_xml(path)
+        elif suffix in ['.pdf']:
+            return self._parse_pdf(path)
+        elif suffix in ['.doc', '.docx']:
+            return self._parse_word(path)
         else:
             return self._parse_binary(path)
             
@@ -460,6 +467,76 @@ class FileParser:
         with path.open('r', encoding='utf-8') as f:
             data = xmltodict.parse(f.read())
         return [data]
+        
+    def _parse_pdf(self, path: Path) -> List[Dict]:
+        """PDF文件解析"""
+        try:
+            converter = DocumentConverter()
+            result = converter.convert(str(path))
+            content = result.document.export_to_markdown()
+            
+            # 获取文档的基本信息
+            base_info = {
+                'char_count': len(content),
+                'content_type': 'pdf',
+                'original_content': content
+            }
+            
+            # 分块处理
+            chunks = self._split_text_into_chunks(content)
+            
+            # 为每个块创建记录
+            records = []
+            for i, chunk in enumerate(chunks):
+                record = base_info.copy()
+                record.update({
+                    'chunk_id': i,
+                    'total_chunks': len(chunks),
+                    'content': chunk,
+                    'chunk_char_count': len(chunk)
+                })
+                records.append(record)
+            
+            return records
+            
+        except Exception as e:
+            self.logger.error(f"PDF解析失败: {str(e)}")
+            return [{'error': f"PDF解析失败: {str(e)}"}]
+
+    def _parse_word(self, path: Path) -> List[Dict]:
+        """Word文档解析"""
+        try:
+            converter = DocumentConverter()
+            result = converter.convert(str(path))
+            content = result.document.export_to_markdown()
+            
+            # 获取文档的基本信息
+            base_info = {
+                'char_count': len(content),
+                'content_type': 'word',
+                'original_content': content
+            }
+            
+            # 分块处理
+            chunks = self._split_text_into_chunks(content)
+            
+            # 为每个块创建记录
+            records = []
+            for i, chunk in enumerate(chunks):
+                record = base_info.copy()
+                record.update({
+                    'chunk_id': i,
+                    'total_chunks': len(chunks),
+                    'content': chunk,
+                    'chunk_char_count': len(chunk)
+                })
+                records.append(record)
+            
+            return records
+            
+        except Exception as e:
+            self.logger.error(f"Word文档解析失败: {str(e)}")
+            return [{'error': f"Word文档解析失败: {str(e)}"}]
         
     def _parse_binary(self, path: Path) -> List[Dict]:
         """二进制文件解析"""
@@ -583,10 +660,11 @@ class FileParser:
 class StorageSystem:
     """存储系统"""
     
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, search_engine=None):
         self.logger = logging.getLogger(__name__)
         self.db_path = db_path
         self.db = duckdb.connect(db_path)
+        self.search_engine = search_engine
         self.init_storage()
     
     def init_storage(self):
@@ -687,22 +765,27 @@ class StorageSystem:
             int: 删除的记录数
         """
         try:
-            # 先计数
+            # 先获取要删除的记录ID
             paths_str = ", ".join([f"'{p}'" for p in file_paths])
-            count_result = self.db.execute(f"""
-                SELECT COUNT(*) 
+            record_ids = self.db.execute(f"""
+                SELECT _record_id 
                 FROM unified_data 
                 WHERE _file_path IN ({paths_str})
-            """).fetchone()
+            """).fetchall()
+            record_ids = [r[0] for r in record_ids]
             
-            count = count_result[0] if count_result else 0
-            
-            # 再删除
+            # 删除数据库记录
+            count = len(record_ids)
             if count > 0:
                 self.db.execute(f"""
                     DELETE FROM unified_data 
                     WHERE _file_path IN ({paths_str})
                 """)
+                
+                # 同步删除向量数据
+                if self.search_engine:
+                    self.search_engine.remove_records(record_ids)
+                
                 self.logger.info(f"已删除 {count} 条记录")
             
             return count

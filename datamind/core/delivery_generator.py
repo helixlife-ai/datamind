@@ -58,8 +58,9 @@ class DeliveryGenerator:
                 "role": "system",
                 "content": """
                 <rule>
-                1. 文章内容需要符合用户的需求
-                2. 说人话
+                1. 文章内容要符合用户的需求
+                2. 文章内容要基于检索结果里的内容
+                3. 说人话
                 </rule>
                 """
             },

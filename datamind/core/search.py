@@ -36,6 +36,8 @@ class SearchEngine:
         self.text_model = self.model_manager.get_embedding_model()
         self.faiss_index = None
         self.vectors_map = {}
+        self._vector_id_to_record_id = {}  # 添加向量ID到记录ID的映射
+        self._record_id_to_vector_id = {}  # 添加记录ID到向量ID的映射
         self.load_vectors()
         self.planner = SearchPlanner()
 
@@ -54,19 +56,27 @@ class SearchEngine:
                 
                 # 构建向量数据
                 vectors = []
-                for idx, record in enumerate(vector_data):
+                for record in vector_data:
                     try:
                         vector = record[4]
                         vectors.append(np.array(vector))
                         
+                        vector_id = len(vectors) - 1
+                        record_id = record[0]
+                        
                         # 保存映射关系
-                        self.vectors_map[len(vectors)-1] = {
-                            'record_id': record[0],
+                        self.vectors_map[vector_id] = {
+                            'record_id': record_id,
                             'file_path': record[1],
                             'file_name': record[2],
                             'file_type': record[3],
                             'data': record[5]
                         }
+                        
+                        # 保存ID映射关系
+                        self._vector_id_to_record_id[vector_id] = record_id
+                        self._record_id_to_vector_id[record_id] = vector_id
+                        
                     except Exception as e:
                         self.logger.error(f"处理记录 {record[0]} 时出错: {str(e)}")
                         continue
@@ -88,6 +98,75 @@ class SearchEngine:
         except Exception as e:
             self.logger.error(f"加载向量数据时出错: {str(e)}")
             self.logger.info("将继续运行，但向量搜索功能可能不可用")
+
+    def remove_records(self, record_ids: List[str]):
+        """删除指定记录ID的向量数据
+        
+        Args:
+            record_ids: 要删除的记录ID列表
+        """
+        if not self.faiss_index:
+            return
+            
+        try:
+            # 找出需要删除的向量ID
+            vector_ids_to_remove = []
+            for record_id in record_ids:
+                if record_id in self._record_id_to_vector_id:
+                    vector_id = self._record_id_to_vector_id[record_id]
+                    vector_ids_to_remove.append(vector_id)
+                    
+                    # 清理映射关系
+                    del self._record_id_to_vector_id[record_id]
+                    del self._vector_id_to_record_id[vector_id]
+                    del self.vectors_map[vector_id]
+            
+            if vector_ids_to_remove:
+                # 创建新的FAISS索引
+                vectors = []
+                new_vector_map = {}
+                new_vector_id_to_record_id = {}
+                new_record_id_to_vector_id = {}
+                
+                # 重建向量数据，跳过要删除的向量
+                for old_vector_id, data in self.vectors_map.items():
+                    if old_vector_id not in vector_ids_to_remove:
+                        # 获取原始向量
+                        vector = self.faiss_index.reconstruct(old_vector_id)
+                        vectors.append(vector)
+                        
+                        # 更新映射关系
+                        new_vector_id = len(vectors) - 1
+                        record_id = data['record_id']
+                        
+                        new_vector_map[new_vector_id] = data
+                        new_vector_id_to_record_id[new_vector_id] = record_id
+                        new_record_id_to_vector_id[record_id] = new_vector_id
+                
+                if vectors:
+                    vectors = np.stack(vectors)
+                    dimension = vectors.shape[1]
+                    
+                    # 创建并填充新索引
+                    new_index = faiss.IndexFlatL2(dimension)
+                    new_index.add(vectors.astype('float32'))
+                    
+                    # 更新实例变量
+                    self.faiss_index = new_index
+                    self.vectors_map = new_vector_map
+                    self._vector_id_to_record_id = new_vector_id_to_record_id
+                    self._record_id_to_vector_id = new_record_id_to_vector_id
+                    
+                    self.logger.info(f"成功删除 {len(vector_ids_to_remove)} 个向量")
+                else:
+                    # 如果没有剩余向量，清空所有数据
+                    self.faiss_index = None
+                    self.vectors_map = {}
+                    self._vector_id_to_record_id = {}
+                    self._record_id_to_vector_id = {}
+                    
+        except Exception as e:
+            self.logger.error(f"删除向量数据时出错: {str(e)}")
 
     def parse_query(self, query: str) -> Dict:
         """解析查询字符串

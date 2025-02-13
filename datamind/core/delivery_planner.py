@@ -62,8 +62,9 @@ class DeliveryPlanner:
                     "content": """
                     <rule>
                     1. 交付计划是指你准备生成的交付文件的结构和内容
-                    2. 交付文件的结构和内容需要符合用户的需求
-                    3. 说人话
+                    2. 交付文件的结构和内容要符合用户的需求
+                    3. 交付文件的结构和内容要基于检索结果里的内容
+                    4. 说人话
                     </rule>
                     """
                 },
@@ -250,13 +251,13 @@ class DeliveryPlanner:
                 
                 f.write("\n## 数据分析\n")
                 if search_results["structured"]:
-                    f.write("\n### 结构化数据示例\n")
+                    f.write("\n### 结构化数据\n")
                     for i, item in enumerate(search_results["structured"][:3], 1):
                         content = json.loads(item.get('data', '{}')).get('content', '')
                         f.write(f"\n{i}. {content[:200]}...\n")
                 
                 if search_results["vector"]:
-                    f.write("\n### 向量数据示例\n")
+                    f.write("\n### 向量数据\n")
                     for i, item in enumerate(search_results["vector"][:3], 1):
                         content = json.loads(item.get('data', '{}')).get('content', '')
                         f.write(f"\n{i}. {content[:200]}...\n")

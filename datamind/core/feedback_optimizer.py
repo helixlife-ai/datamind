@@ -79,10 +79,8 @@ class FeedbackOptimizer:
             messages = [
                 {
                     "role": "system",
-                    "content": f"""你是一个专业的查询优化专家。当前为第{context['iteration']}次迭代，请基于以下内容生成新查询：
-                    1. 原始查询：{context['original_query']}
-                    2. 历史反馈：{json.dumps(context['previous_feedbacks'], ensure_ascii=False)}
-                    3. 本次反馈：{feedback}"""
+                    "content": f"""你是一个专业的查询优化专家。请基于以下内容生成新的查询。
+                    """
                 },
                 {
                     "role": "user",

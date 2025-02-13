@@ -14,12 +14,25 @@ def search_test(search_engine: SearchEngine, executor: SearchPlanExecutor) -> No
     
     try:
         print("\n=== 基础搜索测试 ===")
-        queries = [
-            "机器学习",
-            "人工智能",
-            "file:json",
-            "modified:>2024-01-01"
-        ]
+        
+        # 从文件加载测试查询
+        queries_file = project_root / "work_dir" / "test_queries.txt"
+        if not queries_file.exists():
+            # 默认查询
+            default_queries = [
+                "机器学习",
+                "人工智能",
+                "file:json",
+                "date:2024-01-01 to 2024-12-31"
+            ]
+            # 确保work_dir目录存在
+            queries_file.parent.mkdir(parents=True, exist_ok=True)
+            queries_file.write_text("\n".join(default_queries), encoding="utf-8")
+            logger.info(f"已创建默认查询文件: {queries_file}")
+        
+        # 读取查询
+        queries = queries_file.read_text(encoding="utf-8").strip().split("\n")
+        queries = [q.strip() for q in queries if q.strip()]
         
         for query in queries:
             print(f"\n查询: {query}")
