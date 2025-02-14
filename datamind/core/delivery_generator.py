@@ -410,7 +410,7 @@ class DeliveryGenerator:
                 context['delivery_plan']['delivery_config'] = delivery_config
             
             # 创建输出目录
-            output_dir = plan_path / "deliverables"
+            output_dir = plan_path / "deliver_results"
             output_dir.mkdir(exist_ok=True)
             
             generated_files = []

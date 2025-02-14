@@ -174,7 +174,7 @@ async def datamind_alchemy(
         
         # 创建交付计划器实例
         delivery_planner = DeliveryPlanner(
-            work_dir=str(run_dir / "deliverables")
+            work_dir=str(run_dir / "delivery_plans")
         )
         
         delivery_generator = DeliveryGenerator()

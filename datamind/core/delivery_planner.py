@@ -124,7 +124,7 @@ class DeliveryPlanner:
             
             # 生成输出目录
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_dir = Path(self.work_dir) / "delivery_plans"
+            output_dir = Path(self.work_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
             
             # 创建本次推理的目录
