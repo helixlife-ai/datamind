@@ -28,18 +28,18 @@ from datamind.core.feedback_optimizer import FeedbackOptimizer
 
 async def run_test_optimization(
     feedback_optimizer: FeedbackOptimizer, 
-    delivery_dir: str,
-    # 组件参数从结果中获取
-    components: dict
+    alchemy_dir: str,
 ) -> None:
     """运行反馈优化测试流程
     
     Args:
         feedback_optimizer: 反馈优化器实例
-        delivery_dir: 交付文件目录
-        components: 包含工作流组件的字典
+        alchemy_dir: 炼丹工作流运行目录
     """
     print("\n=== 开始反馈优化流程测试 ===")
+    
+    # 获取当前交付目录
+    delivery_dir = Path(alchemy_dir) / "delivery"
     
     # 示例反馈
     test_feedbacks = [
@@ -48,38 +48,41 @@ async def run_test_optimization(
         "希望在报告中补充更多实际应用案例"
     ]
     
-    current_dir = delivery_dir
-    
     # 执行多轮反馈优化
     for i, feedback in enumerate(test_feedbacks, 1):
         print(f"\n第{i}轮反馈优化:")
         print(f"用户反馈: {feedback}")
         
-        # 将反馈转换为新查询
-        result = await feedback_optimizer.feedback_to_query(current_dir, feedback)
+        # 将反馈写入feedback.txt
+        feedback_file = Path(alchemy_dir).parent / "feedback.txt"
+        with open(feedback_file, "w", encoding="utf-8") as f:
+            f.write(feedback)
         
-        if result['status'] == 'success':
-            print(f"反馈处理成功！")
-            print(f"生成的新查询: {result['query']}")
+        # 生成反馈上下文
+        context_result = await feedback_optimizer.feedback_to_context(alchemy_dir)
+        
+        if context_result['status'] == 'success':
+            print(f"反馈上下文生成成功！")
             
             # 使用新查询重新执行 datamind_alchemy 工作流
             alchemy_result = await datamind_alchemy(
-                query=result['query'],
-                work_dir=Path(current_dir).parent,  # 使用父目录作为工作目录
-                input_dirs=None  # 使用已有数据
+                query=context_result['context']['current_query'],  # 使用当前查询
+                work_dir=Path(alchemy_dir).parent / "iteration",  
+                input_dirs=None,  # 使用已有数据
+                context=context_result['context']  # 传入完整上下文
             )
             
             if alchemy_result['status'] == 'success':
                 print("基于反馈的新一轮处理成功！")
                 if alchemy_result['results']['delivery_plan']:
-                    # 更新当前目录为新生成的交付目录
-                    current_dir = alchemy_result['results']['delivery_plan']['_file_paths']['base_dir']
-                    print(f"新的交付文件保存在: {current_dir}")
+                    # 更新当前目录为新的运行目录
+                    alchemy_dir = Path(alchemy_result['results']['delivery_plan']['_file_paths']['base_dir']).parent
+                    print(f"新的交付文件保存在: {alchemy_dir}/delivery")
             else:
                 print(f"新一轮处理失败: {alchemy_result['message']}")
                 break
         else:
-            print(f"反馈处理失败: {result['message']}")
+            print(f"反馈上下文生成失败: {context_result['message']}")
             break
             
     print("\n反馈优化流程测试完成")
@@ -87,7 +90,8 @@ async def run_test_optimization(
 async def datamind_alchemy(
     query: str,
     work_dir: Path = None,
-    input_dirs: list = None
+    input_dirs: list = None,
+    context: Dict = None
 ) -> Dict:
     """数据炼丹工作流
     
@@ -95,6 +99,7 @@ async def datamind_alchemy(
         query: 查询文本
         work_dir: 工作目录
         input_dirs: 输入目录列表
+        context: 上下文数据，如果提供则保存为context.json并复制上级source_data
     """
     logger = logging.getLogger(__name__)
     
@@ -113,31 +118,84 @@ async def datamind_alchemy(
         run_dir = work_dir / f"run_{run_id}"
         run_dir.mkdir(parents=True, exist_ok=True)
         
+        # 如果提供了上下文，保存为context.json
+        if context:
+            context_file = run_dir / "context.json"
+            with open(context_file, 'w', encoding='utf-8') as f:
+                json.dump(context, f, ensure_ascii=False, indent=2)
+        
+        # 创建并准备source_data目录
+        source_data = run_dir / "source_data"
+        source_data.mkdir(exist_ok=True)
+        
+        # 如果有上下文，复制上级目录的source_data内容
+        if context:
+            parent_source = work_dir.parent / "source_data"
+            if parent_source.exists() and parent_source.is_dir():
+                logger.info("开始复制上级source_data")
+                try:
+                    import shutil
+                    # 清空当前source_data目录
+                    if any(source_data.iterdir()):
+                        shutil.rmtree(source_data)
+                        source_data.mkdir()
+                    
+                    # 复制所有内容
+                    for item in parent_source.iterdir():
+                        if item.is_dir():
+                            shutil.copytree(item, source_data / item.name, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(item, source_data / item.name)
+                    logger.info(f"上级source_data已复制到: {source_data}")
+                except Exception as e:
+                    logger.error(f"复制上级source_data失败: {str(e)}", exc_info=True)
+                    raise
+        
+        # 如果有输入目录，复制到source_data（保持原有逻辑）
+        if input_dirs:
+            logger.info("开始复制源数据")
+            try:
+                import shutil
+                for input_dir in input_dirs:
+                    input_path = Path(input_dir)
+                    if input_path.exists():
+                        if input_path.is_dir():
+                            # 复制目录内容
+                            for item in input_path.iterdir():
+                                if item.is_dir():
+                                    shutil.copytree(item, source_data / item.name, dirs_exist_ok=True)
+                                else:
+                                    shutil.copy2(item, source_data / item.name)
+                        else:
+                            # 复制单个文件
+                            shutil.copy2(input_path, source_data / input_path.name)
+                logger.info(f"源数据已复制到: {source_data}")
+            except Exception as e:
+                logger.error(f"复制源数据失败: {str(e)}", exc_info=True)
+                raise
+        
         # 数据目录路径修正
         data_dir = run_dir / "data"
         data_dir.mkdir(exist_ok=True)
-        db_path = data_dir / "unified_storage.duckdb"  # 保持Path对象类型
+        db_path = data_dir / "unified_storage.duckdb"
         cache_file = str(data_dir / "file_cache.pkl")
         
-        # 初始化数据处理器（需要字符串路径时进行转换）
+        # 初始化数据处理器
         processor = DataProcessor(db_path=str(db_path))
         processor.file_cache = FileCache(cache_file=cache_file)
 
-        # 第一步：处理输入数据（如果有）
-        if input_dirs:
-            logger.info("开始预处理输入数据")
+        # 处理source_data目录中的数据
+        if source_data.exists() and any(source_data.iterdir()):
+            logger.info("开始处理源数据")
             try:
-                # 转换路径
-                dirs = [Path(d.strip()) for d in input_dirs]
-                
                 # 根据数据库存在情况选择更新模式
-                if not db_path.exists():  # 现在使用Path对象的exists方法
+                if not db_path.exists():
                     logger.info("首次运行，执行全量更新")
                     db_path.parent.mkdir(parents=True, exist_ok=True)
-                    stats = processor.process_directory(dirs, incremental=False)
+                    stats = processor.process_directory([source_data], incremental=False)
                 else:
                     logger.info("检测到已有数据，执行增量更新")
-                    stats = processor.process_directory(dirs, incremental=True)
+                    stats = processor.process_directory([source_data], incremental=True)
                     
                 # 输出处理统计
                 logger.info("\n=== 处理统计 ===")
@@ -150,7 +208,6 @@ async def datamind_alchemy(
                     logger.info(f"删除记录: {stats['removed_files']}")
                 logger.info(f"总耗时: {stats.get('total_time', 0):.2f}秒")
                 
-                # 如果有错误，输出错误信息
                 if stats.get('errors'):
                     logger.warning("\n处理过程中的错误:")
                     for error in stats['errors']:
@@ -159,7 +216,8 @@ async def datamind_alchemy(
             except Exception as e:
                 logger.error(f"数据处理失败: {str(e)}", exc_info=True)
                 raise
-            logger.info("数据预处理完成")
+                
+            logger.info("源数据处理完成")
 
         # 初始化其他组件（必须在数据处理之后）
         search_engine = SearchEngine(db_path=db_path)
@@ -174,7 +232,7 @@ async def datamind_alchemy(
         
         # 创建交付计划器实例
         delivery_planner = DeliveryPlanner(
-            work_dir=str(run_dir / "delivery_plans")
+            work_dir=str(run_dir / "delivery")
         )
         
         delivery_generator = DeliveryGenerator()
@@ -303,8 +361,7 @@ async def datamind_alchemy_test(
                     # 修改调用方式
                     await run_test_optimization(
                         feedback_optimizer=result['components']['feedback_optimizer'],
-                        delivery_dir=delivery_dir,
-                        components=result['components']
+                        alchemy_dir=delivery_dir
                     )
         else:
             print(f"\n处理失败: {result.get('message', '未知错误')}")

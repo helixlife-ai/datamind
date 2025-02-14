@@ -128,8 +128,7 @@ class DeliveryPlanner:
             output_dir.mkdir(parents=True, exist_ok=True)
             
             # 创建本次推理的目录
-            plan_dir = output_dir / f"plan_{timestamp}"
-            plan_dir.mkdir(parents=True, exist_ok=True)
+            plan_dir = output_dir
             
             # 保存提示词为markdown格式
             prompts_file = plan_dir / "prompts.md"

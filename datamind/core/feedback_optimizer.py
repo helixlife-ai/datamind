@@ -32,10 +32,10 @@ class FeedbackOptimizer:
             api_base=DEFAULT_LLM_API_BASE
         ))
         
-    async def push_feedback(self, feedback: str, delivery_dir: str):
+    async def push_feedback(self, feedback: str, alchemy_dir: str):
         """压入新反馈到处理队列"""
         self.feedback_stack.append({
-            'delivery_dir': delivery_dir,
+            'alchemy_dir': alchemy_dir,
             'feedback': feedback,
             'status': 'pending'
         })
@@ -47,7 +47,7 @@ class FeedbackOptimizer:
             
         current_fb = self.feedback_stack.pop(0)
         result = await self.feedback_to_query(
-            current_fb['delivery_dir'], 
+            current_fb['alchemy_dir'], 
             current_fb['feedback']
         )
         current_fb.update({
@@ -56,12 +56,12 @@ class FeedbackOptimizer:
         })
         return result
 
-    async def feedback_to_query(self, delivery_dir: str, feedback: str) -> Dict[str, Any]:
+    async def feedback_to_query(self, alchemy_dir: str, feedback: str) -> Dict[str, Any]:
         """将用户反馈转换为新的查询
         
         Args:
-            delivery_dir: 原始交付文件目录
-            feedback: 用户反馈内容
+            alchemy_dir: 炼丹工作流运行目录
+            feedback: 用户反馈内容（已废弃，现从feedback.txt读取）
             
         Returns:
             Dict[str, Any]: 包含新查询的字典
@@ -72,8 +72,25 @@ class FeedbackOptimizer:
             }
         """
         try:
+            # 从feedback.txt读取反馈内容
+            feedback_file = Path(alchemy_dir) / "feedback.txt"
+            if not feedback_file.exists():
+                return {
+                    'status': 'error',
+                    'message': 'Feedback file not found'
+                }
+                
+            with open(feedback_file, 'r', encoding='utf-8') as f:
+                feedback_content = f.read().strip()
+                
+            if not feedback_content:
+                return {
+                    'status': 'error',
+                    'message': 'Feedback content is empty'
+                }
+            
             # 加载当前迭代上下文
-            context = self._load_current_context(delivery_dir)
+            context = self._load_current_context(alchemy_dir)
             
             # 构建包含历史记录的提示语
             messages = [
@@ -87,7 +104,7 @@ class FeedbackOptimizer:
                     "content": f"""
                     原始查询：{context['original_query']}
                     
-                    用户反馈：{feedback}
+                    用户反馈：{feedback_content}
                     
                     请生成一个新的查询文本，要求：
                     1. 融合原始查询的目标和用户的反馈建议
@@ -108,7 +125,7 @@ class FeedbackOptimizer:
                 new_query = response.choices[0].message.content.strip()
                 
                 # 记录优化过程
-                log_dir = Path(delivery_dir) / "feedback_logs"
+                log_dir = Path(alchemy_dir) / "feedback_logs"
                 log_dir.mkdir(exist_ok=True)
                 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -117,7 +134,7 @@ class FeedbackOptimizer:
                 log_data = {
                     "timestamp": timestamp,
                     "original_query": context['original_query'],
-                    "user_feedback": feedback,
+                    "user_feedback": feedback_content,  # 使用从文件读取的反馈
                     "new_query": new_query,
                     "prompt": messages
                 }
@@ -143,22 +160,70 @@ class FeedbackOptimizer:
                 'message': str(e)
             } 
 
-    def _load_current_context(self, delivery_dir: str) -> dict:
-        """加载当前迭代上下文"""
-        delivery_path = Path(delivery_dir)
-        return {
-            'iteration': int(delivery_path.name.split('_')[-1]),  # 从目录名获取迭代次数
-            'original_query': self._get_original_query(delivery_path),
-            'previous_feedbacks': self._get_feedback_history(delivery_path.parent)
-        }
+    def _load_current_context(self, alchemy_dir: str) -> dict:
+        """加载当前迭代上下文
+        
+        从alchemy_dir/context.json加载上下文信息，如果文件不存在或加载失败，
+        则认为是第1次迭代。
+        
+        Args:
+            alchemy_dir: 炼丹工作流运行目录
+            
+        Returns:
+            dict: 包含上下文信息的字典
+            {
+                'iteration': int,
+                'original_query': str,
+                'previous_feedbacks': List[Dict]
+            }
+        """
+        try:
+            context_file = Path(alchemy_dir) / "context.json"
+            
+            # 如果文件不存在，返回初始上下文
+            if not context_file.exists():
+                return {
+                    'iteration': 1,
+                    'original_query': self._get_original_query(Path(alchemy_dir)),
+                    'previous_feedbacks': []
+                }
+            
+            # 读取并解析context.json
+            with open(context_file, 'r', encoding='utf-8') as f:
+                context_data = json.load(f)
+                
+            # 确保context_data包含所需字段
+            if not context_data or not isinstance(context_data, dict):
+                raise ValueError("Invalid context data format")
+                
+            return {
+                'iteration': context_data.get('metadata', {}).get('iteration', 1),
+                'original_query': context_data.get('original_query', ''),
+                'previous_feedbacks': context_data.get('feedback_history', [])
+            }
+            
+        except Exception as e:
+            logger.error(f"加载上下文失败: {str(e)}", exc_info=True)
+            return {
+                'iteration': 1,  # 出错时默认为第1次迭代
+                'original_query': self._get_original_query(Path(alchemy_dir)),
+                'previous_feedbacks': []
+            }
 
-    def _get_original_query(self, delivery_path: Path) -> str:
-        """从交付目录获取原始查询"""
+    def _get_original_query(self, alchemy_path: Path) -> str:
+        """从炼丹工作流目录获取原始查询"""
         try:
             # 从交付计划文件中获取原始查询
-            plan_file = delivery_path / "delivery_plan.json"
+            plan_file = alchemy_path / "delivery" / "delivery_plan.json"
             if not plan_file.exists():
-                raise FileNotFoundError(f"交付计划文件不存在: {plan_file}")
+                # 如果当前目录没有，尝试从父目录获取
+                parent_plan_file = alchemy_path.parent.parent / "delivery" / "delivery_plan.json"
+                if parent_plan_file.exists():
+                    with open(parent_plan_file, 'r', encoding='utf-8') as f:
+                        delivery_plan = json.load(f)
+                        return delivery_plan.get('metadata', {}).get('original_query', '')
+                else:
+                    raise FileNotFoundError(f"交付计划文件不存在: {plan_file} 或 {parent_plan_file}")
 
             with open(plan_file, 'r', encoding='utf-8') as f:
                 delivery_plan = json.load(f)
@@ -169,34 +234,257 @@ class FeedbackOptimizer:
             return ""
 
     def _get_feedback_history(self, parent_dir: Path) -> List[Dict]:
-        """获取历史反馈记录"""
+        """获取历史反馈记录
+        
+        从父目录的context.json文件中获取反馈历史。
+        
+        Args:
+            parent_dir: 父目录路径
+            
+        Returns:
+            List[Dict]: 反馈历史记录列表
+            [{
+                'iteration': int,
+                'timestamp': str,
+                'feedback': str,
+                'original_query': str
+            }]
+        """
         feedback_history = []
         
         try:
-            # 遍历所有迭代目录
-            for iter_dir in parent_dir.glob("iter_*"):
-                feedback_logs_dir = iter_dir / "feedback_logs"
+            # 遍历所有run_*目录
+            for run_dir in sorted(parent_dir.glob("run_*")):
+                context_file = run_dir / "context.json"
                 
-                if feedback_logs_dir.exists():
-                    # 按时间顺序处理日志文件
-                    for log_file in sorted(feedback_logs_dir.glob("*.json")):
-                        try:
-                            with open(log_file, 'r', encoding='utf-8') as f:
-                                log_data = json.load(f)
-                                feedback_history.append({
-                                    'iteration': int(iter_dir.name.split('_')[-1]),
-                                    'timestamp': log_data['timestamp'],
-                                    'feedback': log_data['user_feedback'],
-                                    'new_query': log_data['new_query']
-                                })
-                        except Exception as e:
-                            logger.warning(f"加载反馈日志失败 {log_file}: {str(e)}")
-                            continue
+                if context_file.exists():
+                    try:
+                        with open(context_file, 'r', encoding='utf-8') as f:
+                            context_data = json.load(f)
                             
+                        if isinstance(context_data, dict):
+                            # 从上下文中提取反馈信息
+                            feedback_history.append({
+                                'iteration': context_data.get('metadata', {}).get('iteration', 1),
+                                'timestamp': context_data.get('metadata', {}).get('timestamp', ''),
+                                'feedback': context_data.get('current_feedback', ''),
+                                'original_query': context_data.get('original_query', '')
+                            })
+                            
+                    except Exception as e:
+                        logger.warning(f"加载上下文文件失败 {context_file}: {str(e)}")
+                        continue
+                        
             # 按迭代次数排序
             feedback_history.sort(key=lambda x: x['iteration'])
             return feedback_history
             
         except Exception as e:
             logger.error(f"获取反馈历史失败: {str(e)}")
-            return [] 
+            return []
+
+    def get_delivery_files(self, alchemy_dir: str) -> Dict[str, list]:
+        """获取交付目录中的文件和文件夹列表
+        
+        Args:
+            alchemy_dir: 炼丹工作流运行目录
+            
+        Returns:
+            Dict[str, list]: 包含文件和文件夹列表的字典
+            {
+                'files': [文件路径列表],
+                'dirs': [文件夹路径列表]
+            }
+        """
+        try:
+            delivery_dir = Path(alchemy_dir) / "delivery"
+            if not delivery_dir.exists():
+                logger.error(f"交付目录不存在: {delivery_dir}")
+                return {'files': [], 'dirs': []}
+            
+            files = []
+            dirs = []
+            
+            # 遍历目录内容
+            for item in delivery_dir.iterdir():
+                # 使用相对于delivery目录的路径
+                rel_path = item.relative_to(delivery_dir)
+                if item.is_file():
+                    files.append(str(rel_path))
+                elif item.is_dir():
+                    dirs.append(str(rel_path))
+                    # 递归获取子目录中的文件
+                    for sub_item in item.rglob('*'):
+                        if sub_item.is_file():
+                            files.append(str(sub_item.relative_to(delivery_dir)))
+            
+            # 排序以保持稳定的顺序
+            files.sort()
+            dirs.sort()
+            
+            return {
+                'files': files,
+                'dirs': dirs
+            }
+            
+        except Exception as e:
+            logger.error(f"获取交付文件列表失败: {str(e)}", exc_info=True)
+            return {'files': [], 'dirs': []}
+
+    def read_delivery_file(self, alchemy_dir: str, file_path: str) -> Dict[str, Any]:
+        """读取交付目录中指定文件的内容
+        
+        Args:
+            alchemy_dir: 炼丹工作流运行目录
+            file_path: 相对于delivery目录的文件路径
+            
+        Returns:
+            Dict[str, Any]: 包含文件内容的字典
+            {
+                'status': 'success' | 'error',
+                'message': str,
+                'content': str,  # 文件内容
+                'file_type': str  # 文件类型（扩展名）
+            }
+        """
+        try:
+            delivery_dir = Path(alchemy_dir) / "delivery"
+            full_path = delivery_dir / file_path
+            
+            if not full_path.exists():
+                return {
+                    'status': 'error',
+                    'message': f'文件不存在: {file_path}',
+                    'content': '',
+                    'file_type': ''
+                }
+            
+            if not full_path.is_file():
+                return {
+                    'status': 'error',
+                    'message': f'不是文件: {file_path}',
+                    'content': '',
+                    'file_type': ''
+                }
+                
+            # 获取文件类型
+            file_type = full_path.suffix.lstrip('.')
+            
+            # 读取文件内容
+            with open(full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            return {
+                'status': 'success',
+                'message': 'Successfully read file',
+                'content': content,
+                'file_type': file_type
+            }
+            
+        except Exception as e:
+            logger.error(f"读取文件失败 {file_path}: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e),
+                'content': '',
+                'file_type': ''
+            } 
+
+    async def feedback_to_context(self, alchemy_dir: str) -> Dict[str, Any]:
+        """基于当前交付物和用户反馈生成下次炼金的上下文
+        
+        Args:
+            alchemy_dir: 炼丹工作流运行目录
+            
+        Returns:
+            Dict[str, Any]: 包含上下文信息的字典
+            {
+                'status': 'success' | 'error',
+                'message': str,
+                'context': {
+                    'original_query': str,
+                    'current_query': str,  # 基于反馈生成的新查询
+                    'current_feedback': str,
+                    'feedback_history': List[Dict],
+                    'delivery_files': {
+                        'files': List[str],
+                        'dirs': List[str]
+                    },
+                    'file_contents': {
+                        'file_path': {
+                            'content': str,
+                            'type': str
+                        }
+                    },
+                    'metadata': {
+                        'iteration': int,
+                        'timestamp': str
+                    }
+                }
+            }
+        """
+        try:
+            # 从父目录读取反馈内容
+            feedback_file = Path(alchemy_dir).parent / "feedback.txt"
+            if not feedback_file.exists():
+                return {
+                    'status': 'error',
+                    'message': 'Feedback file not found'
+                }
+                
+            with open(feedback_file, 'r', encoding='utf-8') as f:
+                current_feedback = f.read().strip()
+                
+            if not current_feedback:
+                return {
+                    'status': 'error',
+                    'message': 'Feedback content is empty'
+                }
+            
+            # 获取交付文件列表
+            delivery_files = self.get_delivery_files(alchemy_dir)
+            
+            # 读取所有交付文件内容
+            file_contents = {}
+            for file_path in delivery_files['files']:
+                result = self.read_delivery_file(alchemy_dir, file_path)
+                if result['status'] == 'success':
+                    file_contents[file_path] = {
+                        'content': result['content'],
+                        'type': result['file_type']
+                    }
+            
+            # 加载历史上下文
+            context = self._load_current_context(alchemy_dir)
+            
+            # 生成新的查询
+            query_result = await self.feedback_to_query(alchemy_dir, current_feedback)
+            current_query = query_result['query'] if query_result['status'] == 'success' else ''
+            
+            # 构建完整上下文
+            context_data = {
+                'original_query': context['original_query'],
+                'current_query': current_query,  # 使用生成的新查询
+                'current_feedback': current_feedback,
+                'feedback_history': context['previous_feedbacks'],
+                'delivery_files': delivery_files,
+                'file_contents': file_contents,
+                'metadata': {
+                    'iteration': context['iteration'],
+                    'timestamp': datetime.now().isoformat()
+                }
+            }
+            
+            return {
+                'status': 'success',
+                'message': 'Successfully generated context',
+                'context': context_data
+            }
+            
+        except Exception as e:
+            logger.error(f"生成上下文失败: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e),
+                'context': None
+            } 
