@@ -3,7 +3,7 @@
 from .core.search import SearchEngine
 from .core.planner import SearchPlanner
 from .core.executor import SearchPlanExecutor
-from .core.processor import DataProcessor
+from .core.processor import DataProcessor, FileCache
 from .core.parser import IntentParser
 from .core.feedback_optimizer import FeedbackOptimizer
 from .utils.common import setup_logging
@@ -17,5 +17,6 @@ __all__ = [
     'DataProcessor',
     'IntentParser',
     'FeedbackOptimizer',
-    'setup_logging'
+    'setup_logging',
+    'FileCache'
 ] 
