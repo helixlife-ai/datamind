@@ -37,10 +37,7 @@ async def run_test_optimization(
         alchemy_dir: 炼丹工作流运行目录
     """
     print("\n=== 开始反馈优化流程测试 ===")
-    
-    # 获取当前交付目录
-    delivery_dir = Path(alchemy_dir) / "delivery"
-    
+        
     # 示例反馈
     test_feedbacks = [
         "请在AI趋势分析中增加更多关于大模型发展的内容",
@@ -54,7 +51,7 @@ async def run_test_optimization(
         print(f"用户反馈: {feedback}")
         
         # 将反馈写入feedback.txt
-        feedback_file = Path(alchemy_dir).parent / "feedback.txt"
+        feedback_file = Path(alchemy_dir) / "feedback.txt"
         with open(feedback_file, "w", encoding="utf-8") as f:
             f.write(feedback)
         
@@ -67,7 +64,7 @@ async def run_test_optimization(
             # 使用新查询重新执行 datamind_alchemy 工作流
             alchemy_result = await datamind_alchemy(
                 query=context_result['context']['current_query'],  # 使用当前查询
-                work_dir=Path(alchemy_dir).parent / "iteration",  
+                work_dir=Path(alchemy_dir) / "iteration",  
                 input_dirs=None,  # 使用已有数据
                 context=context_result['context']  # 传入完整上下文
             )
@@ -76,7 +73,7 @@ async def run_test_optimization(
                 print("基于反馈的新一轮处理成功！")
                 if alchemy_result['results']['delivery_plan']:
                     # 更新当前目录为新的运行目录
-                    alchemy_dir = Path(alchemy_result['results']['delivery_plan']['_file_paths']['base_dir']).parent
+                    alchemy_dir = str(Path(alchemy_result['results']['delivery_plan']['_file_paths']['base_dir']).parent)
                     print(f"新的交付文件保存在: {alchemy_dir}/delivery")
             else:
                 print(f"新一轮处理失败: {alchemy_result['message']}")
@@ -288,7 +285,8 @@ async def datamind_alchemy(
                     generated_files = await delivery_generator.generate_deliverables(
                         delivery_dir,
                         search_results,
-                        delivery_plan.get('delivery_config')
+                        delivery_plan.get('delivery_config'),
+                        test_mode=False # 测试模式
                     )
                     results['results']['generated_files'] = generated_files
                     
@@ -358,10 +356,10 @@ async def datamind_alchemy_test(
                     for file_path in result['results']['generated_files']:
                         print(f"- {Path(file_path).name}")  # 显示文件名简化路径
                     
-                    # 修改调用方式
+                    # 运行反馈优化流程
                     await run_test_optimization(
                         feedback_optimizer=result['components']['feedback_optimizer'],
-                        alchemy_dir=delivery_dir
+                        alchemy_dir=str(Path(delivery_dir).parent)
                     )
         else:
             print(f"\n处理失败: {result.get('message', '未知错误')}")

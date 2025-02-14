@@ -72,8 +72,9 @@ class FeedbackOptimizer:
             }
         """
         try:
-            # 从feedback.txt读取反馈内容
+            # 保持feedback.txt在run_xxxx目录内（当前实现已正确）
             feedback_file = Path(alchemy_dir) / "feedback.txt"
+            
             if not feedback_file.exists():
                 return {
                     'status': 'error',
@@ -178,7 +179,8 @@ class FeedbackOptimizer:
             }
         """
         try:
-            context_file = Path(alchemy_dir) / "context.json"
+            # context.json现在位于run_xxxx目录内
+            context_file = Path(alchemy_dir) / "context.json"  
             
             # 如果文件不存在，返回初始上下文
             if not context_file.exists():
@@ -213,17 +215,11 @@ class FeedbackOptimizer:
     def _get_original_query(self, alchemy_path: Path) -> str:
         """从炼丹工作流目录获取原始查询"""
         try:
-            # 从交付计划文件中获取原始查询
-            plan_file = alchemy_path / "delivery" / "delivery_plan.json"
+            # 修正交付计划文件路径到当前run目录
+            plan_file = alchemy_path / "delivery" / "delivery_plan.json"  # 移除.parent
+            
             if not plan_file.exists():
-                # 如果当前目录没有，尝试从父目录获取
-                parent_plan_file = alchemy_path.parent.parent / "delivery" / "delivery_plan.json"
-                if parent_plan_file.exists():
-                    with open(parent_plan_file, 'r', encoding='utf-8') as f:
-                        delivery_plan = json.load(f)
-                        return delivery_plan.get('metadata', {}).get('original_query', '')
-                else:
-                    raise FileNotFoundError(f"交付计划文件不存在: {plan_file} 或 {parent_plan_file}")
+                    raise FileNotFoundError(f"交付计划文件不存在: {plan_file}")
 
             with open(plan_file, 'r', encoding='utf-8') as f:
                 delivery_plan = json.load(f)
@@ -424,8 +420,9 @@ class FeedbackOptimizer:
             }
         """
         try:
-            # 从父目录读取反馈内容
-            feedback_file = Path(alchemy_dir).parent / "feedback.txt"
+            # 修正反馈文件路径到当前run目录
+            feedback_file = Path(alchemy_dir) / "feedback.txt"  # 移除.parent
+            
             if not feedback_file.exists():
                 return {
                     'status': 'error',

@@ -108,11 +108,28 @@ class DataProcessor:
     def __init__(self, db_path: str = DEFAULT_DB_PATH):
         self.logger = logging.getLogger(__name__)
         self.db_path = db_path
+        self.db = duckdb.connect(db_path)
+        self.init_storage()
         self.parser = FileParser()
         self.search_engine = SearchEngine(db_path)  # 创建SearchEngine实例
-        self.storage = StorageSystem(db_path, search_engine=self.search_engine)  # 传入SearchEngine实例
+        self.storage = StorageSystem(self.db, search_engine=self.search_engine)  # 传入SearchEngine实例
         self.file_cache = FileCache()
-        
+
+    def init_storage(self):
+        """初始化存储表"""
+        self.db.execute("""
+            CREATE TABLE IF NOT EXISTS unified_data (
+                _record_id VARCHAR PRIMARY KEY,
+                _file_path VARCHAR,
+                _file_name VARCHAR,
+                _file_type VARCHAR,
+                _processed_at TIMESTAMP,
+                _sub_id INTEGER,
+                data JSON,
+                vector DOUBLE[]
+            )
+        """)
+
     def process_directory(self, input_dirs: List[str], max_depth: int = 3, 
                          incremental: bool = True) -> Dict:
         """处理指定目录
@@ -660,10 +677,9 @@ class FileParser:
 class StorageSystem:
     """存储系统"""
     
-    def __init__(self, db_path: str, search_engine=None):
+    def __init__(self, db=None, search_engine=None):
         self.logger = logging.getLogger(__name__)
-        self.db_path = db_path
-        self.db = duckdb.connect(db_path)
+        self.db = db
         self.search_engine = search_engine
         self.init_storage()
     

@@ -381,13 +381,15 @@ class DeliveryGenerator:
     async def generate_deliverables(self, 
                                   plan_id: str,
                                   delivery_config: Dict = None,
-                                  output_dir: str = None) -> List[str]:
+                                  output_dir: str = None,
+                                  test_mode: bool = False) -> List[str]:
         """生成交付文件
         
         Args:
             plan_id: 交付计划ID
             delivery_config: 交付配置
             output_dir: 输出目录，如果为None则使用plan_id目录
+            test_mode: 测试模式（生成占位文件）
             
         Returns:
             List[str]: 生成的文件路径列表
@@ -424,6 +426,21 @@ class DeliveryGenerator:
                 file_path = output_dir / file_name
                 
                 try:
+                    if test_mode:  # 测试模式生成占位文件
+                        if file_name.endswith('.md'):
+                            file_path.write_text("# 测试文件\n这是测试模式生成的占位文件", encoding='utf-8')
+                        elif file_name.endswith('.html'):
+                            file_path.write_text("<html><body><h1>测试文件</h1></body></html>", encoding='utf-8')
+                        elif file_name.endswith('.csv'):
+                            pd.DataFrame({'测试列': [1,2,3]}).to_csv(file_path, index=False)
+                        elif file_name.endswith('.docx'):
+                            from docx import Document
+                            doc = Document()
+                            doc.add_heading('测试文档', 0)
+                            doc.save(file_path)
+                        generated_files.append(str(file_path))
+                        continue
+                    
                     if file_name.endswith('.md'):
                         content = await self._generate_markdown_content(file_config, context)
                         file_path.write_text(content, encoding='utf-8')
