@@ -467,8 +467,7 @@ class FileParser:
                 'total_chunks': len(chunks),
                 'content': chunk,
                 'chunk_char_count': len(chunk),
-                'document_structure': headers,
-                'full_content': content
+                'document_structure': headers
             }
             records.append(record)
             
