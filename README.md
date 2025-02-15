@@ -14,6 +14,8 @@
 
 DataMind is your intelligent document assistant that transforms how you interact with your knowledge base. Powered by DeepSeek R1, a state-of-the-art reasoning model, it understands your documents at a deep semantic level and generates insights with remarkable accuracy.
 
+**Data in, Surprise out!**
+
 Think of DataMind as your knowledge alchemy cauldron - simply toss in your documents, data, and files, express what you need, and watch as it automatically distills them into valuable deliverables. Like a master alchemist, it:
 - Transforms raw documents into refined knowledge
 - Extracts golden insights from information ore
