@@ -339,8 +339,9 @@ class FeedbackOptimizer:
             {
                 'status': 'success' | 'error',
                 'message': str,
-                'content': str,  # 文件内容
-                'file_type': str  # 文件类型（扩展名）
+                'content': str,  # 文件内容（文本文件）或 base64 编码（二进制文件）
+                'file_type': str,  # 文件类型（扩展名）
+                'is_binary': bool  # 是否为二进制文件
             }
         """
         try:
@@ -352,7 +353,8 @@ class FeedbackOptimizer:
                     'status': 'error',
                     'message': f'文件不存在: {file_path}',
                     'content': '',
-                    'file_type': ''
+                    'file_type': '',
+                    'is_binary': False
                 }
             
             if not full_path.is_file():
@@ -360,21 +362,32 @@ class FeedbackOptimizer:
                     'status': 'error',
                     'message': f'不是文件: {file_path}',
                     'content': '',
-                    'file_type': ''
+                    'file_type': '',
+                    'is_binary': False
                 }
                 
             # 获取文件类型
             file_type = full_path.suffix.lstrip('.')
             
-            # 读取文件内容
-            with open(full_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+            # 定义二进制文件类型列表
+            binary_types = {'docx', 'doc', 'pdf', 'xls', 'xlsx', 'zip', 'rar', 'png', 'jpg', 'jpeg', 'gif'}
+            is_binary = file_type.lower() in binary_types
+            
+            # 根据文件类型选择读取模式
+            if is_binary:
+                import base64
+                with open(full_path, 'rb') as f:
+                    content = base64.b64encode(f.read()).decode('utf-8')
+            else:
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
                 
             return {
                 'status': 'success',
                 'message': 'Successfully read file',
                 'content': content,
-                'file_type': file_type
+                'file_type': file_type,
+                'is_binary': is_binary
             }
             
         except Exception as e:
@@ -383,8 +396,9 @@ class FeedbackOptimizer:
                 'status': 'error',
                 'message': str(e),
                 'content': '',
-                'file_type': ''
-            } 
+                'file_type': '',
+                'is_binary': False
+            }
 
     async def feedback_to_context(self, alchemy_dir: str) -> Dict[str, Any]:
         """基于当前交付物和用户反馈生成下次炼金的上下文
