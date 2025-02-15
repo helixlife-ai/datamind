@@ -3,8 +3,6 @@ import sys
 import json
 import asyncio
 from pathlib import Path
-import time
-from typing import Dict
 import logging
 
 # 添加项目根目录到Python路径
@@ -13,16 +11,9 @@ project_root = script_dir.parent
 sys.path.insert(0, str(project_root))
 
 from datamind import (
-    SearchEngine,
-    SearchPlanner, 
-    SearchPlanExecutor, 
-    DataProcessor, 
-    IntentParser, 
-    setup_logging,
-    FileCache
+    setup_logging
 )
-from datamind.core.delivery_planner import DeliveryPlanner
-from datamind.core.delivery_generator import DeliveryGenerator
+
 from datamind.core.feedback_optimizer import FeedbackOptimizer
 from datamind.services.alchemy_service import DataMindAlchemy
 
@@ -42,7 +33,6 @@ async def run_test_optimization(
     # 示例反馈
     test_feedbacks = [
         "请在AI趋势分析中增加更多关于大模型发展的内容",
-        "建议删除过时的技术参考",
         "希望在报告中补充更多实际应用案例"
     ]
     
