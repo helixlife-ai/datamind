@@ -7,6 +7,7 @@ from .core.processor import DataProcessor, FileCache
 from .core.parser import IntentParser
 from .core.feedback_optimizer import FeedbackOptimizer
 from .utils.common import setup_logging
+from .services.alchemy_service import DataMindAlchemy
 
 __version__ = "0.1.0"
 
@@ -18,5 +19,6 @@ __all__ = [
     'IntentParser',
     'FeedbackOptimizer',
     'setup_logging',
-    'FileCache'
+    'FileCache',
+    'DataMindAlchemy'
 ] 
