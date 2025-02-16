@@ -15,15 +15,16 @@ class ChatMessage:
 class ReasoningEngine:
     """推理引擎管理类"""
     
-    def __init__(self, model_manager: ModelManager, model_name: Optional[str] = None):
+    def __init__(self, model_manager: ModelManager, model_name: Optional[str] = None, logger: Optional[logging.Logger] = None):
         """
         初始化推理引擎管理器
         
         Args:
             model_manager: ModelManager实例
             model_name: 可选，指定使用的推理模型名称
+            logger: 可选，日志记录器实例
         """
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self.model_manager = model_manager
         self.model_name = model_name
         self.messages: List[ChatMessage] = []

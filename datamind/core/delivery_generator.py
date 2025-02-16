@@ -12,13 +12,14 @@ from io import StringIO
 class DeliveryGenerator:
     """交付文件生成器"""
     
-    def __init__(self, reasoning_engine: Optional[ReasoningEngine] = None):
+    def __init__(self, reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化交付文件生成器
         
         Args:
             reasoning_engine: 推理引擎实例，用于生成内容
+            logger: 可选，日志记录器实例
         """
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self.reasoning_engine = reasoning_engine
         
         if not self.reasoning_engine:

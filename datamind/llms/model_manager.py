@@ -28,8 +28,13 @@ class ModelConfig:
 class ModelManager:
     """模型管理器，支持本地模型和API调用"""
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        """初始化模型管理器
+        
+        Args:
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
         self.embedding_models: Dict[str, SentenceTransformer] = {}
         self.llm_clients: Dict[str, AsyncOpenAI] = {}
         self.model_configs: Dict[str, ModelConfig] = {}

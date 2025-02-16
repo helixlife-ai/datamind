@@ -31,27 +31,34 @@ logger = logging.getLogger(__name__)
 class SearchPlanExecutor:
     """搜索计划执行器"""
     
-    def __init__(self, search_engine, work_dir="output"):
+    def __init__(self, search_engine, work_dir="output", logger: Optional[logging.Logger] = None):
+        """初始化搜索计划执行器
+        
+        Args:
+            search_engine: 搜索引擎实例
+            work_dir: 工作目录
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
         self.engine = search_engine
-        self.logger = logging.getLogger(__name__)
         self.work_dir = Path(work_dir)
         self.nlp_processor = None  # 用于文本分析，后续初始化
         self.knowledge_graph = None  # 用于关系分析，后续初始化
         self.supported_formats = ['csv', 'json', 'excel', 'html', 'md']
         
-        # 初始化分析器
-        self.analyzer = ResultAnalyzer()
+        # 初始化分析器，传递logger
+        self.analyzer = ResultAnalyzer(logger=self.logger)
         
-        # 初始化保存器工厂
-        self.saver_factory = SaverFactory()
+        # 初始化保存器工厂，传递logger
+        self.saver_factory = SaverFactory(logger=self.logger)
         
-        # 初始化格式化器字典
+        # 初始化格式化器字典，传递logger
         self.formatters = {
-            'html': HTMLFormatter(),
-            'md': MarkdownFormatter(),
-            'json': JSONFormatter(),
-            'excel': ExcelFormatter(),
-            'csv': SearchResultFormatter()
+            'html': HTMLFormatter(logger=self.logger),
+            'md': MarkdownFormatter(logger=self.logger),
+            'json': JSONFormatter(logger=self.logger),
+            'excel': ExcelFormatter(logger=self.logger),
+            'csv': SearchResultFormatter(logger=self.logger)
         }
         
         # 使用工厂创建保存器

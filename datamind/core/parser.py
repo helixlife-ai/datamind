@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 from openai import AsyncOpenAI
 import json
 import logging
@@ -22,15 +22,16 @@ from ..llms.model_manager import ModelManager, ModelConfig
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""
     
-    def __init__(self, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE):
+    def __init__(self, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
         """初始化解析器
         
         Args:
             api_key: API密钥，默认使用配置中的DEFAULT_LLM_API_KEY
             base_url: API基础URL，默认使用配置中的DEFAULT_LLM_API_BASE
+            logger: 可选，日志记录器实例
         """
-        self.logger = logging.getLogger(__name__)
-        self.model_manager = ModelManager()
+        self.logger = logger or logging.getLogger(__name__)
+        self.model_manager = ModelManager(logger=self.logger)
         
         # 注册LLM模型配置
         self.model_manager.register_model(ModelConfig(

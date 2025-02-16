@@ -22,8 +22,15 @@ from ..core.search import SearchEngine
 class FileCache:
     """文件缓存管理器"""
     
-    def __init__(self, cache_file: str = None, max_age_days: int = 30):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, cache_file: str = None, max_age_days: int = 30, logger: Optional[logging.Logger] = None):
+        """初始化文件缓存管理器
+        
+        Args:
+            cache_file: 缓存文件路径
+            max_age_days: 缓存最大保留天数
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
         self.cache_file = cache_file or Path(DEFAULT_DB_PATH).parent / 'file_cache.pkl'
         self.max_age = timedelta(days=max_age_days)
         self.cache: Dict[str, Dict] = {}
@@ -105,15 +112,21 @@ class FileCache:
 class DataProcessor:
     """数据预处理器"""
     
-    def __init__(self, db_path: str = DEFAULT_DB_PATH):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, db_path: str = DEFAULT_DB_PATH, logger: Optional[logging.Logger] = None):
+        """初始化数据预处理器
+        
+        Args:
+            db_path: 数据库路径
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
         self.db_path = db_path
         self.db = duckdb.connect(db_path)
         self.init_storage()
         self.parser = FileParser()
-        self.search_engine = SearchEngine(db_path)  # 创建SearchEngine实例
-        self.storage = StorageSystem(self.db, search_engine=self.search_engine)  # 传入SearchEngine实例
-        self.file_cache = FileCache()
+        self.search_engine = SearchEngine(db_path, logger=self.logger)  # 传递logger给SearchEngine
+        self.storage = StorageSystem(self.db, search_engine=self.search_engine, logger=self.logger)  # 传递logger给StorageSystem
+        self.file_cache = FileCache(logger=self.logger)  # 传递logger给FileCache
 
     def init_storage(self):
         """初始化存储表"""
@@ -676,8 +689,15 @@ class FileParser:
 class StorageSystem:
     """存储系统"""
     
-    def __init__(self, db=None, search_engine=None):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, db=None, search_engine=None, logger: Optional[logging.Logger] = None):
+        """初始化存储系统
+        
+        Args:
+            db: 数据库连接
+            search_engine: 搜索引擎实例
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
         self.db = db
         self.search_engine = search_engine
         self.init_storage()

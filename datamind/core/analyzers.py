@@ -1,11 +1,16 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 import logging
 
 class ResultAnalyzer:
     """结果分析器"""
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        """初始化结果分析器
+        
+        Args:
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
 
     def analyze(self, results: Dict) -> Dict:
         """分析搜索结果"""

@@ -5,8 +5,13 @@ from typing import Dict, Optional
 class SearchPlanner:
     """搜索计划生成器"""
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        """初始化搜索计划生成器
+        
+        Args:
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
     
     def build_search_plan(self, intent: Dict) -> Dict:
         """根据查询意图构建检索计划

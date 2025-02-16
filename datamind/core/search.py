@@ -16,17 +16,19 @@ from ..llms.model_manager import ModelManager, ModelConfig
 class SearchEngine:
     """统一搜索引擎，支持结构化查询和向量相似度搜索"""
     
-    def __init__(self, db_path: str = DEFAULT_DB_PATH):
+    def __init__(self, db_path: str = DEFAULT_DB_PATH, logger: Optional[logging.Logger] = None):
         """初始化搜索引擎
         
         Args:
             db_path: DuckDB数据库路径
+            logger: 可选，日志记录器实例
         """
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self.db_path = db_path
         self.db = duckdb.connect(db_path)
-        self.model_manager = ModelManager()
-        
+        self.model_manager = ModelManager(
+            logger=self.logger
+        )
         # 注册Embedding模型配置
         self.model_manager.register_model(ModelConfig(
             name=DEFAULT_EMBEDDING_MODEL,
@@ -39,7 +41,9 @@ class SearchEngine:
         self._vector_id_to_record_id = {}  # 添加向量ID到记录ID的映射
         self._record_id_to_vector_id = {}  # 添加记录ID到向量ID的映射
         self.load_vectors()
-        self.planner = SearchPlanner()
+        self.planner = SearchPlanner(
+            logger=self.logger
+        )
 
     def load_vectors(self):
         """加载并处理向量数据"""

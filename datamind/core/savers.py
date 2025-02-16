@@ -12,9 +12,16 @@ from .formatters import BaseFormatter, SearchResultFormatter, ExcelFormatter, JS
 
 class ResultSaver(ABC):
     """结果保存器基类"""
-    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output"):
+    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output", logger: Optional[logging.Logger] = None):
+        """初始化结果保存器
+        
+        Args:
+            formatter: 可选，格式化器实例
+            work_dir: 工作目录
+            logger: 可选，日志记录器实例
+        """
         self.work_dir = work_dir
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self.formatter = formatter
 
     @abstractmethod
@@ -33,6 +40,9 @@ class ResultSaver(ABC):
 
 class JSONSaver(ResultSaver):
     """JSON保存器"""
+    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output", logger: Optional[logging.Logger] = None):
+        super().__init__(formatter or JSONFormatter(), work_dir, logger)
+
     def save(self, results: Dict, filename: str) -> str:
         """保存为JSON格式"""
         filepath = self._get_filepath(filename, "json")
@@ -65,8 +75,8 @@ class JSONSaver(ResultSaver):
 
 class CSVSaver(ResultSaver):
     """CSV保存器"""
-    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output"):
-        super().__init__(formatter or SearchResultFormatter(), work_dir)
+    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output", logger: Optional[logging.Logger] = None):
+        super().__init__(formatter or SearchResultFormatter(), work_dir, logger)
         self.meta_columns = ['search_type', 'similarity', 'file_path', 
                            'file_name', 'file_type', 'processed_at']
     
@@ -97,8 +107,8 @@ class CSVSaver(ResultSaver):
 
 class ExcelSaver(ResultSaver):
     """Excel保存器"""
-    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output"):
-        super().__init__(formatter or ExcelFormatter(), work_dir)
+    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output", logger: Optional[logging.Logger] = None):
+        super().__init__(formatter or ExcelFormatter(), work_dir, logger)
     
     def save(self, results: Dict, filename: str) -> str:
         """保存为Excel格式"""
@@ -360,8 +370,8 @@ class SearchResultTemplate(BaseTemplate):
 
 class HTMLSaver(ResultSaver):
     """HTML保存器"""
-    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output"):
-        super().__init__(formatter or HTMLFormatter(), work_dir)
+    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output", logger: Optional[logging.Logger] = None):
+        super().__init__(formatter or HTMLFormatter(), work_dir, logger)
         self.template = SearchResultTemplate()
     
     def save(self, results: Dict, filename: str) -> str:
@@ -384,8 +394,8 @@ class HTMLSaver(ResultSaver):
 
 class MarkdownSaver(ResultSaver):
     """Markdown保存器"""
-    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output"):
-        super().__init__(formatter or MarkdownFormatter(), work_dir)
+    def __init__(self, formatter: Optional[BaseFormatter] = None, work_dir: str = "output", logger: Optional[logging.Logger] = None):
+        super().__init__(formatter or MarkdownFormatter(), work_dir, logger)
     
     def save(self, results: Dict, filename: str) -> str:
         """保存为Markdown格式"""
@@ -405,16 +415,21 @@ class MarkdownSaver(ResultSaver):
 
 class SaverFactory:
     """保存器工厂类"""
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        """初始化保存器工厂
         
-        # 初始化默认格式化器
+        Args:
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
+        
+        # 初始化默认格式化器，传递logger
         self._formatters = {
-            'csv': SearchResultFormatter(),
-            'json': JSONFormatter(),
-            'excel': ExcelFormatter(),
-            'html': HTMLFormatter(),
-            'md': MarkdownFormatter()
+            'csv': SearchResultFormatter(logger=self.logger),
+            'json': JSONFormatter(logger=self.logger),
+            'excel': ExcelFormatter(logger=self.logger),
+            'html': HTMLFormatter(logger=self.logger),
+            'md': MarkdownFormatter(logger=self.logger)
         }
         
         # 初始化保存器类
@@ -423,7 +438,7 @@ class SaverFactory:
             'json': JSONSaver,
             'excel': ExcelSaver,
             'html': HTMLSaver,
-            'md': MarkdownSaver  # 添加 Markdown 保存器
+            'md': MarkdownSaver
         }
     
     def register_formatter(self, format_type: str, formatter: BaseFormatter):
@@ -471,7 +486,7 @@ class SaverFactory:
         if not formatter:
             self.logger.warning(f"未找到格式化器: {format_type}，将使用保存器默认格式化器")
         
-        # 创建保存器实例
-        return saver_class(formatter=formatter, work_dir=work_dir)
+        # 创建保存器实例，传递logger
+        return saver_class(formatter=formatter, work_dir=work_dir, logger=self.logger)
 
 # 其他保存器类... 

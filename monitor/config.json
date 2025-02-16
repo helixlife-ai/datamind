@@ -2,8 +2,8 @@
     "watchDirs": [
         {
             "path": "../work_dir/output",
-            "name": "默认监控目录",
-            "description": "默认的文件监控目录"
+            "name": "Alchemy Output",
+            "description": "Monitor DataMind's knowledge alchemy process - transforming documents into insights"
         }
     ],
     "port": 3000,

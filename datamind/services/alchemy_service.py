@@ -32,11 +32,31 @@ class DataMindAlchemy:
             work_dir: 工作目录，默认为None时会使用默认路径
             model_manager: 模型管理器实例，用于推理引擎
         """
-        self.logger = logging.getLogger(__name__)
         self.work_dir = self._init_work_dir(work_dir)
         
+        # 初始化日志记录器
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        
+        # 创建控制台处理器
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(console_formatter)
+        self.logger.addHandler(console_handler)
+        
+        # 创建文件处理器
+        log_dir = self.work_dir / "logs"
+        log_dir.mkdir(exist_ok=True, parents=True)
+        log_file = log_dir / f"alchemy_{time.strftime('%Y%m%d_%H%M%S')}.log"
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(file_formatter)
+        self.logger.addHandler(file_handler)
+        
         # 初始化模型管理器
-        self.model_manager = model_manager or ModelManager()
+        self.model_manager = model_manager or ModelManager(logger=self.logger)
         
         # 注册默认推理模型配置
         if not model_manager:  # 只有在没有传入model_manager时才注册
@@ -66,27 +86,39 @@ class DataMindAlchemy:
         # 首先初始化推理引擎
         reasoning_engine = ReasoningEngine(
             model_manager=self.model_manager,
-            model_name=DEFAULT_REASONING_MODEL
+            model_name=DEFAULT_REASONING_MODEL,
+            logger=self.logger
         )
         
         # 其他组件初始化
-        search_engine = SearchEngine(db_path=db_path)
-        intent_parser = IntentParser()
-        planner = SearchPlanner()
+        search_engine = SearchEngine(
+            db_path=db_path,
+            logger=self.logger
+        )
+        intent_parser = IntentParser(
+            logger=self.logger
+        )
+        planner = SearchPlanner(
+            logger=self.logger
+        )
         executor = SearchPlanExecutor(
             search_engine=search_engine,
-            work_dir=str(self.run_dir / "search_results")
+            work_dir=str(self.run_dir / "search_results"),
+            logger=self.logger
         )
         delivery_planner = DeliveryPlanner(
             work_dir=str(self.run_dir / "delivery"),
-            reasoning_engine=reasoning_engine
+            reasoning_engine=reasoning_engine,
+            logger=self.logger
         )
         delivery_generator = DeliveryGenerator(
-            reasoning_engine=reasoning_engine
+            reasoning_engine=reasoning_engine,
+            logger=self.logger
         )
         feedback_optimizer = FeedbackOptimizer(
             work_dir=str(self.run_dir / "feedback"),
-            reasoning_engine=reasoning_engine  # 传入推理引擎实例
+            reasoning_engine=reasoning_engine,
+            logger=self.logger
         )
         
         return {
@@ -143,8 +175,14 @@ class DataMindAlchemy:
             cache_file = str(data_dir / "file_cache.pkl")
             
             # 处理数据
-            processor = DataProcessor(db_path=str(db_path))
-            processor.file_cache = FileCache(cache_file=cache_file)
+            processor = DataProcessor(
+                db_path=str(db_path),
+                logger=self.logger
+            )
+            processor.file_cache = FileCache(
+                cache_file=cache_file,
+                logger=self.logger
+            )
             
             if source_data.exists() and any(source_data.iterdir()):
                 await self._process_source_data(processor, source_data, db_path)

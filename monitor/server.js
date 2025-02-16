@@ -13,7 +13,7 @@ try {
 } catch (err) {
     console.error('Error reading config file:', err);
     config = {
-        watchDirs: [{ path: 'watchdir', name: '默认监控目录' }],
+        watchDirs: [{ path: 'watchdir', name: 'Default Watch Directory' }],
         port: 3000,
         excludePatterns: ['node_modules', '.git', '*.log']
     };
@@ -163,6 +163,72 @@ io.on('connection', (socket) => {
         console.error('Error building file system structure:', err);
     }
 
+    // 添加文件监听状态存储
+    const watchingFiles = new Set();
+    
+    // 添加开始监听文件的事件处理
+    socket.on('watchFile', (data) => {
+        const { dir, path: filePath } = data;
+        const watchDir = watchDirs.find(d => d.path === dir);
+        if (!watchDir) return;
+        
+        const fullPath = path.join(watchDir.fullPath, filePath);
+        const watchId = `${dir}:${filePath}`;
+        
+        if (watchingFiles.has(watchId)) return;
+        watchingFiles.add(watchId);
+        
+        let lastSize = 0;
+        try {
+            lastSize = fs.statSync(fullPath).size;
+        } catch (err) {
+            console.error('Error getting file size:', err);
+            return;
+        }
+        
+        // 设置文件监听间隔
+        const fileWatcher = setInterval(() => {
+            try {
+                const stats = fs.statSync(fullPath);
+                if (stats.size > lastSize) {
+                    // 只读取新增的内容
+                    const fd = fs.openSync(fullPath, 'r');
+                    const buffer = Buffer.alloc(stats.size - lastSize);
+                    fs.readSync(fd, buffer, 0, buffer.length, lastSize);
+                    fs.closeSync(fd);
+                    
+                    const newContent = buffer.toString('utf8');
+                    socket.emit('fileUpdate', {
+                        dir,
+                        path: filePath,
+                        content: newContent,
+                        append: true
+                    });
+                    
+                    lastSize = stats.size;
+                }
+            } catch (err) {
+                console.error('Error watching file:', err);
+                clearInterval(fileWatcher);
+                watchingFiles.delete(watchId);
+            }
+        }, 1000); // 每秒检查一次
+        
+        // 当连接断开时清理监听器
+        socket.on('disconnect', () => {
+            clearInterval(fileWatcher);
+            watchingFiles.delete(watchId);
+        });
+        
+        // 当客户端停止监听时清理
+        socket.on('stopWatchFile', (stopData) => {
+            if (stopData.dir === dir && stopData.path === filePath) {
+                clearInterval(fileWatcher);
+                watchingFiles.delete(watchId);
+            }
+        });
+    });
+
     socket.on('disconnect', () => {
         console.log('Client disconnected');
     });
@@ -173,7 +239,7 @@ watcher
     .on('addDir', (fullPath) => {
         const pathInfo = getRelativePath(fullPath);
         if (pathInfo) {
-            console.log(`Directory ${pathInfo.relativePath} has been added`);
+            console.log(`Directory added: ${pathInfo.relativePath}`);
             io.emit('fileChange', {
                 type: 'addDir',
                 dir: pathInfo.dirId,
@@ -185,7 +251,7 @@ watcher
     .on('unlinkDir', (fullPath) => {
         const pathInfo = getRelativePath(fullPath);
         if (pathInfo) {
-            console.log(`Directory ${pathInfo.relativePath} has been removed`);
+            console.log(`Directory removed: ${pathInfo.relativePath}`);
             io.emit('fileChange', {
                 type: 'removeDir',
                 dir: pathInfo.dirId,
@@ -197,7 +263,7 @@ watcher
     .on('add', (fullPath) => {
         const pathInfo = getRelativePath(fullPath);
         if (pathInfo) {
-            console.log(`File ${pathInfo.relativePath} has been added`);
+            console.log(`File added: ${pathInfo.relativePath}`);
             io.emit('fileChange', {
                 type: 'add',
                 dir: pathInfo.dirId,
@@ -209,7 +275,7 @@ watcher
     .on('change', (fullPath) => {
         const pathInfo = getRelativePath(fullPath);
         if (pathInfo) {
-            console.log(`File ${pathInfo.relativePath} has been changed`);
+            console.log(`File changed: ${pathInfo.relativePath}`);
             io.emit('fileChange', {
                 type: 'change',
                 dir: pathInfo.dirId,
@@ -221,7 +287,7 @@ watcher
     .on('unlink', (fullPath) => {
         const pathInfo = getRelativePath(fullPath);
         if (pathInfo) {
-            console.log(`File ${pathInfo.relativePath} has been removed`);
+            console.log(`File removed: ${pathInfo.relativePath}`);
             io.emit('fileChange', {
                 type: 'remove',
                 dir: pathInfo.dirId,

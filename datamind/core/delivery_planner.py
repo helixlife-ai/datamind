@@ -24,14 +24,15 @@ class DateTimeEncoder(json.JSONEncoder):
 class DeliveryPlanner:
     """交付计划生成器"""
     
-    def __init__(self, work_dir: str = "output", reasoning_engine: Optional[ReasoningEngine] = None):
+    def __init__(self, work_dir: str = "output", reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化交付计划生成器
         
         Args:
             work_dir: 工作目录
             reasoning_engine: 推理引擎实例，用于生成交付计划
+            logger: 可选，日志记录器实例
         """
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self.work_dir = work_dir
         self.reasoning_engine = reasoning_engine
         

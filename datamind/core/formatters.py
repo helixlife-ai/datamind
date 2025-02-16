@@ -1,7 +1,7 @@
 import json
 import pandas as pd
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from html import escape
 import logging
 import numpy as np
@@ -10,8 +10,14 @@ from abc import ABC, abstractmethod
 
 class BaseFormatter(ABC):
     """格式化器基类"""
-    def __init__(self, work_dir: str = None):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, work_dir: str = None, logger: Optional[logging.Logger] = None):
+        """初始化格式化器
+        
+        Args:
+            work_dir: 工作目录
+            logger: 可选，日志记录器实例
+        """
+        self.logger = logger or logging.getLogger(__name__)
         self.work_dir = work_dir
 
     @abstractmethod
