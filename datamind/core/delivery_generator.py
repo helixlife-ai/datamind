@@ -5,28 +5,24 @@ from typing import Dict, List, Optional
 import pandas as pd
 from datetime import datetime
 import re
-from ..config.settings import (
-    DEFAULT_REASONING_MODEL,
-    DEFAULT_LLM_API_KEY,
-    DEFAULT_LLM_API_BASE
-)
-from ..llms.model_manager import ModelManager, ModelConfig
+from ..core.reasoning import ReasoningEngine
+import asyncio
 from io import StringIO
 
 class DeliveryGenerator:
     """交付文件生成器"""
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-        self.model_manager = ModelManager()
+    def __init__(self, reasoning_engine: Optional[ReasoningEngine] = None):
+        """初始化交付文件生成器
         
-        # 注册推理模型配置
-        self.model_manager.register_model(ModelConfig(
-            name=DEFAULT_REASONING_MODEL,
-            model_type="api",
-            api_key=DEFAULT_LLM_API_KEY,
-            api_base=DEFAULT_LLM_API_BASE
-        ))
+        Args:
+            reasoning_engine: 推理引擎实例，用于生成内容
+        """
+        self.logger = logging.getLogger(__name__)
+        self.reasoning_engine = reasoning_engine
+        
+        if not self.reasoning_engine:
+            self.logger.warning("未提供推理引擎实例，部分功能可能受限")
     
     def _load_context(self, plan_dir: Path) -> Dict:
         """加载上下文信息"""
@@ -53,137 +49,93 @@ class DeliveryGenerator:
                                       file_config: Dict, 
                                       context: Dict) -> str:
         """生成Markdown格式的内容"""
-        messages = [
-            {
-                "role": "system",
-                "content": """
-                <rule>
-                1. 文章内容要符合用户的需求
-                2. 文章内容要基于检索结果里的内容
-                3. 说人话
-                </rule>
-                """
-            },
-            {
-                "role": "user",
-                "content": f"""
-                请根据以下信息写一篇文章：
-                
-                主题：{file_config['topic']}
-                用途：{file_config['description']}
-                
-                结构：
-                {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
-                
-                上下文：
-                1. 检索结果统计：
-                - 结构化数据：{len(context['search_results'].get('structured_results', []))}条
-                - 向量数据：{len(context['search_results'].get('vector_results', []))}条
-                
-                2. 数据：
-                {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
-                
-                """
-            }
-        ]
+        if not self.reasoning_engine:
+            raise ValueError("未配置推理引擎，无法生成内容")
+            
+        # 添加用户消息
+        self.reasoning_engine.add_message("user", f"""
+            请根据以下信息写一篇文章：
+            
+            主题：{file_config['topic']}
+            用途：{file_config['description']}
+            
+            结构：
+            {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
+            
+            上下文：
+            1. 检索结果统计：
+            - 结构化数据：{len(context['search_results'].get('structured_results', []))}条
+            - 向量数据：{len(context['search_results'].get('vector_results', []))}条
+            
+            2. 数据：
+            {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
+        """)
         
-        response = await self.model_manager.generate_reasoned_response(messages=messages)
-        if response and response.choices:
-            return response.choices[0].message.content
-        return ""
+        response = await self.reasoning_engine.get_response(
+            temperature=0.7,
+            metadata={'stage': 'markdown_generation'}
+        )
+        return response if response else ""
     
     async def _generate_html_content(self,
                                    file_config: Dict,
                                    context: Dict) -> str:
         """生成HTML格式的内容"""
-        messages = [
-            {
-                "role": "system",
-                "content": """根据提供的上下文信息，
-                生成一份美观、交互性好的HTML。要求：
-                1. 使用现代HTML5语法
-                2. 包含基础的CSS样式
-                3. 适当添加图表和交互元素
-                4. 确保响应式布局
-                5. 保持专业性和可用性
-                
-                请使用markdown代码块包裹HTML代码，如：
-                ```html
-                <!DOCTYPE html>
-                <html>
-                ...
-                </html>
-                ```
-                """
-            },
-            {
-                "role": "user",
-                "content": f"""
-                请根据以下信息生成HTML内容：
-                
-                页面主题：{file_config['topic']}
-                页面用途：{file_config['description']}
-                
-                内容结构：
-                {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
-                
-                上下文：
-                1. 检索结果统计：
-                - 结构化数据：{len(context['search_results'].get('structured_results', []))}条
-                - 向量数据：{len(context['search_results'].get('vector_results', []))}条
-                
-                2. 数据：
-                {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
-                
-                请生成完整的HTML文档内容，包含必要的CSS样式。
-                注意：请将HTML代码放在markdown代码块中。
-                """
-            }
-        ]
-        
-        response = await self.model_manager.generate_reasoned_response(messages=messages)
-        if response and response.choices:
-            content = response.choices[0].message.content
+        if not self.reasoning_engine:
+            raise ValueError("未配置推理引擎，无法生成内容")
             
+        # 添加用户消息
+        self.reasoning_engine.add_message("user", f"""
+            请根据以下信息生成HTML内容：
+            
+            页面主题：{file_config['topic']}
+            页面用途：{file_config['description']}
+            
+            内容结构：
+            {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
+            
+            上下文：
+            1. 检索结果统计：
+            - 结构化数据：{len(context['search_results'].get('structured_results', []))}条
+            - 向量数据：{len(context['search_results'].get('vector_results', []))}条
+            
+            2. 数据：
+            {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
+            
+            请生成完整的HTML文档内容，包含必要的CSS样式。
+            注意：请将HTML代码放在markdown代码块中。
+        """)
+        
+        response = await self.reasoning_engine.get_response(
+            temperature=0.7,
+            metadata={'stage': 'html_generation'}
+        )
+        
+        if response:
             # 使用正则表达式提取HTML代码
-            import re
-            # 匹配```html和```之间的内容
             html_pattern = r'```html\n([\s\S]*?)\n```'
-            html_match = re.search(html_pattern, content)
+            html_match = re.search(html_pattern, response)
             
             if html_match:
                 html_content = html_match.group(1).strip()
-                # 验证HTML内容的基本结构
                 if ('<!DOCTYPE html>' in html_content and 
                     '<html' in html_content and 
                     '</html>' in html_content):
                     return html_content
-                else:
-                    self.logger.warning("提取的HTML内容结构不完整")
-                    return self._generate_error_html(
-                        "生成的HTML内容结构不完整",
-                        file_config['topic']
-                    )
-            else:
-                # 尝试直接查找HTML标记
-                if ('<!DOCTYPE html>' in content and 
-                    '<html' in content and 
-                    '</html>' in content):
-                    # 提取完整的HTML文档
-                    start_idx = content.find('<!DOCTYPE html>')
-                    end_idx = content.find('</html>') + 7
-                    return content[start_idx:end_idx]
-                else:
-                    self.logger.warning("未找到有效的HTML内容")
-                    return self._generate_error_html(
-                        "未能生成有效的HTML内容",
-                        file_config['topic']
-                    )
+                
+            # 尝试直接查找HTML标记
+            if ('<!DOCTYPE html>' in response and 
+                '<html' in response and 
+                '</html>' in response):
+                start_idx = response.find('<!DOCTYPE html>')
+                end_idx = response.find('</html>') + 7
+                return response[start_idx:end_idx]
+                
         return self._generate_error_html(
             "生成HTML内容失败",
             file_config['topic']
         )
-
+    
     def _generate_error_html(self, error_message: str, title: str) -> str:
         """生成错误提示页面"""
         return f"""<!DOCTYPE html>
@@ -226,55 +178,45 @@ class DeliveryGenerator:
     async def _generate_csv_content(self,
                                   file_config: Dict,
                                   context: Dict) -> pd.DataFrame:
-        """生成CSV格式的内容（通过模型生成）"""
-        try:
-            messages = [
-                {
-                    "role": "system",
-                    "content": """请根据上下文生成结构化CSV数据，要求：
-1. 生成真实有效的数据，符合行业标准
-2. 包含至少5列有意义的中文列名
-3. 数据量在20-50行之间
-4. 确保数据类型合理（数值、日期、分类等）
-5. 包含必要的空值模拟真实数据
-6. 输出时使用CSV格式并用```csv代码块包裹
-"""
-                },
-                {
-                    "role": "user",
-                    "content": f"""
-生成CSV数据要求：
-主题：{file_config['topic']}
-用途：{file_config['description']}
-
-数据结构要求：
-{json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
-
-上下文数据：
-{json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
-"""
-                }
-            ]
+        """生成CSV格式的内容"""
+        if not self.reasoning_engine:
+            raise ValueError("未配置推理引擎，无法生成内容")
             
-            response = await self.model_manager.generate_reasoned_response(messages=messages)
-            if response and response.choices:
-                content = response.choices[0].message.content
+        try:
+            # 添加用户消息
+            self.reasoning_engine.add_message("user", f"""
+                生成CSV数据要求：
+                主题：{file_config['topic']}
+                用途：{file_config['description']}
+
+                数据结构要求：
+                {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
+
+                上下文数据：
+                {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
                 
+                请生成CSV格式的数据，并用```csv代码块包裹。
+            """)
+            
+            response = await self.reasoning_engine.get_response(
+                temperature=0.7,
+                metadata={'stage': 'csv_generation'}
+            )
+            
+            if response:
                 # 提取CSV内容
                 csv_pattern = r'```csv\n([\s\S]*?)\n```'
-                csv_match = re.search(csv_pattern, content)
+                csv_match = re.search(csv_pattern, response)
                 if csv_match:
                     csv_data = csv_match.group(1).strip()
                     return pd.read_csv(StringIO(csv_data))
                 
                 # 直接尝试解析为CSV
-                if any([',' in line for line in content.split('\n')[:3]]):
-                    return pd.read_csv(StringIO(content))
-                
-                self.logger.warning("未找到有效的CSV内容")
-                return pd.DataFrame()
-
+                if any([',' in line for line in response.split('\n')[:3]]):
+                    return pd.read_csv(StringIO(response))
+            
             return pd.DataFrame()
+            
         except Exception as e:
             self.logger.error(f"生成CSV内容时发生错误: {str(e)}")
             return pd.DataFrame()

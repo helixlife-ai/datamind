@@ -3,12 +3,7 @@ import logging
 from typing import Dict, Optional
 from pathlib import Path
 from datetime import datetime
-from ..config.settings import (
-    DEFAULT_REASONING_MODEL,
-    DEFAULT_LLM_API_KEY,
-    DEFAULT_LLM_API_BASE
-)
-from ..llms.model_manager import ModelManager, ModelConfig
+from ..core.reasoning import ReasoningEngine
 import re
 import numpy as np
 import asyncio
@@ -29,18 +24,19 @@ class DateTimeEncoder(json.JSONEncoder):
 class DeliveryPlanner:
     """交付计划生成器"""
     
-    def __init__(self, work_dir: str = "output"):
+    def __init__(self, work_dir: str = "output", reasoning_engine: Optional[ReasoningEngine] = None):
+        """初始化交付计划生成器
+        
+        Args:
+            work_dir: 工作目录
+            reasoning_engine: 推理引擎实例，用于生成交付计划
+        """
         self.logger = logging.getLogger(__name__)
         self.work_dir = work_dir
-        self.model_manager = ModelManager()
+        self.reasoning_engine = reasoning_engine
         
-        # 注册推理模型配置
-        self.model_manager.register_model(ModelConfig(
-            name=DEFAULT_REASONING_MODEL,
-            model_type="api",
-            api_key=DEFAULT_LLM_API_KEY,
-            api_base=DEFAULT_LLM_API_BASE
-        ))
+        if not self.reasoning_engine:
+            self.logger.warning("未提供推理引擎实例，部分功能可能受限")
         
     async def generate_plan(self, 
                           search_plan: Dict,
@@ -55,72 +51,70 @@ class DeliveryPlanner:
             Optional[Dict]: 交付计划
         """
         try:
-            # 构建提示信息
-            messages = [
-                {
-                    "role": "system",
-                    "content": """
-                    <rule>
-                    1. 交付计划是指你准备生成的交付文件的结构和内容
-                    2. 交付文件的结构和内容要符合用户的需求
-                    3. 交付文件的结构和内容要基于检索结果里的内容
-                    4. 说人话
-                    </rule>
-                    """
-                },
-                {
-                    "role": "user",
-                    "content": f"""
-                    原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}
-                    
-                    检索结果统计：
-                    - 结构化数据：{search_results['stats']['structured_count']}条
-                    - 向量数据：{search_results['stats']['vector_count']}条
-                    - 总计：{search_results['stats']['total']}条
-                    
-                    数据：
-                    1. 结构化数据前3条：
-                    {json.dumps([x.get('data', '') for x in search_results['structured'][:3]], ensure_ascii=False, indent=2)}
-                    
-                    2. 向量数据前3条：
-                    {json.dumps([x.get('data', '') for x in search_results['vector'][:3]], ensure_ascii=False, indent=2)}                    
-                    """+
-                    """
-                    根据用户的检索需求和检索结果，生成一份详细的交付计划。                  
-                    请以JSON格式输出，包含以下字段：
-                    {
-                        "delivery_files": {
-                            "<file_purpose>": {    // 文件用途
-                                "file_name": "",   // 文件名，必须以.html/.md/.csv结尾
-                                "topic": "",       // 文件内容主题
-                                "description": "", // 文件用途说明
-                                "content_structure": {
-                                    "sections": [],    // 章节或数据组织方式
-                                    "focus_points": [] // 重点关注内容
-                                }
-                            }
+            if not self.reasoning_engine:
+                raise ValueError("未配置推理引擎，无法生成交付计划")
+                            
+            # 构建JSON模板
+            json_template = {
+                "delivery_files": {
+                    "<file_purpose>": {    # 文件用途
+                        "file_name": "",   # 文件名，必须以.html/.md/.csv结尾
+                        "topic": "",       # 文件内容主题
+                        "description": "", # 文件用途说明
+                        "content_structure": {
+                            "sections": [],    # 章节或数据组织方式
+                            "focus_points": [] # 重点关注内容
                         }
                     }
-                    
-                    注意事项：
-                    1. 所有JSON字段必须使用标准的键值对格式
-                    2. 不要在键名中使用冒号或其他特殊字符
-                    3. 所有字符串值使用双引号
-                    4. 数组值使用方括号
-                    5. 对象值使用花括号
-                    6. 确保JSON格式的严格正确性
-                    
-                    在生成delivery_files时，请注意：
-                    1. 根据要交付的内容特点选择合适的文件格式：
-                       - .md: 适用于报告、分析说明等富文本内容
-                       - .html: 适用于交互式展示、可视化等
-                       - .csv: 适用于结构化数据、统计结果等
-                    2. 文件命名要清晰表达用途
-                    3. 内容结构要符合内容特点和用户需求
-                    4. 文件内容要符合用户需求，不要包含无关内容
-                    """
                 }
-            ]
+            }
+                
+            # 添加用户消息
+            message = f"""
+                <rule>
+                1. 交付计划是指你准备生成的交付文件的结构和内容
+                2. 交付文件的结构和内容要符合用户的需求
+                3. 交付文件的结构和内容要基于检索结果里的内容
+                4. 说人话
+                </rule>
+
+                原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}
+                
+                检索结果统计：
+                - 结构化数据：{search_results['stats']['structured_count']}条
+                - 向量数据：{search_results['stats']['vector_count']}条
+                - 总计：{search_results['stats']['total']}条
+                
+                数据：
+                1. 结构化数据前3条：
+                {json.dumps([x.get('data', '') for x in search_results['structured'][:3]], ensure_ascii=False, indent=2)}
+                
+                2. 向量数据前3条：
+                {json.dumps([x.get('data', '') for x in search_results['vector'][:3]], ensure_ascii=False, indent=2)}                    
+                
+                根据用户的检索需求和检索结果，生成一份详细的交付计划。                  
+                请以JSON格式输出，包含以下字段：
+                {json.dumps(json_template, ensure_ascii=False, indent=2)}
+                
+                注意事项：
+                1. 所有JSON字段必须使用标准的键值对格式
+                2. 不要在键名中使用冒号或其他特殊字符
+                3. 所有字符串值使用双引号
+                4. 数组值使用方括号
+                5. 对象值使用花括号
+                6. 确保JSON格式的严格正确性
+                
+                在生成delivery_files时，请注意：
+                1. 根据要交付的内容特点选择合适的文件格式：
+                   - .md: 适用于报告、分析说明等富文本内容
+                   - .html: 适用于交互式展示、可视化等
+                   - .csv: 适用于结构化数据、统计结果等
+                2. 文件命名要清晰表达用途
+                3. 内容结构要符合内容特点和用户需求
+                4. 文件内容要符合用户需求，不要包含无关内容
+            """
+            
+            self.reasoning_engine.add_message("user", message)
             
             # 生成输出目录
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -135,27 +129,34 @@ class DeliveryPlanner:
             with prompts_file.open('w', encoding='utf-8') as f:
                 f.write("# 推理提示词配置\n\n")
                 f.write(f"生成时间：{timestamp}\n")
-                f.write(f"模型：{DEFAULT_REASONING_MODEL}\n")
+                f.write(f"模型：{self.reasoning_engine.model_name}\n")
                 f.write(f"温度：0.7\n")
-                
-                f.write("## System Message\n\n")
-                f.write("```\n")
-                f.write(messages[0]['content'].strip())
-                f.write("\n```\n\n")
-                
+                                
                 f.write("## User Message\n\n")
                 f.write("```\n")
-                f.write(messages[1]['content'].strip())
+                # 获取最后一条消息的内容
+                last_message = self.reasoning_engine.messages[-1]
+                f.write(last_message.content)  # ChatMessage对象直接访问content属性
                 f.write("\n```\n\n")
                 
                 f.write("## 完整提示词(JSON格式)\n\n")
                 f.write("```json\n")
+                # 将消息历史转换为可序列化的格式
+                serializable_messages = []
+                for msg in self.reasoning_engine.messages:
+                    serializable_messages.append({
+                        'role': msg.role,
+                        'content': msg.content,
+                        'timestamp': msg.timestamp.isoformat(),
+                        'metadata': msg.metadata
+                    })
+                
                 f.write(json.dumps({
                     "timestamp": timestamp,
-                    "messages": messages,
-                    "model": DEFAULT_REASONING_MODEL,
+                    "messages": serializable_messages,
+                    "model": self.reasoning_engine.model_name,
                     "temperature": 0.7,
-                }, ensure_ascii=False, indent=2))
+                }, ensure_ascii=False, indent=2, cls=DateTimeEncoder))
                 f.write("\n```\n")
             
             max_retries = 3
@@ -164,19 +165,18 @@ class DeliveryPlanner:
             
             for attempt in range(max_retries):
                 try:
-                    # 调用推理模型
-                    response = await self.model_manager.generate_reasoned_response(
-                        messages=messages
+                    # 使用推理引擎生成响应
+                    response = await self.reasoning_engine.get_response(
+                        temperature=0.7,
+                        metadata={'stage': 'delivery_planning'}
                     )
                     
                     if not response:
-                        self.logger.error(f"模型未返回响应（尝试 {attempt+1}/{max_retries}）")
+                        self.logger.error(f"推理引擎未返回响应（尝试 {attempt+1}/{max_retries}）")
                         continue
                     
-                    # 解析响应内容
-                    reasoning_content = response.choices[0].message.reasoning_content
-                    content = response.choices[0].message.content
-                    self.logger.info(f"推理内容: {reasoning_content}")
+                    # 直接使用响应内容
+                    content = response  # response 已经是字符串
                     self.logger.info(f"响应内容: {content}")
                     
                     try:
@@ -212,29 +212,25 @@ class DeliveryPlanner:
                         if not isinstance(delivery_plan, dict):
                             raise ValueError("解析后的内容不是有效的字典格式")
                             
+                        if delivery_plan:
+                            break
+                            
                     except json.JSONDecodeError as e:
                         self.logger.error(f"解析响应内容失败: {str(e)}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
                         return None
-                    except ValueError as e:
-                        self.logger.error(str(e))
-                        return None
-                    except Exception as e:
-                        self.logger.error(f"处理响应内容时发生未预期的错误: {str(e)}")
-                        return None
-                    
-                    if delivery_plan:
-                        break
-                    
-                except (json.JSONDecodeError, ConnectionError, TimeoutError) as e:
-                    self.logger.warning(f"尝试 {attempt+1}/{max_retries} 失败: {str(e)}")
+                        
+                except Exception as e:
+                    self.logger.error(f"处理响应时发生错误: {str(e)}")
                     if attempt < max_retries - 1:
                         await asyncio.sleep(retry_delay)
-                        retry_delay *= 2  # 指数退避
+                        retry_delay *= 2
                         continue
-                    else:
-                        self.logger.error("达到最大重试次数")
-                        return None
-                    
+                    raise
+            
             if not delivery_plan:
                 self.logger.error("所有重试尝试均失败")
                 return None
@@ -262,12 +258,6 @@ class DeliveryPlanner:
                         f.write(f"\n{i}. {content[:200]}...\n")
                 
                 f.write("\n## 推理过程\n")
-                if reasoning_content:
-                    f.write(reasoning_content)
-                else:
-                    f.write("(推理过程未提供)\n")
-                
-                f.write("\n## 模型响应\n")
                 f.write("```json\n")
                 f.write(json.dumps(delivery_plan, ensure_ascii=False, indent=2))
                 f.write("\n```\n")

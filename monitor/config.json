@@ -1,0 +1,15 @@
+{
+    "watchDirs": [
+        {
+            "path": "../work_dir/output",
+            "name": "默认监控目录",
+            "description": "默认的文件监控目录"
+        }
+    ],
+    "port": 3000,
+    "excludePatterns": [
+        "node_modules",
+        ".git",
+        "*.log"
+    ]
+} 

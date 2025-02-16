@@ -7,7 +7,7 @@ from pathlib import Path
 import logging
 from datetime import datetime
 
-from ..llms.model_manager import ModelManager, ModelConfig
+from ..core.reasoning import ReasoningEngine
 from ..config.settings import (
     DEFAULT_REASONING_MODEL,
     DEFAULT_LLM_API_KEY,
@@ -19,19 +19,20 @@ logger = logging.getLogger(__name__)
 class FeedbackOptimizer:
     """反馈优化工作流管理器"""
     
-    def __init__(self, work_dir: str):
+    def __init__(self, work_dir: str, reasoning_engine: Optional[ReasoningEngine] = None):
+        """初始化反馈优化工作流管理器
+        
+        Args:
+            work_dir: 工作目录
+            reasoning_engine: 推理引擎实例，用于生成优化查询
+        """
         self.work_dir = Path(work_dir)
-        self.model_manager = ModelManager()
+        self.reasoning_engine = reasoning_engine
         self.feedback_stack = []  # 改为栈结构记录待处理反馈
         
-        # 注册推理模型配置
-        self.model_manager.register_model(ModelConfig(
-            name=DEFAULT_REASONING_MODEL,
-            model_type="api",
-            api_key=DEFAULT_LLM_API_KEY,
-            api_base=DEFAULT_LLM_API_BASE
-        ))
-        
+        if not self.reasoning_engine:
+            self.logger.warning("未提供推理引擎实例，部分功能可能受限")
+                
     async def push_feedback(self, feedback: str, alchemy_dir: str):
         """压入新反馈到处理队列"""
         self.feedback_stack.append({
@@ -57,22 +58,11 @@ class FeedbackOptimizer:
         return result
 
     async def feedback_to_query(self, alchemy_dir: str, feedback: str) -> Dict[str, Any]:
-        """将用户反馈转换为新的查询
-        
-        Args:
-            alchemy_dir: 炼丹工作流运行目录
-            feedback: 用户反馈内容（已废弃，现从feedback.txt读取）
-            
-        Returns:
-            Dict[str, Any]: 包含新查询的字典
-            {
-                'status': 'success' | 'error',
-                'message': str,
-                'query': str  # 新的查询文本
-            }
-        """
+        """将用户反馈转换为新的查询"""
         try:
-            # 保持feedback.txt在run_xxxx目录内（当前实现已正确）
+            if not self.reasoning_engine:
+                raise ValueError("未配置推理引擎，无法处理反馈")
+                
             feedback_file = Path(alchemy_dir) / "feedback.txt"
             
             if not feedback_file.exists():
@@ -93,37 +83,26 @@ class FeedbackOptimizer:
             # 加载当前迭代上下文
             context = self._load_current_context(alchemy_dir)
             
-            # 构建包含历史记录的提示语
-            messages = [
-                {
-                    "role": "system",
-                    "content": f"""你是一个专业的查询优化专家。请基于以下内容生成新的查询。
-                    """
-                },
-                {
-                    "role": "user",
-                    "content": f"""
-                    原始查询：{context['original_query']}
-                    
-                    用户反馈：{feedback_content}
-                    
-                    请生成一个新的查询文本，要求：
-                    1. 融合原始查询的目标和用户的反馈建议
-                    2. 使用清晰的自然语言表达
-                    3. 保持查询的可执行性
-                    """
-                }
-            ]
+            # 添加用户消息
+            self.reasoning_engine.add_message("user", f"""
+                原始查询：{context['original_query']}
+                
+                用户反馈：{feedback_content}
+                
+                请生成一个新的查询文本，要求：
+                1. 融合原始查询的目标和用户的反馈建议
+                2. 使用清晰的自然语言表达
+                3. 保持查询的可执行性
+            """)
             
-            # 调用推理模型
-            response = await self.model_manager.generate_reasoned_response(
-                messages=messages,
+            # 获取响应
+            response = await self.reasoning_engine.get_response(
                 temperature=0.7,
-                max_tokens=500
+                metadata={'stage': 'feedback_optimization'}
             )
             
-            if response and response.choices:
-                new_query = response.choices[0].message.content.strip()
+            if response:
+                new_query = response.strip()
                 
                 # 记录优化过程
                 log_dir = Path(alchemy_dir) / "feedback_logs"
@@ -135,9 +114,9 @@ class FeedbackOptimizer:
                 log_data = {
                     "timestamp": timestamp,
                     "original_query": context['original_query'],
-                    "user_feedback": feedback_content,  # 使用从文件读取的反馈
+                    "user_feedback": feedback_content,
                     "new_query": new_query,
-                    "prompt": messages
+                    "chat_history": self.reasoning_engine.get_chat_history()
                 }
                 
                 with open(log_file, 'w', encoding='utf-8') as f:
@@ -155,11 +134,11 @@ class FeedbackOptimizer:
                 }
 
         except Exception as e:
-            logger.error(f"处理反馈失败: {str(e)}", exc_info=True)
+            self.logger.error(f"处理反馈失败: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)
-            } 
+            }
 
     def _load_current_context(self, alchemy_dir: str) -> dict:
         """加载当前迭代上下文
@@ -205,7 +184,7 @@ class FeedbackOptimizer:
             }
             
         except Exception as e:
-            logger.error(f"加载上下文失败: {str(e)}", exc_info=True)
+            self.logger.error(f"加载上下文失败: {str(e)}", exc_info=True)
             return {
                 'iteration': 1,  # 出错时默认为第1次迭代
                 'original_query': self._get_original_query(Path(alchemy_dir)),
@@ -226,7 +205,7 @@ class FeedbackOptimizer:
                 return delivery_plan.get('metadata', {}).get('original_query', '')
             
         except Exception as e:
-            logger.error(f"获取原始查询失败: {str(e)}")
+            self.logger.error(f"获取原始查询失败: {str(e)}")
             return ""
 
     def _get_feedback_history(self, parent_dir: Path) -> List[Dict]:
@@ -268,7 +247,7 @@ class FeedbackOptimizer:
                             })
                             
                     except Exception as e:
-                        logger.warning(f"加载上下文文件失败 {context_file}: {str(e)}")
+                        self.logger.warning(f"加载上下文文件失败 {context_file}: {str(e)}")
                         continue
                         
             # 按迭代次数排序
@@ -276,7 +255,7 @@ class FeedbackOptimizer:
             return feedback_history
             
         except Exception as e:
-            logger.error(f"获取反馈历史失败: {str(e)}")
+            self.logger.error(f"获取反馈历史失败: {str(e)}")
             return []
 
     def get_delivery_files(self, alchemy_dir: str) -> Dict[str, list]:
@@ -295,7 +274,7 @@ class FeedbackOptimizer:
         try:
             delivery_dir = Path(alchemy_dir) / "delivery"
             if not delivery_dir.exists():
-                logger.error(f"交付目录不存在: {delivery_dir}")
+                self.logger.error(f"交付目录不存在: {delivery_dir}")
                 return {'files': [], 'dirs': []}
             
             files = []
@@ -324,7 +303,7 @@ class FeedbackOptimizer:
             }
             
         except Exception as e:
-            logger.error(f"获取交付文件列表失败: {str(e)}", exc_info=True)
+            self.logger.error(f"获取交付文件列表失败: {str(e)}", exc_info=True)
             return {'files': [], 'dirs': []}
 
     def read_delivery_file(self, alchemy_dir: str, file_path: str) -> Dict[str, Any]:
@@ -391,7 +370,7 @@ class FeedbackOptimizer:
             }
             
         except Exception as e:
-            logger.error(f"读取文件失败 {file_path}: {str(e)}", exc_info=True)
+            self.logger.error(f"读取文件失败 {file_path}: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e),
@@ -493,7 +472,7 @@ class FeedbackOptimizer:
             }
             
         except Exception as e:
-            logger.error(f"生成上下文失败: {str(e)}", exc_info=True)
+            self.logger.error(f"生成上下文失败: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e),

@@ -4,7 +4,10 @@ import logging
 import shutil
 from pathlib import Path
 from typing import Dict, List
+from datetime import datetime
 
+from ..core.reasoning import ReasoningEngine
+from ..llms.model_manager import ModelManager, ModelConfig
 from ..core.search import SearchEngine
 from ..core.planner import SearchPlanner
 from ..core.executor import SearchPlanExecutor
@@ -13,18 +16,36 @@ from ..core.parser import IntentParser
 from ..core.delivery_planner import DeliveryPlanner
 from ..core.delivery_generator import DeliveryGenerator
 from ..core.feedback_optimizer import FeedbackOptimizer
+from ..config.settings import (
+    DEFAULT_REASONING_MODEL,
+    DEFAULT_LLM_API_KEY,
+    DEFAULT_LLM_API_BASE
+)
 
 class DataMindAlchemy:
     """数据炼丹工作流封装类"""
     
-    def __init__(self, work_dir: Path = None):
+    def __init__(self, work_dir: Path = None, model_manager: ModelManager = None):
         """初始化数据炼丹工作流
         
         Args:
             work_dir: 工作目录，默认为None时会使用默认路径
+            model_manager: 模型管理器实例，用于推理引擎
         """
         self.logger = logging.getLogger(__name__)
         self.work_dir = self._init_work_dir(work_dir)
+        
+        # 初始化模型管理器
+        self.model_manager = model_manager or ModelManager()
+        
+        # 注册默认推理模型配置
+        if not model_manager:  # 只有在没有传入model_manager时才注册
+            self.model_manager.register_model(ModelConfig(
+                name=DEFAULT_REASONING_MODEL,
+                model_type="api",
+                api_base=DEFAULT_LLM_API_BASE,
+                api_key=DEFAULT_LLM_API_KEY
+            ))
         
     def _init_work_dir(self, work_dir: Path) -> Path:
         """初始化工作目录"""
@@ -42,6 +63,13 @@ class DataMindAlchemy:
         
     def _init_components(self, db_path: str):
         """初始化组件"""
+        # 首先初始化推理引擎
+        reasoning_engine = ReasoningEngine(
+            model_manager=self.model_manager,
+            model_name=DEFAULT_REASONING_MODEL
+        )
+        
+        # 其他组件初始化
         search_engine = SearchEngine(db_path=db_path)
         intent_parser = IntentParser()
         planner = SearchPlanner()
@@ -50,14 +78,19 @@ class DataMindAlchemy:
             work_dir=str(self.run_dir / "search_results")
         )
         delivery_planner = DeliveryPlanner(
-            work_dir=str(self.run_dir / "delivery")
+            work_dir=str(self.run_dir / "delivery"),
+            reasoning_engine=reasoning_engine
         )
-        delivery_generator = DeliveryGenerator()
+        delivery_generator = DeliveryGenerator(
+            reasoning_engine=reasoning_engine
+        )
         feedback_optimizer = FeedbackOptimizer(
-            work_dir=str(self.run_dir / "feedback")
+            work_dir=str(self.run_dir / "feedback"),
+            reasoning_engine=reasoning_engine  # 传入推理引擎实例
         )
         
         return {
+            'reasoning_engine': reasoning_engine,
             'intent_parser': intent_parser,
             'planner': planner,
             'executor': executor,
@@ -213,6 +246,7 @@ class DataMindAlchemy:
             'status': 'success',
             'message': '',
             'results': {
+                'reasoning_history': None,
                 'parsed_intent': None,
                 'search_plan': None,
                 'search_results': None,
@@ -223,9 +257,34 @@ class DataMindAlchemy:
         }
         
         try:
-            # 解析查询意图
+            # 获取推理引擎实例
+            reasoning_engine = self.components['reasoning_engine']
+            
+            # 记录用户查询
+            reasoning_engine.add_message("user", query)
+            
+            # 先进行推理分析
+            reasoning_response = await reasoning_engine.get_response(
+                temperature=0.7,
+                metadata={'stage': 'initial_analysis'}
+            )
+            
+            if not reasoning_response:
+                raise Exception("推理引擎分析失败")
+            
+            # 后续流程...
             parsed_intent = await self.components['intent_parser'].parse_query(query)
             results['results']['parsed_intent'] = parsed_intent
+
+            # 对意图进行二次推理分析
+            reasoning_engine.add_message(
+                "user", 
+                f"解析到的意图: {json.dumps(parsed_intent, ensure_ascii=False)}"
+            )
+            await reasoning_engine.get_response(
+                temperature=0.7,
+                metadata={'stage': 'intent_analysis'}
+            )
 
             # 构建搜索计划
             parsed_plan = self.components['planner'].build_search_plan(parsed_intent)
@@ -261,6 +320,23 @@ class DataMindAlchemy:
                 results['status'] = 'error'
                 results['message'] = '未找到检索结果'
                 
+            # 最后更新推理历史
+            chat_history = reasoning_engine.get_chat_history()
+            results['results']['reasoning_history'] = chat_history
+            
+            # 保存推理历史到文件
+            history_file = self.run_dir / "reasoning_history.json"
+            try:
+                with history_file.open('w', encoding='utf-8') as f:
+                    json.dump({
+                        'timestamp': datetime.now().isoformat(),
+                        'original_query': query,
+                        'chat_history': chat_history
+                    }, f, ensure_ascii=False, indent=2)
+                self.logger.info(f"推理历史已保存至: {history_file}")
+            except Exception as e:
+                self.logger.error(f"保存推理历史失败: {str(e)}")
+            
             return results
                 
         except Exception as e:

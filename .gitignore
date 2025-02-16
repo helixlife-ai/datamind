@@ -1,4 +1,5 @@
 model_cache/
+node_modules/
 # 忽略工作目录
 work_dir/
 
