@@ -12,7 +12,7 @@ from sentence_transformers import SentenceTransformer
 from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_DB_PATH
 from ..utils.common import download_model
 import pickle
-from ..models.model_manager import ModelManager, ModelConfig
+from ..llms.model_manager import ModelManager, ModelConfig
 import random
 import uuid
 import numpy as np

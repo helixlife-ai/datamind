@@ -1,6 +1,6 @@
 import asyncio
 import os
-from datamind.models.model_manager import ModelManager, ModelConfig
+from datamind.llms.model_manager import ModelManager, ModelConfig
 from datamind.config.settings import DEFAULT_REASONING_MODEL, DEFAULT_LLM_API_BASE, DEFAULT_LLM_API_KEY
 import logging
 

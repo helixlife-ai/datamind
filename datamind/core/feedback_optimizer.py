@@ -7,7 +7,7 @@ from pathlib import Path
 import logging
 from datetime import datetime
 
-from ..models.model_manager import ModelManager, ModelConfig
+from ..llms.model_manager import ModelManager, ModelConfig
 from ..config.settings import (
     DEFAULT_REASONING_MODEL,
     DEFAULT_LLM_API_KEY,

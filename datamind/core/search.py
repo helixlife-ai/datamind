@@ -11,7 +11,7 @@ import logging
 from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_DB_PATH, SEARCH_TOP_K
 from ..utils.common import download_model
 from .planner import SearchPlanner
-from ..models.model_manager import ModelManager, ModelConfig
+from ..llms.model_manager import ModelManager, ModelConfig
 
 class SearchEngine:
     """统一搜索引擎，支持结构化查询和向量相似度搜索"""

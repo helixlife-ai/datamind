@@ -17,7 +17,7 @@ from ..config.settings import (
     SUPPORTED_FILE_TYPES,
     DEFAULT_EMBEDDING_MODEL
 )
-from ..models.model_manager import ModelManager, ModelConfig
+from ..llms.model_manager import ModelManager, ModelConfig
 
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""

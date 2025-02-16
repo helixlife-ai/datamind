@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from ..models.model_manager import ModelManager
+from ..llms.model_manager import ModelManager, ModelConfig
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
@@ -12,12 +12,12 @@ class ChatMessage:
     timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-class ReasonerChat:
-    """推理模型对话管理类"""
+class ReasoningEngine:
+    """推理引擎管理类"""
     
     def __init__(self, model_manager: ModelManager, model_name: Optional[str] = None):
         """
-        初始化推理对话管理器
+        初始化推理引擎管理器
         
         Args:
             model_manager: ModelManager实例
@@ -27,8 +27,8 @@ class ReasonerChat:
         self.model_manager = model_manager
         self.model_name = model_name
         self.messages: List[ChatMessage] = []
-        self.system_prompt: Optional[str] = None
-        
+        self.system_prompt: Optional[str] = None 
+
     def set_system_prompt(self, prompt: str) -> None:
         """设置系统提示词"""
         self.system_prompt = prompt
@@ -61,7 +61,7 @@ class ReasonerChat:
         if self.system_prompt:
             formatted_messages.append({
                 "role": "system",
-                "content": self.system_prompt
+                "content": self.system_prompt or ""
             })
             
         for msg in self.messages:
@@ -103,11 +103,30 @@ class ReasonerChat:
             
             if not response:
                 return None
-                
-            response_content = response.choices[0].message.content
-            self.add_message("assistant", response_content)
             
-            return response_content
+            try:
+                # 获取响应内容
+                message = response.choices[0].message
+                response_content = message.content
+                reasoning_content = getattr(message, 'reasoning_content', None)
+                
+                # 组合推理内容和响应内容
+                final_content = response_content
+                if reasoning_content:
+                    final_content = f"<think>{reasoning_content}</think>\n\n{response_content}"
+                
+                # 添加到消息历史
+                self.add_message(
+                    "assistant", 
+                    final_content,
+                    reasoning=bool(reasoning_content)
+                )
+                
+                return final_content
+                
+            except (AttributeError, IndexError) as e:
+                self.logger.error(f"解析响应失败: {str(e)}")
+                return None
             
         except Exception as e:
             self.logger.error(f"获取响应失败: {str(e)}")

@@ -10,7 +10,7 @@ from ..config.settings import (
     DEFAULT_LLM_API_KEY,
     DEFAULT_LLM_API_BASE
 )
-from ..models.model_manager import ModelManager, ModelConfig
+from ..llms.model_manager import ModelManager, ModelConfig
 from io import StringIO
 
 class DeliveryGenerator:
