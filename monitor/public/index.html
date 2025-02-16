@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文件监控系统</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -378,6 +379,26 @@
 
         let currentFile = null;
 
+        let markedReady = false;
+
+        // 等待 marked 库加载完成
+        function waitForMarked() {
+            return new Promise((resolve) => {
+                if (typeof marked !== 'undefined') {
+                    markedReady = true;
+                    resolve();
+                } else {
+                    const script = document.createElement('script');
+                    script.src = "https://cdn.jsdelivr.net/npm/marked/marked.min.js";
+                    script.onload = () => {
+                        markedReady = true;
+                        resolve();
+                    };
+                    document.head.appendChild(script);
+                }
+            });
+        }
+
         // 添加配置接收监听
         socket.on('configUpdate', (newConfig) => {
             config = newConfig;
@@ -410,13 +431,12 @@
             
             // 修改请求参数
             fetch(`/api/file?dir=${encodeURIComponent(watchDir.path)}&path=${encodeURIComponent(relativePath)}`)
-                .then(response => {
+                .then(async response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                    return response.json();
-                })
-                .then(data => {
+                    const data = await response.json();
+                    
                     const fileContentWrapper = document.getElementById('fileContentWrapper');
                     const fileContent = document.getElementById('fileContent');
                     const renderContent = document.getElementById('renderContent');
@@ -443,7 +463,87 @@
                         if (fileExtension === 'html' || fileExtension === 'htm') {
                             renderContent.srcdoc = data.content;
                         } else if (fileExtension === 'md') {
-                            renderContent.srcdoc = `<div style="padding: 20px;">${data.content}</div>`;
+                            // 确保 marked 库已加载
+                            if (!markedReady) {
+                                await waitForMarked();
+                            }
+
+                            // 添加 Markdown 样式
+                            const markdownStyle = `
+                                <style>
+                                    body {
+                                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                                        line-height: 1.6;
+                                        padding: 20px;
+                                        max-width: 900px;
+                                        margin: 0 auto;
+                                        color: #24292e;
+                                    }
+                                    pre {
+                                        background-color: #f6f8fa;
+                                        border-radius: 3px;
+                                        padding: 16px;
+                                        overflow: auto;
+                                    }
+                                    code {
+                                        background-color: #f6f8fa;
+                                        border-radius: 3px;
+                                        padding: 0.2em 0.4em;
+                                        font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+                                    }
+                                    blockquote {
+                                        border-left: 4px solid #dfe2e5;
+                                        margin: 0;
+                                        padding: 0 1em;
+                                        color: #6a737d;
+                                    }
+                                    table {
+                                        border-collapse: collapse;
+                                        width: 100%;
+                                        margin: 16px 0;
+                                    }
+                                    table th, table td {
+                                        border: 1px solid #dfe2e5;
+                                        padding: 6px 13px;
+                                    }
+                                    table tr:nth-child(2n) {
+                                        background-color: #f6f8fa;
+                                    }
+                                    img {
+                                        max-width: 100%;
+                                        height: auto;
+                                    }
+                                    h1, h2, h3, h4, h5, h6 {
+                                        margin-top: 24px;
+                                        margin-bottom: 16px;
+                                        font-weight: 600;
+                                        line-height: 1.25;
+                                    }
+                                    h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+                                    h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+                                    h3 { font-size: 1.25em; }
+                                    h4 { font-size: 1em; }
+                                    h5 { font-size: 0.875em; }
+                                    h6 { font-size: 0.85em; color: #6a737d; }
+                                </style>
+                            `;
+                            
+                            try {
+                                // 配置 marked 选项
+                                marked.setOptions({
+                                    breaks: true,
+                                    gfm: true,
+                                    headerIds: true,
+                                    langPrefix: 'language-'
+                                });
+                                
+                                // 渲染 Markdown 内容
+                                const renderedContent = marked.parse(data.content);
+                                renderContent.srcdoc = markdownStyle + renderedContent;
+                            } catch (err) {
+                                console.error('Markdown rendering error:', err);
+                                renderContent.srcdoc = `<pre style="padding: 20px;">${data.content}</pre>`;
+                            }
                         } else {
                             renderContent.srcdoc = `<pre style="padding: 20px;">${data.content}</pre>`;
                         }
@@ -549,7 +649,7 @@
             });
         }
 
-        // 新增处理文件结构的辅助函数
+        // 处理文件结构的辅助函数
         function updateFileStructure(parentElement, structure, parentPath, level) {
             // 处理文件夹
             Object.entries(structure)
@@ -559,7 +659,7 @@
                     const fullPath = parentPath ? `${parentPath}/${name}` : name;
 
                     const folderDiv = document.createElement('div');
-                    folderDiv.className = 'folder open';
+                    folderDiv.className = 'folder';  // 默认不展开
 
                     const folderHeader = document.createElement('div');
                     folderHeader.className = 'folder-header';
@@ -597,31 +697,6 @@
                 });
         }
 
-        // 更新文件系统结构
-        function updateFileSystem(path, type) {
-            const parts = path.split('/');
-            let current = fileSystem;
-
-            // 遍历路径的每一部分，构建嵌套结构
-            for (let i = 0; i < parts.length - 1; i++) {
-                const part = parts[i];
-                if (!current[part]) {
-                    current[part] = {};
-                }
-                current = current[part];
-            }
-
-            const fileName = parts[parts.length - 1];
-
-            if (type === 'remove' || type === 'removeDir') {
-                delete current[fileName];
-            } else {
-                current[fileName] = (type === 'addDir') ? {} : true;
-            }
-
-            updateExplorerView(explorerContent, fileSystem);
-        }
-
         // 修改文件变更事件处理
         socket.on('fileChange', (data) => {
             const div = document.createElement('div');
@@ -635,7 +710,11 @@
                 'removeDir': '删除文件夹'
             }[data.type];
 
-            const relativePath = data.path.replace(/^.*[\\\/]watchdir[\\\/]/, '');
+            // 构建完整路径
+            const fullPath = data.dir + '/' + data.path;
+            
+            // 更新文件系统结构
+            updateFileSystem(fullPath, data.type);
             
             // 格式化时间
             const timeStr = new Date(data.time).toLocaleString('zh-CN', {
@@ -650,7 +729,7 @@
             div.innerHTML = `
                 <div class="change-content">
                     <strong>${action}</strong>
-                    <span class="file-path">${relativePath}</span>
+                    <span class="file-path">${fullPath}</span>
                     <span class="time"><i class="time-icon">⏰</i> ${timeStr}</span>
                 </div>
             `;
@@ -658,14 +737,11 @@
             // 如果当前正在查看变更记录，检查是否需要显示这条记录
             if (document.getElementById('fileChanges').style.display === 'block') {
                 const currentFileName = document.getElementById('currentFileName').textContent;
-                const fileName = relativePath.split('/').pop();
+                const fileName = fullPath.split('/').pop();
                 div.style.display = fileName === currentFileName ? 'flex' : 'none';
             }
 
             fileChanges.insertBefore(div, fileChanges.firstChild);
-
-            // 更新文件资源管理器
-            updateFileSystem(relativePath, data.type);
         });
 
         // 接收初始文件系统结构
@@ -673,6 +749,65 @@
             fileSystem = structure;
             updateExplorerView(explorerContent, fileSystem);
         });
+
+        // 添加 updateFileSystem 函数
+        function updateFileSystem(path, type) {
+            const parts = path.split('/');
+            let current = fileSystem;
+            
+            // 找到对应的监控目录
+            const watchDir = config.watchDirs.find(dir => path.startsWith(dir.path));
+            if (!watchDir) {
+                console.error('No matching watch directory for path:', path);
+                return;
+            }
+
+            // 获取相对于监控目录的路径
+            const relativeParts = path.replace(watchDir.path + '/', '').split('/');
+            
+            // 确保监控目录存在于文件系统结构中
+            if (!fileSystem[watchDir.path]) {
+                fileSystem[watchDir.path] = {
+                    name: watchDir.name,
+                    description: watchDir.description,
+                    files: {}
+                };
+            }
+            
+            // 从监控目录的 files 开始遍历
+            current = fileSystem[watchDir.path].files;
+            
+            // 遍历路径的每一部分，构建或更新嵌套结构
+            for (let i = 0; i < relativeParts.length - 1; i++) {
+                const part = relativeParts[i];
+                if (!current[part] || typeof current[part] !== 'object') {
+                    current[part] = {};
+                }
+                current = current[part];
+            }
+
+            const fileName = relativeParts[relativeParts.length - 1];
+
+            // 根据操作类型更新结构
+            if (type === 'remove' || type === 'removeDir') {
+                delete current[fileName];
+                // 如果父目录为空，也删除父目录
+                if (Object.keys(current).length === 0) {
+                    let temp = fileSystem[watchDir.path].files;
+                    for (let i = 0; i < relativeParts.length - 2; i++) {
+                        if (Object.keys(temp[relativeParts[i]]).length === 0) {
+                            delete temp[relativeParts[i]];
+                        }
+                        temp = temp[relativeParts[i]];
+                    }
+                }
+            } else {
+                current[fileName] = (type === 'addDir') ? {} : true;
+            }
+
+            // 更新视图
+            updateExplorerView(explorerContent, fileSystem);
+        }
     </script>
 </body>
 </html>
