@@ -628,6 +628,208 @@
             console.log('Received updated config:', config);
         });
 
+        // 将 JSON 转换为 HTML 表格
+        function jsonToTable(jsonData) {
+            // 如果是字符串，尝试解析
+            if (typeof jsonData === 'string') {
+                try {
+                    jsonData = JSON.parse(jsonData);
+                } catch (e) {
+                    return `<div class="error">Invalid JSON: ${e.message}</div>`;
+                }
+            }
+
+            function formatValue(value, level = 0) {
+                if (value === null) return '<span class="null">null</span>';
+                if (value === undefined) return '<span class="undefined">undefined</span>';
+                
+                if (Array.isArray(value)) {
+                    if (value.length === 0) return '[]';
+                    if (level >= 3) return `[Array(${value.length})]`; // 限制嵌套深度
+                    
+                    if (typeof value[0] === 'object' && value[0] !== null) {
+                        // 如果数组元素是对象，递归创建表格
+                        return jsonToTable(value, level + 1);
+                    } else {
+                        // 简单数组，以逗号分隔显示，添加适当的缩进
+                        const indent = '  '.repeat(level);
+                        return `[\n${indent}  ${value.map(v => formatValue(v, level + 1)).join(',\n' + indent + '  ')}\n${indent}]`;
+                    }
+                }
+                
+                if (typeof value === 'object' && value !== null) {
+                    if (level >= 3) return '{...}'; // 限制嵌套深度
+                    
+                    // 创建嵌套表格，添加缩进
+                    const indent = '  '.repeat(level);
+                    let table = `<table class="nested-table" style="margin-left: ${level * 20}px">`;
+                    table += '<tbody>';
+                    for (const [key, val] of Object.entries(value)) {
+                        table += `<tr>
+                            <td class="key" style="padding-left: ${level * 8}px">${escapeHtml(key)}</td>
+                            <td class="value">${formatValue(val, level + 1)}</td>
+                        </tr>`;
+                    }
+                    table += '</tbody></table>';
+                    return table;
+                }
+                
+                if (typeof value === 'string') return `<span class="string">"${escapeHtml(value)}"</span>`;
+                if (typeof value === 'number') return `<span class="number">${value}</span>`;
+                if (typeof value === 'boolean') return `<span class="boolean">${value}</span>`;
+                
+                return escapeHtml(String(value));
+            }
+
+            // 如果是数组且不为空
+            if (Array.isArray(jsonData) && jsonData.length > 0) {
+                // 获取所有可能的列
+                const columns = new Set();
+                jsonData.forEach(item => {
+                    if (typeof item === 'object' && item !== null) {
+                        Object.keys(item).forEach(key => columns.add(key));
+                    }
+                });
+
+                // 转换为数组并排序
+                const sortedColumns = Array.from(columns).sort();
+
+                // 构建表格
+                let table = `<div class="table-container${arguments[1] ? ' nested' : ''}"><table>`;
+                
+                // 添加表头
+                table += '<thead><tr>';
+                sortedColumns.forEach(column => {
+                    table += `<th>${escapeHtml(column)}</th>`;
+                });
+                table += '</tr></thead>';
+
+                // 添加数据行
+                table += '<tbody>';
+                jsonData.forEach(item => {
+                    table += '<tr>';
+                    sortedColumns.forEach(column => {
+                        const value = item[column];
+                        table += `<td>${formatValue(value)}</td>`;
+                    });
+                    table += '</tr>';
+                });
+                table += '</tbody></table></div>';
+
+                return table;
+            } else if (typeof jsonData === 'object' && jsonData !== null) {
+                // 如果是单个对象，创建两列表格：键和值
+                let table = `<div class="table-container${arguments[1] ? ' nested' : ''}"><table>`;
+                table += '<thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
+                
+                Object.entries(jsonData).forEach(([key, value]) => {
+                    table += `<tr>
+                        <td class="key">${escapeHtml(key)}</td>
+                        <td class="value">${formatValue(value)}</td>
+                    </tr>`;
+                });
+                
+                table += '</tbody></table></div>';
+                return table;
+            }
+
+            return `<div class="error">Unable to display JSON data</div>`;
+        }
+
+        // 将 CSV 转换为 HTML 表格
+        function csvToTable(csvContent) {
+            try {
+                // 分割行
+                const rows = csvContent.split(/\r?\n/).filter(row => row.trim());
+                
+                // 使用逗号分割，但要处理引号内的逗号
+                const parseRow = (row) => {
+                    const cells = [];
+                    let cell = '';
+                    let inQuotes = false;
+                    
+                    for (let i = 0; i < row.length; i++) {
+                        const char = row[i];
+                        
+                        if (char === '"') {
+                            if (inQuotes && row[i + 1] === '"') {
+                                cell += '"';
+                                i++;
+                            } else {
+                                inQuotes = !inQuotes;
+                            }
+                        } else if (char === ',' && !inQuotes) {
+                            cells.push(cell);
+                            cell = '';
+                        } else {
+                            cell += char;
+                        }
+                    }
+                    
+                    cells.push(cell);
+                    return cells;
+                };
+
+                if (rows.length === 0) {
+                    return '<div class="error">Empty CSV file</div>';
+                }
+
+                // 解析标题行
+                const headers = parseRow(rows[0]);
+                
+                let table = '<div class="table-container"><table>';
+                
+                // 添加表头
+                table += '<thead><tr>';
+                headers.forEach(header => {
+                    table += `<th>${escapeHtml(header)}</th>`;
+                });
+                table += '</tr></thead>';
+
+                // 添加数据行
+                table += '<tbody>';
+                for (let i = 1; i < rows.length; i++) {
+                    const cells = parseRow(rows[i]);
+                    table += '<tr>';
+                    cells.forEach(cell => {
+                        table += `<td>${escapeHtml(cell)}</td>`;
+                    });
+                    // 如果这行的单元格数量少于标题数量，添加空单元格
+                    for (let j = cells.length; j < headers.length; j++) {
+                        table += '<td></td>';
+                    }
+                    table += '</tr>';
+                }
+                table += '</tbody></table></div>';
+
+                return table;
+            } catch (e) {
+                return `<div class="error">Error parsing CSV: ${e.message}</div>`;
+            }
+        }
+
+        // 辅助函数：HTML转义
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // 辅助函数：格式化单元格值
+        function formatCellValue(value) {
+            if (value === null || value === undefined) {
+                return '';
+            } else if (typeof value === 'object') {
+                return escapeHtml(JSON.stringify(value));
+            } else {
+                return escapeHtml(String(value));
+            }
+        }
+
         // 修改文件点击处理函数
         function handleFileClick(fileDiv, filePath) {
             // 移除其他文件的active状态
@@ -699,7 +901,7 @@
 
                     // 检查文件类型
                     const fileExtension = filePath.split('.').pop().toLowerCase();
-                    const previewableTypes = ['html', 'htm', 'svg', 'md'];
+                    const previewableTypes = ['html', 'htm', 'svg', 'md', 'json', 'csv'];
                     
                     toggleViewBtn.style.display = previewableTypes.includes(fileExtension) ? 'inline-block' : 'none';
                     
@@ -709,7 +911,122 @@
                         renderContent.style.display = 'block';
                         toggleViewBtn.textContent = 'View Source';
                         
-                        if (fileExtension === 'html' || fileExtension === 'htm') {
+                        if (fileExtension === 'json') {
+                            const tableHtml = `
+                                <style>
+                                    .table-container {
+                                        padding: 20px;
+                                        overflow-x: auto;
+                                    }
+                                    .table-container.nested {
+                                        padding: 0;
+                                    }
+                                    table {
+                                        border-collapse: collapse;
+                                        width: 100%;
+                                        margin-bottom: 1rem;
+                                        background-color: transparent;
+                                        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+                                    }
+                                    th, td {
+                                        padding: 12px;
+                                        vertical-align: top;
+                                        border-top: 1px solid #dee2e6;
+                                        text-align: left;
+                                    }
+                                    th {
+                                        background-color: #f8f9fa;
+                                        border-bottom: 2px solid #dee2e6;
+                                    }
+                                    tbody tr:nth-of-type(odd) {
+                                        background-color: rgba(0,0,0,.02);
+                                    }
+                                    .nested-table {
+                                        margin: 0;
+                                        width: 100%;
+                                        border: none;
+                                    }
+                                    .nested-table td {
+                                        border: none;
+                                        padding: 4px 8px;
+                                    }
+                                    .key {
+                                        color: #7c4dff;
+                                        font-weight: 500;
+                                        white-space: nowrap;
+                                    }
+                                    .string {
+                                        color: #2e7d32;
+                                        white-space: pre-wrap;
+                                    }
+                                    .number {
+                                        color: #1976d2;
+                                    }
+                                    .boolean {
+                                        color: #e64a19;
+                                    }
+                                    .null, .undefined {
+                                        color: #757575;
+                                        font-style: italic;
+                                    }
+                                    .error {
+                                        color: #dc3545;
+                                        padding: 20px;
+                                        margin: 20px;
+                                        border: 1px solid #dc3545;
+                                        border-radius: 4px;
+                                    }
+                                    /* 添加缩进指示线 */
+                                    .nested-table {
+                                        border-left: 1px solid rgba(0,0,0,.1);
+                                        margin-left: 4px !important;
+                                    }
+                                    /* 优化嵌套表格的间距 */
+                                    .nested-table td.value {
+                                        padding-left: 16px;
+                                    }
+                                </style>
+                                ${jsonToTable(data.content)}
+                            `;
+                            renderContent.srcdoc = tableHtml;
+                        } else if (fileExtension === 'csv') {
+                            const tableHtml = `
+                                <style>
+                                    .table-container {
+                                        padding: 20px;
+                                        overflow-x: auto;
+                                    }
+                                    table {
+                                        border-collapse: collapse;
+                                        width: 100%;
+                                        margin-bottom: 1rem;
+                                        background-color: transparent;
+                                    }
+                                    th, td {
+                                        padding: 12px;
+                                        vertical-align: top;
+                                        border-top: 1px solid #dee2e6;
+                                        text-align: left;
+                                    }
+                                    th {
+                                        background-color: #f8f9fa;
+                                        border-bottom: 2px solid #dee2e6;
+                                    }
+                                    tbody tr:nth-of-type(odd) {
+                                        background-color: rgba(0,0,0,.05);
+                                    }
+                                    .error {
+                                        color: #dc3545;
+                                        padding: 20px;
+                                        margin: 20px;
+                                        border: 1px solid #dc3545;
+                                        border-radius: 4px;
+                                    }
+                                </style>
+                                ${csvToTable(data.content)}
+                            `;
+                            renderContent.srcdoc = tableHtml;
+                        } else if (fileExtension === 'html' || fileExtension === 'htm') {
                             renderContent.srcdoc = data.content;
                         } else if (fileExtension === 'md') {
                             // 确保 marked 库已加载
