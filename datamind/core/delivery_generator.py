@@ -78,15 +78,21 @@ class DeliveryGenerator:
             
         # 添加用户消息
         self.reasoning_engine.add_message("user", f"""
-            请根据上下文和以下信息写一篇文章。
+            请根据以下问答对和要求写一篇文章：
+
+            [问答对内容]
+            {json.dumps(context['source_files_qa_pairs'], ensure_ascii=False, indent=2)}
+
+            [文章要求]
             - 主题：{file_config['topic']}
             - 用途：{file_config['description']}            
             - 结构：
             {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
-            - 要求：
-            1. 要符合上下文里的信息，不要编造内容
-            2. 要符合主题和用途
-            3. 要符合结构
+
+            要求：
+            1. 根据问答对中的信息写作，不要编造内容
+            2. 确保符合主题和用途
+            3. 按照给定的结构组织内容
             4. 说人话
         """)
         
@@ -105,14 +111,23 @@ class DeliveryGenerator:
             
         # 添加用户消息
         self.reasoning_engine.add_message("user", f"""
-            请根据上下文和以下信息生成HTML内容：            
-            - 页面主题：{file_config['topic']}
-            - 页面用途：{file_config['description']}            
+            请根据以下问答对和要求生成HTML页面：
+
+            [问答对内容]
+            {json.dumps(context['source_files_qa_pairs'], ensure_ascii=False, indent=2)}
+
+            [页面要求]
+            - 主题：{file_config['topic']}
+            - 用途：{file_config['description']}            
             - 内容结构：
             {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}             
-            - 要求：
-            1. 请生成完整的HTML文档内容，包含必要的CSS样式。
-            2. 注意：请将HTML代码放在markdown代码块中。
+
+            要求：
+            1. 生成完整的HTML文档，包含必要的CSS样式
+            2. 根据问答对中的信息编写内容
+            3. 确保内容符合主题和用途
+            4. 按照给定的结构组织内容
+            5. 将HTML代码放在markdown代码块中
         """)
         
         response = await self.reasoning_engine.get_response(
@@ -194,16 +209,22 @@ class DeliveryGenerator:
         try:
             # 添加用户消息
             self.reasoning_engine.add_message("user", f"""
-                根据上下文和以下信息生成CSV数据：
+                请根据以下问答对和要求生成CSV数据：
+
+                [问答对内容]
+                {json.dumps(context['source_files_qa_pairs'], ensure_ascii=False, indent=2)}
+
+                [数据要求]
                 - 主题：{file_config['topic']}
                 - 用途：{file_config['description']}
                 - 数据结构要求：
                 {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
                 
-                - 要求：
-                1. 请生成CSV格式的数据，并用```csv代码块包裹。
-                2. 请确保数据结构符合要求。
-                3. 请确保数据内容符合主题和用途。
+                要求：
+                1. 生成CSV格式的数据，用```csv代码块包裹
+                2. 确保数据结构符合要求
+                3. 根据问答对中的信息生成数据，不要编造
+                4. 确保数据内容符合主题和用途
             """)
             
             response = await self.reasoning_engine.get_response(
@@ -357,8 +378,8 @@ class DeliveryGenerator:
             # 加载上下文
             context = self._load_context(plan_path)
 
-            # 加载源文件总结
-            context['source_files_summaries'] = await self._summarize_source_files(context['search_results'])
+            # 加载源文件问答对
+            context['source_files_qa_pairs'] = await self._create_qa_pairs(context)
 
             # 如果提供了delivery_config，更新上下文中的配置
             if delivery_config:
@@ -476,14 +497,14 @@ class DeliveryGenerator:
             self.logger.error(f"提取文件路径时发生错误: {str(e)}")
             return [] 
 
-    async def _summarize_source_files(self, search_results: Dict) -> Optional[Dict[str, str]]:
-        """读取并总结所有源文件的内容，每个文件单独总结
+    async def _create_qa_pairs(self, context: Dict) -> Optional[Dict[str, str]]:
+        """读取所有源文件的内容，并生成问答对
         
         Args:
-            search_results: 搜索结果字典
+            context: 上下文
             
         Returns:
-            Optional[Dict[str, str]]: 文件名到总结内容的映射，如果处理失败返回None
+            Optional[Dict[str, str]]: 文件名到问答对内容的映射，如果处理失败返回None
         """
         try:
             if not self.reasoning_engine:
@@ -491,13 +512,15 @@ class DeliveryGenerator:
                 return None
             
             # 获取所有文件路径
-            file_paths = self._extract_file_paths(search_results)
+            file_paths = self._extract_file_paths(context['search_results'])
             if not file_paths:
                 self.logger.warning("未找到需要处理的源文件")
                 return None
             
-            # 存储每个文件的总结
-            summaries = {}
+            delivery_plan = json.dumps(context['delivery_plan'], ensure_ascii=False, indent=2)
+            
+            # 存储所有文件的问答对
+            all_qa_pairs = {}
             
             # 对每个文件单独处理
             for file_path in file_paths:
@@ -513,57 +536,36 @@ class DeliveryGenerator:
                     [file content begin]
                     {content}
                     [file content end]
-                    请对文件内容进行分析和总结：                    
-                    请提供：
-                    1. 文件的主要内容和目的
-                    2. 核心概念和关键信息
-                    3. 重要发现和结论
-                    4. 与其他文件可能的关联点
+                    请从文件内容中提取出与delivery plan相关的内容，并生成问答对的形式。
+                    [delivery plan begin]
+                    {delivery_plan}
+                    [delivery plan end]
+
+                    问答对用JSON格式输出：
+                    {{
+                        "question": "问题",
+                        "answer": "回答"
+                    }}  
                 """)
                 
-                # 获取单个文件的总结响应
-                summary = await self.reasoning_engine.get_response(
+                # 获取单个文件的问答对响应
+                file_qa_pairs = await self.reasoning_engine.get_response(
                     temperature=0.7,
                     metadata={'stage': 'single_file_summarization'}
                 )
                 
-                if summary:
-                    summaries[file_name] = summary
-                    self.logger.info(f"成功生成文件 {file_name} 的内容总结")
+                if file_qa_pairs:
+                    all_qa_pairs[file_name] = file_qa_pairs
+                    self.logger.info(f"成功生成{file_name} 的问答对")
                 else:
-                    self.logger.warning(f"生成文件 {file_name} 的总结失败")
+                    self.logger.warning(f"生成{file_name} 的问答对失败")
             
-            if not summaries:
-                self.logger.warning("未能成功生成任何文件的总结")
+            if not all_qa_pairs:
+                self.logger.warning("未能成功生成任何文件的问答对")
                 return None
             
-            # 生成文件关联性分析
-            if len(summaries) > 1:
-                self.reasoning_engine.add_message("user", f"""
-                    请分析以下文件总结之间的关联性：
-                    
-                    {json.dumps({
-                        file_name: summary[:500] + "..." if len(summary) > 500 else summary
-                        for file_name, summary in summaries.items()
-                    }, ensure_ascii=False, indent=2)}
-                    
-                    请提供：
-                    1. 文件之间的关联性和互补性
-                    2. 信息的一致性和差异性
-                    3. 综合见解和建议
-                """)
-                
-                correlation = await self.reasoning_engine.get_response(
-                    temperature=0.7,
-                    metadata={'stage': 'correlation_analysis'}
-                )
-                
-                if correlation:
-                    summaries['_correlation_analysis'] = correlation
-                    self.logger.info("成功生成文件关联性分析")
-            
-            return summaries
+            return all_qa_pairs
             
         except Exception as e:
-            self.logger.error(f"总结文件内容时发生错误: {str(e)}")
+            self.logger.error(f"生成问答对时发生错误: {str(e)}")
             return None 

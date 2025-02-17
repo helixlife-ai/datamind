@@ -26,8 +26,11 @@ class DeliveryPlanner:
         if not self.reasoning_engine:
             self.logger.warning("未提供推理引擎实例，部分功能可能受限")
         
-    async def generate_plan(self) -> Optional[Dict]:
+    async def generate_plan(self, results: Dict) -> Optional[Dict]:
         """生成交付计划
+
+        Args:
+            results: 推理结果
                     
         Returns:
             Optional[Dict]: 交付计划
@@ -52,10 +55,14 @@ class DeliveryPlanner:
             }
                 
             # 添加用户消息
-            message = f"""                            
+            message = f"""
+                [用户的意图 begin]
+                {json.dumps(results['results']['parsed_intent'], ensure_ascii=False, indent=2)}
+                [用户的意图 end]
+                
                 根据用户的意图，生成一份详细的交付计划。
                 1. 交付计划是指你准备生成的交付文件的结构和内容
-                2. 交付文件的结构和内容要符合用户的需求
+                2. 交付文件的结构和内容要符合用户的意图
                                
                 请以JSON格式输出，包含以下字段：
                 {json.dumps(json_template, ensure_ascii=False, indent=2)}
@@ -69,13 +76,11 @@ class DeliveryPlanner:
                 6. 确保JSON格式的严格正确性
                 
                 在生成delivery_files时，请注意：
-                1. 根据要交付的内容特点选择合适的文件格式：
-                   - .md: 适用于报告、分析说明等富文本内容
-                   - .html: 适用于交互式展示、可视化等
-                   - .csv: 适用于结构化数据、统计结果等
+                1. 根据要交付的内容特点选择合适的文件格式，下面是可以选择的格式：
+                   - .md
+                   - .html
+                   - .csv
                 2. 文件命名要清晰表达用途
-                3. 内容结构要符合内容特点和用户需求
-                4. 文件内容要符合用户需求，不要包含无关内容
             """
             
             self.reasoning_engine.add_message("user", message)
@@ -214,6 +219,7 @@ class DeliveryPlanner:
             
             final_delivery_plan = {
                 'metadata': {
+                    'query': results['results']['query'],
                     'generated_at': datetime.now().isoformat()
                 },
                 **delivery_plan

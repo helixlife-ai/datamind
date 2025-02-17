@@ -25,17 +25,18 @@ from ..config.settings import (
 class DataMindAlchemy:
     """数据炼丹工作流封装类"""
     
-    def __init__(self, work_dir: Path = None, model_manager: ModelManager = None):
+    def __init__(self, work_dir: Path = None, model_manager: ModelManager = None, logger: logging.Logger = None):
         """初始化数据炼丹工作流
         
         Args:
             work_dir: 工作目录，默认为None时会使用默认路径
             model_manager: 模型管理器实例，用于推理引擎
+            logger: 日志记录器实例，用于记录日志
         """
         self.work_dir = self._init_work_dir(work_dir)
         
         # 初始化日志记录器
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         
         # 创建控制台处理器
@@ -284,6 +285,7 @@ class DataMindAlchemy:
             'status': 'success',
             'message': '',
             'results': {
+                'query': query,
                 'reasoning_history': None,
                 'parsed_intent': None,
                 'search_plan': None,
@@ -298,42 +300,25 @@ class DataMindAlchemy:
             # 获取推理引擎实例
             reasoning_engine = self.components['reasoning_engine']
 
-            # 对用户查询内容的意图，进行推理分析
-            reasoning_engine.add_message("user", f"""
-                根据下面的内容，分析用户意图,推测用户想要什么交付物:
-                
-                用户输入:
-                {query}
-                
-                请提供:
-                1. 用户意图分析
-                2. 建议的交付物清单
-                3. 每个交付物的用途说明
-            """)
-            await reasoning_engine.get_response(
-                temperature=0.7,
-                metadata={'stage': 'intent_analysis'}
-            )
+            # 解析用户搜索意图
+            parsed_intent = await self.components['intent_parser'].parse_query(query)
+            results['results']['parsed_intent'] = parsed_intent
+
+            # 构建搜索计划
+            parsed_plan = self.components['planner'].build_search_plan(parsed_intent)
+            results['results']['search_plan'] = parsed_plan
+            
+            # 执行搜索计划
+            search_results = await self.components['executor'].execute_plan(parsed_plan)
+            results['results']['search_results'] = search_results
 
             # 生成交付计划
-            delivery_plan = await self.components['delivery_planner'].generate_plan()
+            delivery_plan = await self.components['delivery_planner'].generate_plan(results)
             
             if delivery_plan:
                 results['results']['delivery_plan'] = delivery_plan
                 # 将字符串路径转换为Path对象
                 delivery_dir = Path(delivery_plan['_file_paths']['base_dir'])
-
-                # 解析用户搜索意图
-                parsed_intent = await self.components['intent_parser'].parse_query(query)
-                results['results']['parsed_intent'] = parsed_intent
-
-                # 构建搜索计划
-                parsed_plan = self.components['planner'].build_search_plan(parsed_intent)
-                results['results']['search_plan'] = parsed_plan
-                
-                # 执行搜索计划
-                search_results = await self.components['executor'].execute_plan(parsed_plan)
-                results['results']['search_results'] = search_results
 
                 # 保存搜索结果
                 search_results_file = delivery_dir / "search_results.json"
