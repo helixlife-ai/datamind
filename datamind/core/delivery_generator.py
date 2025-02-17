@@ -24,6 +24,7 @@ class DeliveryGenerator:
         
         if not self.reasoning_engine:
             self.logger.warning("未提供推理引擎实例，部分功能可能受限")
+        
     
     def _load_context(self, plan_dir: Path) -> Dict:
         """加载上下文信息"""
@@ -36,15 +37,37 @@ class DeliveryGenerator:
             # 加载检索结果
             with (plan_dir / "search_results.json").open('r', encoding='utf-8') as f:
                 context['search_results'] = json.load(f)
-            
-            # 加载推理过程
-            with (plan_dir / "reasoning_process.md").open('r', encoding='utf-8') as f:
-                context['reasoning_process'] = f.read()
-                
+
             return context
         except Exception as e:
             self.logger.error(f"加载上下文信息失败: {str(e)}")
             raise
+    
+    def _read_file_content(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
+        """读取文件内容
+        
+        Args:
+            file_path: 文件路径
+            encoding: 文件编码，默认utf-8
+            
+        Returns:
+            Optional[str]: 文件内容，如果读取失败返回None
+        """
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                self.logger.warning(f"文件不存在: {file_path}")
+                return None
+            
+            with path.open('r', encoding=encoding) as f:
+                content = f.read()
+            
+            self.logger.debug(f"成功读取文件: {file_path}")
+            return content
+        
+        except Exception as e:
+            self.logger.error(f"读取文件 {file_path} 时发生错误: {str(e)}")
+            return None
     
     async def _generate_markdown_content(self, 
                                       file_config: Dict, 
@@ -55,21 +78,16 @@ class DeliveryGenerator:
             
         # 添加用户消息
         self.reasoning_engine.add_message("user", f"""
-            请根据以下信息写一篇文章：
-            
-            主题：{file_config['topic']}
-            用途：{file_config['description']}
-            
-            结构：
+            请根据上下文和以下信息写一篇文章。
+            - 主题：{file_config['topic']}
+            - 用途：{file_config['description']}            
+            - 结构：
             {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
-            
-            上下文：
-            1. 检索结果统计：
-            - 结构化数据：{len(context['search_results'].get('structured_results', []))}条
-            - 向量数据：{len(context['search_results'].get('vector_results', []))}条
-            
-            2. 数据：
-            {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
+            - 要求：
+            1. 要符合上下文里的信息，不要编造内容
+            2. 要符合主题和用途
+            3. 要符合结构
+            4. 说人话
         """)
         
         response = await self.reasoning_engine.get_response(
@@ -87,24 +105,14 @@ class DeliveryGenerator:
             
         # 添加用户消息
         self.reasoning_engine.add_message("user", f"""
-            请根据以下信息生成HTML内容：
-            
-            页面主题：{file_config['topic']}
-            页面用途：{file_config['description']}
-            
-            内容结构：
-            {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
-            
-            上下文：
-            1. 检索结果统计：
-            - 结构化数据：{len(context['search_results'].get('structured_results', []))}条
-            - 向量数据：{len(context['search_results'].get('vector_results', []))}条
-            
-            2. 数据：
-            {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
-            
-            请生成完整的HTML文档内容，包含必要的CSS样式。
-            注意：请将HTML代码放在markdown代码块中。
+            请根据上下文和以下信息生成HTML内容：            
+            - 页面主题：{file_config['topic']}
+            - 页面用途：{file_config['description']}            
+            - 内容结构：
+            {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}             
+            - 要求：
+            1. 请生成完整的HTML文档内容，包含必要的CSS样式。
+            2. 注意：请将HTML代码放在markdown代码块中。
         """)
         
         response = await self.reasoning_engine.get_response(
@@ -186,17 +194,16 @@ class DeliveryGenerator:
         try:
             # 添加用户消息
             self.reasoning_engine.add_message("user", f"""
-                生成CSV数据要求：
-                主题：{file_config['topic']}
-                用途：{file_config['description']}
-
-                数据结构要求：
+                根据上下文和以下信息生成CSV数据：
+                - 主题：{file_config['topic']}
+                - 用途：{file_config['description']}
+                - 数据结构要求：
                 {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}
-
-                上下文数据：
-                {json.dumps([x.get('data', '') for x in context['search_results'].get('structured_results', [])[:3]], ensure_ascii=False, indent=2)}
                 
-                请生成CSV格式的数据，并用```csv代码块包裹。
+                - 要求：
+                1. 请生成CSV格式的数据，并用```csv代码块包裹。
+                2. 请确保数据结构符合要求。
+                3. 请确保数据内容符合主题和用途。
             """)
             
             response = await self.reasoning_engine.get_response(
@@ -349,7 +356,10 @@ class DeliveryGenerator:
             
             # 加载上下文
             context = self._load_context(plan_path)
-            
+
+            # 加载源文件总结
+            context['source_files_summaries'] = await self._summarize_source_files(context['search_results'])
+
             # 如果提供了delivery_config，更新上下文中的配置
             if delivery_config:
                 context['delivery_plan']['delivery_config'] = delivery_config
@@ -388,14 +398,6 @@ class DeliveryGenerator:
                         content = await self._generate_markdown_content(file_config, context)
                         file_path.write_text(content, encoding='utf-8')
                         generated_files.append(str(file_path))
-                        
-                        # 同时生成对应的docx文件
-                        docx_file_name = file_name.replace('.md', '.docx')
-                        docx_file_path = output_dir / docx_file_name
-                        docx_content = await self._generate_docx_content(file_config, context)
-                        docx_file_path.write_bytes(docx_content)
-                        generated_files.append(str(docx_file_path))
-                        self.logger.info(f"已生成Markdown对应的Word文件: {docx_file_path}")
                         
                     elif file_name.endswith('.html'):
                         content = await self._generate_html_content(file_config, context)
@@ -442,3 +444,126 @@ class DeliveryGenerator:
         except Exception as e:
             self.logger.error(f"生成交付文件时发生错误: {str(e)}")
             raise 
+
+    def _extract_file_paths(self, search_results: Dict) -> List[str]:
+        """从搜索结果中提取所有不重复的文件路径
+        
+        Args:
+            search_results: 搜索结果字典
+            
+        Returns:
+            List[str]: 不重复的文件路径列表
+        """
+        try:
+            file_paths = set()
+            
+            # 从结构化结果中提取
+            structured_results = search_results.get('structured_results', [])
+            for result in structured_results:
+                if '_file_path' in result:
+                    file_paths.add(result['_file_path'])
+                    
+            # 从向量结果中提取
+            vector_results = search_results.get('vector_results', [])
+            for result in vector_results:
+                if 'file_path' in result:  # 注意向量结果中是file_path而不是_file_path
+                    file_paths.add(result['file_path'])
+            
+            self.logger.debug(f"从搜索结果中提取了 {len(file_paths)} 个不重复文件路径")
+            return list(file_paths)
+            
+        except Exception as e:
+            self.logger.error(f"提取文件路径时发生错误: {str(e)}")
+            return [] 
+
+    async def _summarize_source_files(self, search_results: Dict) -> Optional[Dict[str, str]]:
+        """读取并总结所有源文件的内容，每个文件单独总结
+        
+        Args:
+            search_results: 搜索结果字典
+            
+        Returns:
+            Optional[Dict[str, str]]: 文件名到总结内容的映射，如果处理失败返回None
+        """
+        try:
+            if not self.reasoning_engine:
+                self.logger.warning("未配置推理引擎，无法生成内容总结")
+                return None
+            
+            # 获取所有文件路径
+            file_paths = self._extract_file_paths(search_results)
+            if not file_paths:
+                self.logger.warning("未找到需要处理的源文件")
+                return None
+            
+            # 存储每个文件的总结
+            summaries = {}
+            
+            # 对每个文件单独处理
+            for file_path in file_paths:
+                content = self._read_file_content(file_path)
+                if not content:
+                    continue
+                    
+                file_name = Path(file_path).name
+                
+                # 构建针对单个文件的提示信息
+                self.reasoning_engine.add_message("user", f"""
+                    [file name]: {file_name}
+                    [file content begin]
+                    {content}
+                    [file content end]
+                    请对文件内容进行分析和总结：                    
+                    请提供：
+                    1. 文件的主要内容和目的
+                    2. 核心概念和关键信息
+                    3. 重要发现和结论
+                    4. 与其他文件可能的关联点
+                """)
+                
+                # 获取单个文件的总结响应
+                summary = await self.reasoning_engine.get_response(
+                    temperature=0.7,
+                    metadata={'stage': 'single_file_summarization'}
+                )
+                
+                if summary:
+                    summaries[file_name] = summary
+                    self.logger.info(f"成功生成文件 {file_name} 的内容总结")
+                else:
+                    self.logger.warning(f"生成文件 {file_name} 的总结失败")
+            
+            if not summaries:
+                self.logger.warning("未能成功生成任何文件的总结")
+                return None
+            
+            # 生成文件关联性分析
+            if len(summaries) > 1:
+                self.reasoning_engine.add_message("user", f"""
+                    请分析以下文件总结之间的关联性：
+                    
+                    {json.dumps({
+                        file_name: summary[:500] + "..." if len(summary) > 500 else summary
+                        for file_name, summary in summaries.items()
+                    }, ensure_ascii=False, indent=2)}
+                    
+                    请提供：
+                    1. 文件之间的关联性和互补性
+                    2. 信息的一致性和差异性
+                    3. 综合见解和建议
+                """)
+                
+                correlation = await self.reasoning_engine.get_response(
+                    temperature=0.7,
+                    metadata={'stage': 'correlation_analysis'}
+                )
+                
+                if correlation:
+                    summaries['_correlation_analysis'] = correlation
+                    self.logger.info("成功生成文件关联性分析")
+            
+            return summaries
+            
+        except Exception as e:
+            self.logger.error(f"总结文件内容时发生错误: {str(e)}")
+            return None 

@@ -2,6 +2,23 @@ import logging
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 from typing import Optional
+import json
+import numpy as np
+from datetime import datetime
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    """增强版JSON编码器，处理datetime和numpy类型"""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 def setup_logging():
     """配置日志"""

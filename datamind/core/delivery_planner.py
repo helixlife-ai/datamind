@@ -5,21 +5,8 @@ from pathlib import Path
 from datetime import datetime
 from ..core.reasoning import ReasoningEngine
 import re
-import numpy as np
 import asyncio
-
-class DateTimeEncoder(json.JSONEncoder):
-    """增强版JSON编码器，处理datetime和numpy类型"""
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super().default(obj)
+from ..utils.common import DateTimeEncoder
 
 class DeliveryPlanner:
     """交付计划生成器"""
@@ -39,15 +26,9 @@ class DeliveryPlanner:
         if not self.reasoning_engine:
             self.logger.warning("未提供推理引擎实例，部分功能可能受限")
         
-    async def generate_plan(self, 
-                          search_plan: Dict,
-                          search_results: Dict) -> Optional[Dict]:
+    async def generate_plan(self) -> Optional[Dict]:
         """生成交付计划
-        
-        Args:
-            search_plan: 原始检索计划
-            search_results: 检索结果
-            
+                    
         Returns:
             Optional[Dict]: 交付计划
         """
@@ -71,29 +52,11 @@ class DeliveryPlanner:
             }
                 
             # 添加用户消息
-            message = f"""
-                <rule>
+            message = f"""                            
+                根据用户的意图，生成一份详细的交付计划。
                 1. 交付计划是指你准备生成的交付文件的结构和内容
                 2. 交付文件的结构和内容要符合用户的需求
-                3. 交付文件的结构和内容要基于检索结果里的内容
-                4. 说人话
-                </rule>
-
-                原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}
-                
-                检索结果统计：
-                - 结构化数据：{search_results['stats']['structured_count']}条
-                - 向量数据：{search_results['stats']['vector_count']}条
-                - 总计：{search_results['stats']['total']}条
-                
-                数据：
-                1. 结构化数据前3条：
-                {json.dumps([x.get('data', '') for x in search_results['structured'][:3]], ensure_ascii=False, indent=2)}
-                
-                2. 向量数据前3条：
-                {json.dumps([x.get('data', '') for x in search_results['vector'][:3]], ensure_ascii=False, indent=2)}                    
-                
-                根据用户的检索需求和检索结果，生成一份详细的交付计划。                  
+                               
                 请以JSON格式输出，包含以下字段：
                 {json.dumps(json_template, ensure_ascii=False, indent=2)}
                 
@@ -240,54 +203,17 @@ class DeliveryPlanner:
             reasoning_file = plan_dir / "reasoning_process.md"
             with reasoning_file.open('w', encoding='utf-8') as f:
                 f.write("# 交付计划推理过程\n\n")
-                f.write("## 输入信息\n")
-                f.write(f"- 原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}\n")
-                f.write(f"- 结构化数据数量：{search_results['stats']['structured_count']}\n")
-                f.write(f"- 向量数据数量：{search_results['stats']['vector_count']}\n")
                 
-                f.write("\n## 数据分析\n")
-                if search_results["structured"]:
-                    f.write("\n### 结构化数据\n")
-                    for i, item in enumerate(search_results["structured"][:3], 1):
-                        content = json.loads(item.get('data', '{}')).get('content', '')
-                        f.write(f"\n{i}. {content[:200]}...\n")
-                
-                if search_results["vector"]:
-                    f.write("\n### 向量数据\n")
-                    for i, item in enumerate(search_results["vector"][:3], 1):
-                        content = json.loads(item.get('data', '{}')).get('content', '')
-                        f.write(f"\n{i}. {content[:200]}...\n")
-                
-                f.write("\n## 推理过程\n")
                 f.write("```json\n")
                 f.write(json.dumps(delivery_plan, ensure_ascii=False, indent=2))
                 f.write("\n```\n")
-            
-            # 保存检索结果
-            search_results_file = plan_dir / "search_results.json"
-            results_to_save = {
-                "structured_results": search_results["structured"][:10],
-                "vector_results": search_results["vector"][:10],
-                "stats": search_results["stats"],
-                "insights": search_results["insights"],
-                "context": search_results["context"]
-            }
 
-            # 新增：保存原始检索计划
-            search_plan_file = plan_dir / "search_plan.json"
-            with search_plan_file.open('w', encoding='utf-8') as f:
-                json.dump(search_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
-
-            # 使用自定义编码器保存JSON
-            with search_results_file.open('w', encoding='utf-8') as f:
-                json.dump(results_to_save, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
             
             # 保存交付计划
             plan_file = plan_dir / "delivery_plan.json"
             
             final_delivery_plan = {
                 'metadata': {
-                    'original_query': search_plan.get('metadata', {}).get('original_query', ''),
                     'generated_at': datetime.now().isoformat()
                 },
                 **delivery_plan
@@ -301,11 +227,8 @@ class DeliveryPlanner:
             with readme_file.open('w', encoding='utf-8') as f:
                 f.write("# 检索结果与交付计划\n\n")
                 f.write(f"生成时间：{timestamp}\n\n")
-                f.write(f"原始检索需求：{search_plan.get('metadata', {}).get('original_query', '')}\n\n")
                 f.write("## 文件说明\n\n")
                 f.write("- prompts.md: 推理提示词配置\n")
-                f.write("- search_plan.json: 原始检索计划\n")
-                f.write("- search_results.json: 检索结果数据\n")
                 f.write("- reasoning_process.md: 推理过程详情\n")
                 f.write("- delivery_plan.json: 生成的交付计划\n")
             
@@ -314,8 +237,6 @@ class DeliveryPlanner:
                 'base_dir': str(plan_dir),
                 'reasoning_process': str(reasoning_file),
                 'delivery_plan': str(plan_file),
-                'search_results': str(search_results_file),
-                'search_plan': str(search_plan_file),
                 'readme': str(readme_file),
                 'prompts': str(prompts_file)
             }

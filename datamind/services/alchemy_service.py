@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List
 from datetime import datetime
-
+from ..utils.common import DateTimeEncoder
 from ..core.reasoning import ReasoningEngine
 from ..llms.model_manager import ModelManager, ModelConfig
 from ..core.search import SearchEngine
@@ -297,66 +297,72 @@ class DataMindAlchemy:
         try:
             # 获取推理引擎实例
             reasoning_engine = self.components['reasoning_engine']
-            
-            # 记录用户查询
-            reasoning_engine.add_message("user", query)
-            
-            # 先进行推理分析
-            reasoning_response = await reasoning_engine.get_response(
-                temperature=0.7,
-                metadata={'stage': 'initial_analysis'}
-            )
-            
-            if not reasoning_response:
-                raise Exception("推理引擎分析失败")
-            
-            # 后续流程...
-            parsed_intent = await self.components['intent_parser'].parse_query(query)
-            results['results']['parsed_intent'] = parsed_intent
 
-            # 对意图进行二次推理分析
-            reasoning_engine.add_message(
-                "user", 
-                f"解析到的意图: {json.dumps(parsed_intent, ensure_ascii=False)}"
-            )
+            # 对用户查询内容的意图，进行推理分析
+            reasoning_engine.add_message("user", f"""
+                根据下面的内容，分析用户意图,推测用户想要什么交付物:
+                
+                用户输入:
+                {query}
+                
+                请提供:
+                1. 用户意图分析
+                2. 建议的交付物清单
+                3. 每个交付物的用途说明
+            """)
             await reasoning_engine.get_response(
                 temperature=0.7,
                 metadata={'stage': 'intent_analysis'}
             )
 
-            # 构建搜索计划
-            parsed_plan = self.components['planner'].build_search_plan(parsed_intent)
-            results['results']['search_plan'] = parsed_plan
+            # 生成交付计划
+            delivery_plan = await self.components['delivery_planner'].generate_plan()
             
-            # 执行搜索计划
-            search_results = await self.components['executor'].execute_plan(parsed_plan)
-            results['results']['search_results'] = search_results
-            
-            if search_results['stats']['total'] > 0:
-                # 生成交付计划
-                delivery_plan = await self.components['delivery_planner'].generate_plan(
-                    search_plan=parsed_plan,
-                    search_results=search_results
-                )
+            if delivery_plan:
+                results['results']['delivery_plan'] = delivery_plan
+                # 将字符串路径转换为Path对象
+                delivery_dir = Path(delivery_plan['_file_paths']['base_dir'])
+
+                # 解析用户搜索意图
+                parsed_intent = await self.components['intent_parser'].parse_query(query)
+                results['results']['parsed_intent'] = parsed_intent
+
+                # 构建搜索计划
+                parsed_plan = self.components['planner'].build_search_plan(parsed_intent)
+                results['results']['search_plan'] = parsed_plan
                 
-                if delivery_plan:
-                    results['results']['delivery_plan'] = delivery_plan
-                    delivery_dir = delivery_plan['_file_paths']['base_dir']
-                    
-                    # 生成交付文件
-                    generated_files = await self.components['delivery_generator'].generate_deliverables(
-                        delivery_dir,
-                        search_results,
-                        delivery_plan.get('delivery_config'),
-                        test_mode=False
-                    )
-                    results['results']['generated_files'] = generated_files
-                else:
-                    results['status'] = 'error'
-                    results['message'] = '交付计划生成失败'
+                # 执行搜索计划
+                search_results = await self.components['executor'].execute_plan(parsed_plan)
+                results['results']['search_results'] = search_results
+
+                # 保存搜索结果
+                search_results_file = delivery_dir / "search_results.json"
+                results_to_save = {
+                    "structured_results": search_results["structured"][:10],
+                    "vector_results": search_results["vector"][:10],
+                    "stats": search_results["stats"],
+                    "insights": search_results["insights"],
+                    "context": search_results["context"]
+                }
+                with search_results_file.open('w', encoding='utf-8') as f:
+                    json.dump(results_to_save, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+
+                # 保存搜索计划
+                search_plan_file = delivery_dir / "search_plan.json"
+                with search_plan_file.open('w', encoding='utf-8') as f:
+                    json.dump(parsed_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+
+                # 生成交付文件
+                generated_files = await self.components['delivery_generator'].generate_deliverables(
+                    delivery_dir,
+                    search_results,
+                    delivery_plan.get('delivery_config'),
+                    test_mode=False
+                )
+                results['results']['generated_files'] = generated_files
             else:
                 results['status'] = 'error'
-                results['message'] = '未找到检索结果'
+                results['message'] = '交付计划生成失败'
                 
             # 最后更新推理历史
             chat_history = reasoning_engine.get_chat_history()
