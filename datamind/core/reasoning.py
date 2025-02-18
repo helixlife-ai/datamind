@@ -114,7 +114,7 @@ class ReasoningEngine:
                 # 组合推理内容和响应内容
                 final_content = response_content
                 if reasoning_content:
-                    final_content = f"<think>\n\n{reasoning_content}\n\n</think>\n\n<answer>\n\n{response_content}\n\n</answer>"
+                    final_content = f"<think>\n{reasoning_content}\n</think>\n\n<answer>\n{response_content}\n</answer>"
                 
                 # 添加到消息历史
                 self.add_message(
