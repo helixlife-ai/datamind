@@ -497,6 +497,34 @@ class DeliveryGenerator:
             self.logger.error(f"提取文件路径时发生错误: {str(e)}")
             return [] 
 
+    def _save_qa_pairs(self, qa_pairs: Dict[str, str], plan_path: Path) -> None:
+        """保存问答对到文件
+        
+        Args:
+            qa_pairs: 问答对字典
+            plan_path: 计划目录路径
+        """
+        try:
+            # 在delivery_results目录下创建qa_pairs目录
+            qa_pairs_dir = plan_path / "delivery_results" / "qa_pairs"
+            qa_pairs_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 保存完整的问答对
+            qa_pairs_path = qa_pairs_dir / "all_qa_pairs.json"
+            with qa_pairs_path.open('w', encoding='utf-8') as f:
+                json.dump(qa_pairs, f, ensure_ascii=False, indent=2)
+            
+            # 为每个文件单独保存问答对
+            for file_name, qa_content in qa_pairs.items():
+                file_qa_path = qa_pairs_dir / f"{Path(file_name).stem}_qa.json"
+                with file_qa_path.open('w', encoding='utf-8') as f:
+                    json.dump({file_name: qa_content}, f, ensure_ascii=False, indent=2)
+            
+            self.logger.info(f"问答对已保存到目录: {qa_pairs_dir}")
+            
+        except Exception as e:
+            self.logger.error(f"保存问答对时发生错误: {str(e)}")
+
     async def _create_qa_pairs(self, context: Dict) -> Optional[Dict[str, str]]:
         """读取所有源文件的内容，并生成问答对
         
@@ -557,12 +585,22 @@ class DeliveryGenerator:
                 if file_qa_pairs:
                     all_qa_pairs[file_name] = file_qa_pairs
                     self.logger.info(f"成功生成{file_name} 的问答对")
+                    # 添加详细的问答对日志输出
+                    self.logger.info(f"文件 {file_name} 的问答对内容：\n{file_qa_pairs}")
                 else:
                     self.logger.warning(f"生成{file_name} 的问答对失败")
             
             if not all_qa_pairs:
                 self.logger.warning("未能成功生成任何文件的问答对")
                 return None
+            
+            # 添加所有问答对的汇总日志
+            self.logger.info(f"所有文件的问答对生成完成，共处理 {len(all_qa_pairs)} 个文件")
+            self.logger.info(f"完整的问答对内容：\n{json.dumps(all_qa_pairs, ensure_ascii=False, indent=2)}")
+            
+            # 保存问答对到文件
+            plan_path = Path(context['delivery_plan'].get('plan_id', ''))
+            self._save_qa_pairs(all_qa_pairs, plan_path)
             
             return all_qa_pairs
             

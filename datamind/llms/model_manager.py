@@ -1,6 +1,6 @@
 from pathlib import Path
 import logging
-from typing import Optional, Dict, Any, Union, Literal
+from typing import Optional, Dict, Any, Union, Literal, AsyncGenerator
 from sentence_transformers import SentenceTransformer
 from openai import AsyncOpenAI
 from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL, DEFAULT_REASONING_MODEL, DEFAULT_LLM_API_BASE
@@ -160,7 +160,7 @@ class ModelManager:
     async def generate_reasoned_response(self,
                                        messages: list,
                                        model_name: str = DEFAULT_REASONING_MODEL,
-                                       **kwargs) -> Optional[Dict[str, Any]]:
+                                       **kwargs) -> Optional[Union[Dict[str, Any], AsyncGenerator]]:
         """生成带推理过程的LLM响应
         
         Args:
@@ -169,7 +169,9 @@ class ModelManager:
             **kwargs: 其他参数传递给API
             
         Returns:
-            Optional[Dict[str, Any]]: DeepSeek Reasoner API响应格式，包含reasoning_content
+            Optional[Union[Dict[str, Any], AsyncGenerator]]: 
+            - 如果stream=True，返回异步生成器
+            - 如果stream=False，返回完整的API响应
             如果调用失败则返回None
         """
         try:
@@ -190,7 +192,8 @@ class ModelManager:
             self.logger.debug(f"请求消息: {messages}")
             self.logger.debug(f"额外参数: {kwargs}")
             
-            max_retries = 3
+            is_stream = kwargs.get('stream', False)
+            max_retries = 3 if not is_stream else 1  # 流式模式下不重试
             retry_count = 0
             
             while retry_count < max_retries:
@@ -204,8 +207,11 @@ class ModelManager:
                     if not response:
                         raise ValueError("API返回空响应")
                         
-                    self.logger.debug(f"API原始响应内容: {response}")
-                    return response    
+                    if is_stream:
+                        return response  # 返回流式响应
+                    else:
+                        self.logger.debug(f"API原始响应内容: {response}")
+                        return response
                     
                 except Exception as e:
                     retry_count += 1

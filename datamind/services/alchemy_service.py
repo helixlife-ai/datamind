@@ -115,9 +115,9 @@ class DataMindAlchemy:
         delivery_generator = DeliveryGenerator(
             reasoning_engine=reasoning_engine,
             logger=self.logger
-        )
+        )        
         feedback_optimizer = FeedbackOptimizer(
-            work_dir=str(self.run_dir / "feedback"),
+            work_dir=str(self.run_dir),
             reasoning_engine=reasoning_engine,
             logger=self.logger
         )

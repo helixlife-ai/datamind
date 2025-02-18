@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from ..llms.model_manager import ModelManager, ModelConfig
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -114,7 +114,7 @@ class ReasoningEngine:
                 # 组合推理内容和响应内容
                 final_content = response_content
                 if reasoning_content:
-                    final_content = f"<think>{reasoning_content}</think>\n\n{response_content}"
+                    final_content = f"<think>\n\n{reasoning_content}\n\n</think>\n\n<answer>\n\n{response_content}\n\n</answer>"
                 
                 # 添加到消息历史
                 self.add_message(
@@ -133,6 +133,91 @@ class ReasoningEngine:
             self.logger.error(f"获取响应失败: {str(e)}")
             return None
             
+    async def get_stream_response(self,
+                                temperature: float = 0.6,
+                                max_tokens: Optional[int] = None,
+                                **kwargs) -> AsyncGenerator[str, None]:
+        """
+        获取模型的流式响应
+
+        Args:
+            temperature: 采样温度
+            max_tokens: 最大生成token数
+            **kwargs: 传递给API的其他参数
+
+        Yields:
+            str: 模型响应的流式内容片段
+        """
+        try:
+            formatted_messages = self.get_formatted_messages()
+            if not formatted_messages:
+                self.logger.warning("没有对话消息")
+                return
+                
+            stream = await self.model_manager.generate_reasoned_response(
+                messages=formatted_messages,
+                model_name=self.model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,  # 启用流式输出
+                **kwargs
+            )
+            
+            if not stream:
+                return
+                
+            full_content = ""
+            current_thinking = ""
+            current_answer = ""
+            in_thinking = False
+            in_answer = False
+            
+            async for chunk in stream:
+                try:
+                    if not chunk.choices:
+                        continue
+                        
+                    content = chunk.choices[0].delta.content
+                    if not content:
+                        continue
+                        
+                    # 处理思考和回答的标记
+                    if "<think>" in content:
+                        in_thinking = True
+                        in_answer = False
+                    elif "</think>" in content:
+                        in_thinking = False
+                    elif "<answer>" in content:
+                        in_answer = True
+                        in_thinking = False
+                    elif "</answer>" in content:
+                        in_answer = False
+                        
+                    # 累积内容
+                    full_content += content
+                    if in_thinking:
+                        current_thinking += content
+                    elif in_answer:
+                        current_answer += content
+                        
+                    yield content
+                    
+                except Exception as e:
+                    self.logger.error(f"处理流式响应chunk时出错: {str(e)}")
+                    continue
+                    
+            # 将完整响应添加到消息历史
+            if full_content:
+                self.add_message(
+                    "assistant",
+                    full_content,
+                    reasoning=bool(current_thinking)
+                )
+                
+        except Exception as e:
+            self.logger.error(f"获取流式响应失败: {str(e)}")
+            return
+
     def get_chat_history(self) -> List[Dict[str, Any]]:
         """
         获取完整的对话历史，包含每条消息的角色、内容、时间戳和元数据。

@@ -28,14 +28,24 @@ async def run_test_optimization(
     Args:
         feedback_optimizer: 反馈优化器实例
         alchemy_dir: 炼丹工作流运行目录
+        logger: 日志记录器实例
     """
     logger = logger or logging.getLogger(__name__)
     logger.info("\n=== 开始反馈优化流程测试 ===")
         
+    # 从work_dir/feedback.txt中读取反馈
+    feedback_file = script_dir.parent / "work_dir" / "feedback.txt"
+    with open(feedback_file, "r", encoding="utf-8") as f:
+        feedback_content = f.read().strip()
+    
+    # 如果反馈内容为空，则返回
+    if not feedback_content:
+        logger.info("反馈内容为空，跳过反馈优化流程")
+        return
+    
     # 示例反馈
     test_feedbacks = [
-        "请在AI趋势分析中增加更多关于大模型发展的内容",
-        "希望在报告中补充更多实际应用案例"
+        feedback_content
     ]
     
     # 创建DataMindAlchemy实例
