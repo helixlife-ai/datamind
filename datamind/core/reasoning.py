@@ -159,7 +159,7 @@ class ReasoningEngine:
                 model_name=self.model_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                stream=True,  # 启用流式输出
+                stream=True,
                 **kwargs
             )
             
@@ -167,51 +167,52 @@ class ReasoningEngine:
                 return
                 
             full_content = ""
-            current_thinking = ""
-            current_answer = ""
-            in_thinking = False
-            in_answer = False
+            reasoning_content = ""
+            content = ""
             
             async for chunk in stream:
                 try:
                     if not chunk.choices:
                         continue
                         
-                    content = chunk.choices[0].delta.content
-                    if not content:
-                        continue
-                        
-                    # 处理思考和回答的标记
-                    if "<think>" in content:
-                        in_thinking = True
-                        in_answer = False
-                    elif "</think>" in content:
-                        in_thinking = False
-                    elif "<answer>" in content:
-                        in_answer = True
-                        in_thinking = False
-                    elif "</answer>" in content:
-                        in_answer = False
-                        
-                    # 累积内容
-                    full_content += content
-                    if in_thinking:
-                        current_thinking += content
-                    elif in_answer:
-                        current_answer += content
-                        
-                    yield content
+                    delta = chunk.choices[0].delta
                     
+                    # 处理推理内容
+                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                        if reasoning_content == "":
+                            reasoning_content += delta.reasoning_content
+                            yield "<think>\n" + delta.reasoning_content
+                        else:
+                            reasoning_content += delta.reasoning_content
+                            yield delta.reasoning_content
+                    
+                    # 处理回答内容
+                    if hasattr(delta, 'content') and delta.content:
+                        if content == "":
+                            content += delta.content
+                            yield "\n</think>\n\n<answer>\n" + delta.content
+                        else:
+                            content += delta.content
+                            yield delta.content
+                        
                 except Exception as e:
                     self.logger.error(f"处理流式响应chunk时出错: {str(e)}")
                     continue
+
+            yield "\n</answer>"
                     
+            # 构建完整响应
+            if reasoning_content:
+                full_content = f"<think>\n{reasoning_content}\n</think>\n\n<answer>\n{content}\n</answer>"
+            else:
+                full_content = content
+                
             # 将完整响应添加到消息历史
             if full_content:
                 self.add_message(
                     "assistant",
                     full_content,
-                    reasoning=bool(current_thinking)
+                    reasoning=bool(reasoning_content)
                 )
                 
         except Exception as e:
