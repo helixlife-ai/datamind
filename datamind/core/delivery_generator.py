@@ -8,6 +8,7 @@ import re
 from ..core.reasoning import ReasoningEngine
 import asyncio
 from io import StringIO
+from datamind.utils.stream_logger import StreamLineHandler
 
 class DeliveryGenerator:
     """交付文件生成器"""
@@ -21,6 +22,15 @@ class DeliveryGenerator:
         """
         self.logger = logger or logging.getLogger(__name__)
         self.reasoning_engine = reasoning_engine
+        
+        # 添加流式日志处理器
+        if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
+            stream_handler = StreamLineHandler("work_dir/logs/delivery_generator_stream.log")
+            stream_handler.setFormatter(logging.Formatter(
+                '%(asctime)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            ))
+            self.logger.addHandler(stream_handler)
         
         if not self.reasoning_engine:
             self.logger.warning("未提供推理引擎实例，部分功能可能受限")
@@ -96,11 +106,16 @@ class DeliveryGenerator:
             4. 说人话
         """)
         
-        response = await self.reasoning_engine.get_response(
+        # 使用流式输出收集完整响应
+        full_response = ""
+        async for chunk in self.reasoning_engine.get_stream_response(
             temperature=0.7,
             metadata={'stage': 'markdown_generation'}
-        )
-        return response if response else ""
+        ):
+            full_response += chunk
+            self.logger.debug(f"\r生成Markdown内容: {full_response}")
+        
+        return full_response if full_response else ""
     
     async def _generate_html_content(self,
                                    file_config: Dict,
@@ -130,15 +145,19 @@ class DeliveryGenerator:
             5. 将HTML代码放在markdown代码块中
         """)
         
-        response = await self.reasoning_engine.get_response(
+        # 使用流式输出收集完整响应
+        full_response = ""
+        async for chunk in self.reasoning_engine.get_stream_response(
             temperature=0.7,
             metadata={'stage': 'html_generation'}
-        )
+        ):
+            full_response += chunk
+            self.logger.debug(f"\r生成HTML内容: {full_response}")
         
-        if response:
+        if full_response:
             # 使用正则表达式提取HTML代码
             html_pattern = r'```html\n([\s\S]*?)\n```'
-            html_match = re.search(html_pattern, response)
+            html_match = re.search(html_pattern, full_response)
             
             if html_match:
                 html_content = html_match.group(1).strip()
@@ -148,12 +167,12 @@ class DeliveryGenerator:
                     return html_content
                 
             # 尝试直接查找HTML标记
-            if ('<!DOCTYPE html>' in response and 
-                '<html' in response and 
-                '</html>' in response):
-                start_idx = response.find('<!DOCTYPE html>')
-                end_idx = response.find('</html>') + 7
-                return response[start_idx:end_idx]
+            if ('<!DOCTYPE html>' in full_response and 
+                '<html' in full_response and 
+                '</html>' in full_response):
+                start_idx = full_response.find('<!DOCTYPE html>')
+                end_idx = full_response.find('</html>') + 7
+                return full_response[start_idx:end_idx]
                 
         return self._generate_error_html(
             "生成HTML内容失败",
@@ -526,14 +545,7 @@ class DeliveryGenerator:
             self.logger.error(f"保存问答对时发生错误: {str(e)}")
 
     async def _create_qa_pairs(self, context: Dict) -> Optional[Dict[str, str]]:
-        """读取所有源文件的内容，并生成问答对
-        
-        Args:
-            context: 上下文
-            
-        Returns:
-            Optional[Dict[str, str]]: 文件名到问答对内容的映射，如果处理失败返回None
-        """
+        """读取所有源文件的内容，并生成问答对"""
         try:
             if not self.reasoning_engine:
                 self.logger.warning("未配置推理引擎，无法生成内容总结")
@@ -576,19 +588,20 @@ class DeliveryGenerator:
                     }}  
                 """)
                 
-                # 获取单个文件的问答对响应
-                file_qa_pairs = await self.reasoning_engine.get_response(
+                # 使用流式输出收集完整响应
+                file_qa_pairs = ""
+                async for chunk in self.reasoning_engine.get_stream_response(
                     temperature=0.7,
                     metadata={'stage': 'single_file_summarization'}
-                )
+                ):
+                    file_qa_pairs += chunk
+                    self.logger.debug(f"\r生成{file_name}的问答对: {file_qa_pairs}")
                 
                 if file_qa_pairs:
                     all_qa_pairs[file_name] = file_qa_pairs
-                    self.logger.info(f"成功生成{file_name} 的问答对")
-                    # 添加详细的问答对日志输出
-                    self.logger.info(f"文件 {file_name} 的问答对内容：\n{file_qa_pairs}")
+                    self.logger.info(f"成功生成{file_name}的问答对")
                 else:
-                    self.logger.warning(f"生成{file_name} 的问答对失败")
+                    self.logger.warning(f"生成{file_name}的问答对失败")
             
             if not all_qa_pairs:
                 self.logger.warning("未能成功生成任何文件的问答对")

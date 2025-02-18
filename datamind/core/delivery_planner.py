@@ -7,6 +7,7 @@ from ..core.reasoning import ReasoningEngine
 import re
 import asyncio
 from ..utils.common import DateTimeEncoder
+from ..utils.stream_logger import StreamLineHandler
 
 class DeliveryPlanner:
     """交付计划生成器"""
@@ -23,8 +24,17 @@ class DeliveryPlanner:
         self.work_dir = work_dir
         self.reasoning_engine = reasoning_engine
         
+        # 添加流式日志处理器
+        if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
+            stream_handler = StreamLineHandler("work_dir/logs/delivery_planner_stream.log")
+            stream_handler.setFormatter(logging.Formatter(
+                '%(asctime)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            ))
+            self.logger.addHandler(stream_handler)
+        
         if not self.reasoning_engine:
-            self.logger.warning("未提供推理引擎实例，部分功能可能受限")
+            self.logger.warning("未配置推理引擎，无法生成交付计划")
         
     async def generate_plan(self, results: Dict) -> Optional[Dict]:
         """生成交付计划
@@ -134,18 +144,19 @@ class DeliveryPlanner:
             
             for attempt in range(max_retries):
                 try:
-                    # 使用推理引擎生成响应
-                    response = await self.reasoning_engine.get_response(
+                    # 使用流式输出收集完整响应
+                    content = ""
+                    async for chunk in self.reasoning_engine.get_stream_response(
                         temperature=0.7,
                         metadata={'stage': 'delivery_planning'}
-                    )
+                    ):
+                        content += chunk
+                        self.logger.info(f"\r生成交付计划: {content}")
                     
-                    if not response:
+                    if not content:
                         self.logger.error(f"推理引擎未返回响应（尝试 {attempt+1}/{max_retries}）")
                         continue
                     
-                    # 直接使用响应内容
-                    content = response  # response 已经是字符串
                     self.logger.info(f"响应内容: {content}")
                     
                     try:
@@ -172,10 +183,10 @@ class DeliveryPlanner:
                             self.logger.warning("未找到markdown格式的JSON，尝试直接解析响应内容")
                             try:
                                 delivery_plan = json.loads(content)
-                                self.logger.debug("成功直接解析响应内容为JSON")
+                                self.logger.info("成功直接解析响应内容为JSON")
                             except json.JSONDecodeError as je:
                                 self.logger.error(f"直接解析响应内容失败: {str(je)}")
-                                self.logger.debug(f"响应内容: {content}")
+                                self.logger.info(f"响应内容: {content}")
                                 raise
                             
                         if not isinstance(delivery_plan, dict):
