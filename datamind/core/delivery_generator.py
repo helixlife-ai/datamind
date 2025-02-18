@@ -72,7 +72,7 @@ class DeliveryGenerator:
             with path.open('r', encoding=encoding) as f:
                 content = f.read()
             
-            self.logger.debug(f"成功读取文件: {file_path}")
+            self.logger.info(f"成功读取文件: {file_path}")
             return content
         
         except Exception as e:
@@ -113,7 +113,7 @@ class DeliveryGenerator:
             metadata={'stage': 'markdown_generation'}
         ):
             full_response += chunk
-            self.logger.debug(f"\r生成Markdown内容: {full_response}")
+            self.logger.info(f"\r生成Markdown内容: {full_response}")
         
         return full_response if full_response else ""
     
@@ -152,7 +152,7 @@ class DeliveryGenerator:
             metadata={'stage': 'html_generation'}
         ):
             full_response += chunk
-            self.logger.debug(f"\r生成HTML内容: {full_response}")
+            self.logger.info(f"\r生成HTML内容: {full_response}")
         
         if full_response:
             # 使用正则表达式提取HTML代码
@@ -595,7 +595,7 @@ class DeliveryGenerator:
                     metadata={'stage': 'single_file_summarization'}
                 ):
                     file_qa_pairs += chunk
-                    self.logger.debug(f"\r生成{file_name}的问答对: {file_qa_pairs}")
+                    self.logger.info(f"\r生成{file_name}的问答对: {file_qa_pairs}")
                 
                 if file_qa_pairs:
                     all_qa_pairs[file_name] = file_qa_pairs
@@ -611,8 +611,9 @@ class DeliveryGenerator:
             self.logger.info(f"所有文件的问答对生成完成，共处理 {len(all_qa_pairs)} 个文件")
             self.logger.info(f"完整的问答对内容：\n{json.dumps(all_qa_pairs, ensure_ascii=False, indent=2)}")
             
-            # 保存问答对到文件
-            plan_path = Path(context['delivery_plan'].get('plan_id', ''))
+            # 从第一个文件路径中获取plan_path
+            # 因为所有文件都在plan_id目录下，所以取第一个文件的父目录的父目录即可
+            plan_path = Path(file_paths[0]).parent.parent
             self._save_qa_pairs(all_qa_pairs, plan_path)
             
             return all_qa_pairs
