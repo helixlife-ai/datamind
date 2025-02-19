@@ -1,9 +1,10 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from openai import AsyncOpenAI
 import json
 import logging
 import asyncio
 from .cache import QueryCache
+from ..core.reasoning import ReasoningEngine
 from ..config.settings import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_API_KEY,
@@ -18,19 +19,38 @@ from ..config.settings import (
     DEFAULT_EMBEDDING_MODEL
 )
 from ..llms.model_manager import ModelManager, ModelConfig
+from ..utils.stream_logger import StreamLineHandler
 
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""
     
-    def __init__(self, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "output", reasoning_engine: Optional[ReasoningEngine] = None, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
         """初始化解析器
         
         Args:
+            work_dir: 工作目录
+            reasoning_engine: 推理引擎实例
             api_key: API密钥，默认使用配置中的DEFAULT_LLM_API_KEY
             base_url: API基础URL，默认使用配置中的DEFAULT_LLM_API_BASE
             logger: 可选，日志记录器实例
         """
         self.logger = logger or logging.getLogger(__name__)
+        self.reasoning_engine = reasoning_engine
+        
+        # 添加流式日志处理器
+        if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
+            stream_handler = StreamLineHandler("work_dir/logs/delivery_planner_stream.log")
+            stream_handler.setFormatter(logging.Formatter(
+                '%(asctime)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            ))
+            self.logger.addHandler(stream_handler)
+        
+        if not self.reasoning_engine:
+            self.logger.warning("未配置推理引擎")
+
+
+
         self.model_manager = ModelManager(logger=self.logger)
         
         # 注册LLM模型配置
@@ -58,6 +78,18 @@ class IntentParser:
                 self.logger.info("使用缓存的查询结果")
                 return cached_result
 
+            # 首先使用推理引擎分析查询含义
+            reasoning_engine = self.reasoning_engine
+                  
+            # 添加用户查询
+            reasoning_engine.add_message("user", f"用你的理解，复述下面的内容，注意说人话：\n{query}")
+            
+            content = ""
+            # 获取流式推理响应
+            async for chunk in reasoning_engine.get_stream_response(temperature=0.7):
+                content += chunk
+                self.logger.info(f"Reasoning chunk: {content}")
+
             # 并行执行关键词和参考文本提取
             keywords_task = self._extract_keywords(query)
             reference_texts_task = self._extract_reference_texts(query)
@@ -77,8 +109,13 @@ class IntentParser:
                 self.logger.error(f"参考文本提取失败: {str(reference_texts)}")
                 reference_texts = {"reference_texts": []}
 
-            # 组装查询条件时传入原始查询
-            result = self._build_query_conditions(keywords, reference_texts, query)
+            # 组装查询条件时传入原始查询和推理历史
+            result = self._build_query_conditions(
+                keywords, 
+                reference_texts, 
+                query,
+                reasoning_intent=content
+            )
             
             # 存入缓存
             self.cache.store(query, result)
@@ -145,10 +182,12 @@ class IntentParser:
                     raise
                 await asyncio.sleep(1)  # 重试前等待
 
-    def _build_query_conditions(self, keywords_json: dict, reference_texts_json: dict, original_query: str) -> Dict:
+    def _build_query_conditions(self, keywords_json: dict, reference_texts_json: dict, 
+                              original_query: str, reasoning_intent: str = None) -> Dict:
         """组装最终的查询条件"""
         query_conditions = {
             "original_query": original_query,
+            "reasoning_intent": reasoning_intent or "",  # 添加推理意图
             "structured_conditions": [],
             "vector_conditions": [],
             "result_format": {

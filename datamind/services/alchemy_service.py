@@ -97,6 +97,8 @@ class DataMindAlchemy:
             logger=self.logger
         )
         intent_parser = IntentParser(
+            work_dir=str(self.run_dir),
+            reasoning_engine=reasoning_engine,
             logger=self.logger
         )
         planner = SearchPlanner(
