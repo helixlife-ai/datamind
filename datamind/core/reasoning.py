@@ -15,7 +15,8 @@ class ChatMessage:
 class ReasoningEngine:
     """推理引擎管理类"""
     
-    def __init__(self, model_manager: ModelManager, model_name: Optional[str] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, model_manager: ModelManager, model_name: Optional[str] = None, 
+                 logger: Optional[logging.Logger] = None, history_file: Optional[str] = None):
         """
         初始化推理引擎管理器
         
@@ -23,28 +24,27 @@ class ReasoningEngine:
             model_manager: ModelManager实例
             model_name: 可选，指定使用的推理模型名称
             logger: 可选，日志记录器实例
+            history_file: 可选，历史记录文件路径
         """
         self.logger = logger or logging.getLogger(__name__)
         self.model_manager = model_manager
         self.model_name = model_name
         self.messages: List[ChatMessage] = []
-        self.system_prompt: Optional[str] = None 
+        self.system_prompt: Optional[str] = None
+        self.history_file = history_file
 
     def set_system_prompt(self, prompt: str) -> None:
         """设置系统提示词"""
         self.system_prompt = prompt
         
     def add_message(self, role: str, content: str, **metadata) -> None:
-        """
-        添加新的对话消息
-        
-        Args:
-            role: 消息角色 ("user" 或 "assistant")
-            content: 消息内容
-            **metadata: 可选的元数据
-        """
+        """添加新的对话消息并自动保存"""
         message = ChatMessage(role=role, content=content, metadata=metadata)
         self.messages.append(message)
+        
+        # 如果设置了历史文件路径，则自动保存
+        if self.history_file:
+            self.save_chat_history_to_json(self.history_file)
         
     def clear_history(self) -> None:
         """清空对话历史"""
@@ -116,7 +116,7 @@ class ReasoningEngine:
                 if reasoning_content:
                     final_content = f"<think>\n{reasoning_content}\n</think>\n\n<answer>\n{response_content}\n</answer>"
                 
-                # 添加到消息历史
+                # 添加到消息历史（现在会自动保存）
                 self.add_message(
                     "assistant", 
                     final_content,
@@ -207,7 +207,7 @@ class ReasoningEngine:
             else:
                 full_content = content
                 
-            # 将完整响应添加到消息历史
+            # 将完整响应添加到消息历史（现在会自动保存）
             if full_content:
                 self.add_message(
                     "assistant",

@@ -16,13 +16,14 @@ class ModelConfig:
                  model_type: ModelType,
                  model_path: Optional[str] = None,
                  api_base: Optional[str] = None,
-                 api_key: Optional[str] = None,
+                 api_key: Optional[Union[str, list]] = None,
                  **kwargs):
         self.name = name
         self.model_type = model_type
         self.model_path = model_path
         self.api_base = api_base or DEFAULT_LLM_API_BASE
-        self.api_key = api_key
+        # 确保api_key始终是列表格式
+        self.api_keys = api_key if isinstance(api_key, list) else [api_key] if api_key else []
         self.extra_config = kwargs
 
 class ModelManager:
@@ -36,8 +37,9 @@ class ModelManager:
         """
         self.logger = logger or logging.getLogger(__name__)
         self.embedding_models: Dict[str, SentenceTransformer] = {}
-        self.llm_clients: Dict[str, AsyncOpenAI] = {}
+        self.llm_clients: Dict[str, Dict[str, AsyncOpenAI]] = {}  # 修改为嵌套字典
         self.model_configs: Dict[str, ModelConfig] = {}
+        self.current_key_index: Dict[str, int] = {}  # 记录每个模型当前使用的密钥索引
         
     def register_model(self, config: ModelConfig):
         """注册模型配置"""
@@ -89,33 +91,51 @@ class ModelManager:
         # 例如OpenAI的ada embedding等
         raise NotImplementedError("API形式的Embedding模型尚未实现")
     
+    def _get_next_api_key(self, model_name: str) -> Optional[str]:
+        """获取下一个可用的API密钥"""
+        config = self.model_configs.get(model_name)
+        if not config or not config.api_keys:
+            return None
+            
+        if model_name not in self.current_key_index:
+            self.current_key_index[model_name] = 0
+        else:
+            self.current_key_index[model_name] = (self.current_key_index[model_name] + 1) % len(config.api_keys)
+            
+        return config.api_keys[self.current_key_index[model_name]]
+
     def _get_llm_client(self, model_name: str) -> Optional[AsyncOpenAI]:
         """获取或创建LLM客户端"""
-        if model_name not in self.llm_clients:
-            config = self.model_configs.get(model_name)
-            if not config:
-                self.logger.error(f"未找到模型 {model_name} 的配置")
+        config = self.model_configs.get(model_name)
+        if not config:
+            self.logger.error(f"未找到模型 {model_name} 的配置")
+            return None
+            
+        if config.model_type == "api":
+            api_key = self._get_next_api_key(model_name)
+            if not api_key:
+                self.logger.error(f"模型 {model_name} 没有可用的API密钥")
                 return None
                 
-            if config.model_type == "api":
-                if not config.api_key:
-                    self.logger.error(f"模型 {model_name} 缺少API密钥")
-                    return None
-                    
+            # 初始化该密钥对应的客户端（如果不存在）
+            if model_name not in self.llm_clients:
+                self.llm_clients[model_name] = {}
+                
+            if api_key not in self.llm_clients[model_name]:
                 try:
-                    self.llm_clients[model_name] = AsyncOpenAI(
-                        api_key=config.api_key,
+                    self.llm_clients[model_name][api_key] = AsyncOpenAI(
+                        api_key=api_key,
                         base_url=config.api_base
                     )
                     self.logger.info(f"成功初始化LLM客户端: {model_name}")
                 except Exception as e:
                     self.logger.error(f"初始化LLM客户端失败: {str(e)}")
                     return None
-            else:
-                self.logger.error(f"本地LLM模型尚未实现: {model_name}")
-                return None
-                
-        return self.llm_clients.get(model_name)
+                    
+            return self.llm_clients[model_name][api_key]
+        else:
+            self.logger.error(f"本地LLM模型尚未实现: {model_name}")
+            return None
     
     async def generate_llm_response(self, 
                                   messages: list,

@@ -60,10 +60,21 @@ class IntentParser:
         
         self.cache = QueryCache()
         self.output_template = QUERY_TEMPLATE
+        self.work_dir = Path(work_dir)
+        self.work_dir.mkdir(parents=True, exist_ok=True)
         
     async def parse_query(self, query: str) -> Dict:
         """异步解析自然语言查询"""
         try:
+            # 为每次查询创建唯一标识符
+            query_id = str(int(time.time()))
+            query_dir = self.work_dir / "intent_results" 
+            query_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 保存原始查询
+            with open(query_dir / "original_query.txt", "w", encoding="utf-8") as f:
+                f.write(query)
+            
             # 检查缓存
             if cached_result := self.cache.get(query):
                 self.logger.info("使用缓存的查询结果")
@@ -73,7 +84,7 @@ class IntentParser:
             reasoning_engine = self.reasoning_engine
                   
             # 添加用户查询
-            reasoning_engine.add_message("user", f"以你的理解，用人话复述一遍下面的内容：\n\n{query}")
+            reasoning_engine.add_message("user", f"用你的理解，复述一遍下面我的想法：\n\n{query}")
             
             content = ""
             # 获取流式推理响应
@@ -84,6 +95,10 @@ class IntentParser:
                 content += chunk
                 self.logger.info(f"\r解析查询: {content}")
 
+            # 保存推理内容
+            with open(query_dir / "reasoning_intent.txt", "w", encoding="utf-8") as f:
+                f.write(content)
+            
             # 并行执行关键词和参考文本提取
             keywords_task = self._extract_keywords(query)
             reference_texts_task = self._extract_reference_texts(query)
@@ -94,15 +109,16 @@ class IntentParser:
                 return_exceptions=True
             )
             
-            # 处理可能的异常
-            if isinstance(keywords, Exception):
-                self.logger.error(f"关键词提取失败: {str(keywords)}")
-                keywords = {"keywords": []}
-                
-            if isinstance(reference_texts, Exception):
-                self.logger.error(f"参考文本提取失败: {str(reference_texts)}")
-                reference_texts = {"reference_texts": []}
-
+            # 保存关键词提取结果
+            if not isinstance(keywords, Exception):
+                with open(query_dir / "keywords.json", "w", encoding="utf-8") as f:
+                    json.dump(keywords, f, ensure_ascii=False, indent=2)
+            
+            # 保存参考文本提取结果
+            if not isinstance(reference_texts, Exception):
+                with open(query_dir / "reference_texts.json", "w", encoding="utf-8") as f:
+                    json.dump(reference_texts, f, ensure_ascii=False, indent=2)
+            
             # 组装查询条件时传入原始查询和推理历史
             result = self._build_query_conditions(
                 keywords, 
@@ -110,6 +126,10 @@ class IntentParser:
                 query,
                 reasoning_intent=content
             )
+            
+            # 保存最终的查询条件
+            with open(query_dir / "query_conditions.json", "w", encoding="utf-8") as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
             
             # 存入缓存
             self.cache.store(query, result)

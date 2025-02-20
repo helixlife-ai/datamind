@@ -14,7 +14,20 @@ DEFAULT_TARGET_FIELD = "abstract_embedding"
 # LLM模型配置
 #硅基流动的充值版本
 DEFAULT_LLM_MODEL = "Pro/deepseek-ai/DeepSeek-V3"    
-DEFAULT_LLM_API_KEY = os.getenv("SILICONFLOW_API_KEY")  
+
+def parse_api_keys(env_value: str) -> list:
+    """解析环境变量中的API密钥列表"""
+    try:
+        if env_value.startswith('[') and env_value.endswith(']'):
+            # 移除方括号并分割字符串
+            keys = [k.strip(' "\'') for k in env_value[1:-1].split(',')]
+            return [k for k in keys if k]  # 移除空值
+        return [env_value]  # 如果不是列表格式，返回单个值的列表
+    except:
+        return []
+
+# LLM模型配置
+DEFAULT_LLM_API_KEY = parse_api_keys(os.getenv("SILICONFLOW_API_KEY", ""))
 DEFAULT_LLM_API_BASE = os.getenv("SILICONFLOW_BASE_URL") 
 DEFAULT_CHAT_MODEL = "Pro/deepseek-ai/DeepSeek-V3" 
 DEFAULT_REASONING_MODEL = "Pro/deepseek-ai/DeepSeek-R1" 

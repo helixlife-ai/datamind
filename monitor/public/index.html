@@ -549,6 +549,11 @@
         #explorerContent::-webkit-scrollbar-thumb:hover {
             background-color: #ccc;
         }
+
+        .virtual-scroll-content {
+            position: relative;
+            will-change: transform;
+        }
     </style>
 </head>
 <body>
@@ -1453,27 +1458,116 @@
         }
 
         // 修改文件内容更新的相关代码
-        socket.on('fileUpdate', (data) => {
-            if (!currentWatchingFile) return;
-            if (data.dir !== currentWatchingFile.dir || data.path !== currentWatchingFile.path) return;
+        socket.on('fileUpdate', (function() {
+            const BATCH_DELAY = 100; // 批量更新延迟时间
+            const MAX_CONTENT_LENGTH = 1000000; // 最大内容长度
+            const CHUNK_SIZE = 50000; // 每个块的大小
             
-            const fileContent = document.getElementById('fileContent');
-            if (data.append) {
-                const highlightedContent = highlightLogContent(data.content);
-                // 使用innerHTML来支持高亮标签
-                fileContent.innerHTML = fileContent.innerHTML + highlightedContent;
-                // 总是滚动到底部
-                requestAnimationFrame(() => {
-                    fileContent.scrollTop = fileContent.scrollHeight;
-                });
-            } else {
-                fileContent.innerHTML = highlightLogContent(data.content);
-                // 总是滚动到底部
-                requestAnimationFrame(() => {
-                    fileContent.scrollTop = fileContent.scrollHeight;
-                });
+            let updateTimer = null;
+            let pendingContent = '';
+            
+            // 创建一个用于存储和管理日志内容的类
+            class LogManager {
+                constructor(element) {
+                    this.element = element;
+                    this.content = '';
+                    this.isScrolledToBottom = true;
+                    this.virtualScrollHeight = 0;
+                    
+                    // 监听滚动事件
+                    this.element.addEventListener('scroll', () => {
+                        this.isScrolledToBottom = Math.abs(
+                            this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight
+                        ) < 10;
+                    });
+                }
+                
+                // 更新内容
+                update(newContent, append = false) {
+                    if (append) {
+                        this.content += newContent;
+                    } else {
+                        this.content = newContent;
+                    }
+                    
+                    // 如果内容超过最大长度，进行裁剪
+                    if (this.content.length > MAX_CONTENT_LENGTH) {
+                        this.content = this.content.slice(-MAX_CONTENT_LENGTH);
+                    }
+                    
+                    this._render();
+                }
+                
+                // 渲染内容
+                _render() {
+                    // 使用 DocumentFragment 提高性能
+                    const fragment = document.createDocumentFragment();
+                    const chunks = this._splitIntoChunks(this.content);
+                    
+                    // 清空现有内容
+                    this.element.innerHTML = '';
+                    
+                    chunks.forEach(chunk => {
+                        const div = document.createElement('div');
+                        div.innerHTML = highlightLogContent(chunk);
+                        fragment.appendChild(div);
+                    });
+                    
+                    this.element.appendChild(fragment);
+                    
+                    // 如果之前在底部，保持在底部
+                    if (this.isScrolledToBottom) {
+                        requestAnimationFrame(() => {
+                            this.element.scrollTop = this.element.scrollHeight;
+                        });
+                    }
+                }
+                
+                // 将内容分割成更小的块
+                _splitIntoChunks(content) {
+                    const chunks = [];
+                    let start = 0;
+                    
+                    while (start < content.length) {
+                        // 在换行符处分割，避免破坏日志格式
+                        let end = start + CHUNK_SIZE;
+                        if (end < content.length) {
+                            end = content.lastIndexOf('\n', end);
+                            if (end <= start) {
+                                end = start + CHUNK_SIZE;
+                            }
+                        }
+                        chunks.push(content.slice(start, end));
+                        start = end;
+                    }
+                    
+                    return chunks;
+                }
             }
-        });
+            
+            // 创建 LogManager 实例
+            const logManager = new LogManager(document.getElementById('fileContent'));
+            
+            return function(data) {
+                if (!currentWatchingFile) return;
+                if (data.dir !== currentWatchingFile.dir || data.path !== currentWatchingFile.path) return;
+                
+                // 将新内容添加到待处理内容中
+                pendingContent += data.content;
+                
+                // 清除之前的定时器
+                if (updateTimer) {
+                    clearTimeout(updateTimer);
+                }
+                
+                // 设置新的定时器进行批量更新
+                updateTimer = setTimeout(() => {
+                    logManager.update(pendingContent, data.append);
+                    pendingContent = '';
+                    updateTimer = null;
+                }, BATCH_DELAY);
+            };
+        })());
     </script>
 </body>
 </html>

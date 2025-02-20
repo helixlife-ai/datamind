@@ -13,6 +13,7 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import hashlib
+import time
 
 from .formatters import (
     HTMLFormatter, 
@@ -25,7 +26,7 @@ from .savers import (
     SaverFactory
 )
 from .analyzers import ResultAnalyzer
-
+from ..utils.common import DateTimeEncoder
 logger = logging.getLogger(__name__)
 
 class SearchPlanExecutor:
@@ -42,6 +43,7 @@ class SearchPlanExecutor:
         self.logger = logger or logging.getLogger(__name__)
         self.engine = search_engine
         self.work_dir = Path(work_dir)
+        self.work_dir.mkdir(parents=True, exist_ok=True)
         self.nlp_processor = None  # 用于文本分析，后续初始化
         self.knowledge_graph = None  # 用于关系分析，后续初始化
         self.supported_formats = ['csv', 'json', 'excel', 'html', 'md']
@@ -79,70 +81,70 @@ class SearchPlanExecutor:
     async def execute_plan(self, plan: Dict) -> Dict:
         """执行检索计划"""
         try:
-            # 检查plan是否有效
-            if not plan:
-                self.logger.error("检索计划为空")
-                raise ValueError("检索计划不能为空")
+            # 创建执行结果目录
+            execution_dir = self.work_dir / "search_results" 
+            execution_dir.mkdir(parents=True, exist_ok=True)
             
-            self.logger.info(f"开始执行检索计划: {plan.get('metadata', {}).get('original_query', '')}")
+            # 保存输入的计划
+            with open(execution_dir / "input_plan.json", "w", encoding="utf-8") as f:
+                json.dump(plan, f, ensure_ascii=False, indent=2)
             
             # 初始化结果结构
             results = self._initialize_results(plan)
-            self.logger.debug("结果结构初始化完成")
-            
-            # 检查搜索引擎
-            if not self.engine:
-                self.logger.error("搜索引擎未初始化")
-                raise ValueError("搜索引擎未初始化")
             
             # 执行基础搜索
-            search_results = self._execute_basic_search(plan, results)
+            search_results = await self._execute_basic_search(plan, results, execution_dir)
             if search_results:
                 results = search_results
-            
-            self.logger.debug(f"基础搜索完成，结果统计: {results['stats']}")
             
             # 分析结果
             if results['stats']['total'] > 0:
                 self.analyzer.analyze(results)
-                self.logger.debug("结果分析完成")
-            else:
-                self.logger.warning("没有找到搜索结果，跳过分析步骤")
+                
+                # 保存分析结果
+                analysis_dir = execution_dir / "analysis"
+                analysis_dir.mkdir(exist_ok=True)
+                
+                # 保存关键概念
+                if results['insights']['key_concepts']:
+                    with open(analysis_dir / "key_concepts.json", "w", encoding="utf-8") as f:
+                        json.dump(results['insights']['key_concepts'], f, ensure_ascii=False, indent=2)
+                
+                # 保存关系分析
+                if results['insights']['relationships']:
+                    with open(analysis_dir / "relationships.json", "w", encoding="utf-8") as f:
+                        json.dump(results['insights']['relationships'], f, ensure_ascii=False, indent=2)
+                
+                # 保存时间线
+                if results['insights']['timeline']:
+                    with open(analysis_dir / "timeline.json", "w", encoding="utf-8") as f:
+                        json.dump(results['insights']['timeline'], f, ensure_ascii=False, indent=2)
+                
+                # 保存重要性排名
+                if results['insights']['importance_ranking']:
+                    with open(analysis_dir / "importance_ranking.json", "w", encoding="utf-8") as f:
+                        json.dump(results['insights']['importance_ranking'], f, ensure_ascii=False, indent=2)
             
-            # 记录日志
-            self.logger.info(f"检索计划执行完成，共找到 {results['stats']['total']} 条结果")
+            # 保存最终结果
+            with open(execution_dir / "final_results.json", "w", encoding="utf-8") as f:
+                json.dump(results, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            
+            # 保存执行统计信息
+            stats = {
+                "execution_time": datetime.now().isoformat(),
+                "query": plan.get("metadata", {}).get("original_query", ""),
+                "total_results": results["stats"]["total"],
+                "structured_results": results["stats"]["structured_count"],
+                "vector_results": results["stats"]["vector_count"]
+            }
+            with open(execution_dir / "execution_stats.json", "w", encoding="utf-8") as f:
+                json.dump(stats, f, ensure_ascii=False, indent=2)
             
             return results
             
         except Exception as e:
             self.logger.error(f"执行检索计划失败: {str(e)}", exc_info=True)
-            # 返回一个基本的结果结构而不是None
-            return {
-                "structured": [],
-                "vector": [],
-                "stats": {
-                    "structured_count": 0,
-                    "vector_count": 0,
-                    "total": 0
-                },
-                "insights": {
-                    "key_concepts": [],
-                    "relationships": [],
-                    "timeline": [],
-                    "importance_ranking": []
-                },
-                "context": {
-                    "historical": [],
-                    "related": [],
-                    "dependencies": []
-                },
-                "metadata": {
-                    "original_query": plan.get("metadata", {}).get("original_query", ""),
-                    "generated_at": datetime.now().isoformat(),
-                    "execution_time": datetime.now().isoformat(),
-                    "error": str(e)
-                }
-            }
+            raise
 
     def format_results(self, results: Dict, format: str = 'json') -> str:
         """格式化结果"""
@@ -194,75 +196,85 @@ class SearchPlanExecutor:
         }
         return results
 
-    def _execute_basic_search(self, plan: Dict, results: Dict):
+    async def _execute_basic_search(self, plan: Dict, results: Dict, execution_dir: Path):
         """执行基础搜索"""
         try:
-            # 用于存储已见过的内容指纹
             seen_fingerprints = set()
+            search_results_dir = execution_dir / "search_results"
+            search_results_dir.mkdir(exist_ok=True)
             
             # 执行结构化查询
             if plan.get("structured_queries"):
-                self.logger.debug(f"开始执行结构化查询: {plan['structured_queries']}")
-                for query in plan["structured_queries"]:
+                structured_dir = search_results_dir / "structured"
+                structured_dir.mkdir(exist_ok=True)
+                
+                for i, query in enumerate(plan["structured_queries"]):
                     try:
-                        self.logger.debug(f"执行查询: {query}")
                         df = self.engine.execute_structured_query(query)
-                        
                         if df is not None and not df.empty:
-                            self.logger.debug(f"查询返回 {len(df)} 条结果")
+                            # 将DataFrame转换为记录之前处理Timestamp
+                            for col in df.select_dtypes(include=['datetime64[ns]']).columns:
+                                df[col] = df[col].astype(str)
+                                
                             records = df.to_dict('records')
-                            # 对结构化查询结果进行排重
+                            filtered_records = []
                             for record in records:
                                 fingerprint = self._generate_content_fingerprint(record.get('data', ''))
                                 if fingerprint not in seen_fingerprints:
                                     seen_fingerprints.add(fingerprint)
+                                    filtered_records.append(record)
                                     results["structured"].append(record)
-                        else:
-                            self.logger.debug("查询返回空结果")
+                            
+                            # 使用DateTimeEncoder保存结果
+                            with open(structured_dir / f"query_{i+1}_results.json", "w", encoding="utf-8") as f:
+                                json.dump(filtered_records, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
                     except Exception as e:
                         self.logger.error(f"结构化查询执行失败: {str(e)}", exc_info=True)
                         continue
-                    
-            results["stats"]["structured_count"] = len(results["structured"])
-            self.logger.info(f"结构化查询结果: {len(results['structured'])} 条")
-                
+            
             # 执行向量查询
             if plan.get("vector_queries"):
-                self.logger.debug(f"开始执行向量查询: {plan['vector_queries']}")
-                for vector_query in plan["vector_queries"]:
+                vector_dir = search_results_dir / "vector"
+                vector_dir.mkdir(exist_ok=True)
+                
+                for i, vector_query in enumerate(plan["vector_queries"]):
                     try:
-                        self.logger.debug(f"执行向量查询: {vector_query}")
                         vector_results = self.engine.execute_vector_search(
                             vector_query["reference_text"],
                             vector_query["top_k"]
                         )
                         
                         if vector_results:
-                            self.logger.debug(f"向量查询返回 {len(vector_results)} 条结果")
                             # 过滤相似度阈值并排重
+                            filtered_results = []
                             threshold = vector_query["similarity_threshold"]
                             for result in vector_results:
                                 if result["similarity"] >= threshold:
+                                    # 将 float32 转换为 Python float
+                                    if isinstance(result["similarity"], np.float32):
+                                        result["similarity"] = float(result["similarity"])
+                                    
                                     fingerprint = self._generate_content_fingerprint(result.get('data', ''))
                                     if fingerprint not in seen_fingerprints:
                                         seen_fingerprints.add(fingerprint)
+                                        filtered_results.append(result)
                                         results["vector"].append(result)
-                        else:
-                            self.logger.debug("向量查询返回空结果")
+                            
+                            # 保存每个查询的结果
+                            with open(vector_dir / f"query_{i+1}_results.json", "w", encoding="utf-8") as f:
+                                json.dump(filtered_results, f, ensure_ascii=False, indent=2)
                     except Exception as e:
                         self.logger.error(f"向量查询执行失败: {str(e)}", exc_info=True)
                         continue
-                    
+            
+            # 更新统计信息
+            results["stats"]["structured_count"] = len(results["structured"])
             results["stats"]["vector_count"] = len(results["vector"])
-            self.logger.info(f"向量查询结果: {len(results['vector'])} 条")
-                
-            # 计算总数
             results["stats"]["total"] = (
                 results["stats"]["structured_count"] + 
                 results["stats"]["vector_count"]
             )
             
-            self.logger.debug(f"搜索完成，总结果数: {results['stats']['total']}")
             return results
             
         except Exception as e:

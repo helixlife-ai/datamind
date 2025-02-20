@@ -4,13 +4,16 @@ from sentence_transformers import SentenceTransformer
 from typing import Optional
 import json
 import numpy as np
-from datetime import datetime
+from datetime import datetime, date
+import pandas as pd
 
 
 class DateTimeEncoder(json.JSONEncoder):
     """增强版JSON编码器，处理datetime和numpy类型"""
     def default(self, obj):
-        if isinstance(obj, datetime):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        elif isinstance(obj, pd.Timestamp):
             return obj.isoformat()
         if isinstance(obj, np.integer):
             return int(obj)

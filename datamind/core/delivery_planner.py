@@ -7,7 +7,7 @@ from ..core.reasoning import ReasoningEngine
 import re
 import asyncio
 from ..utils.common import DateTimeEncoder
-from ..utils.stream_logger import StreamLineHandler
+import time
 
 class DeliveryPlanner:
     """交付计划生成器"""
@@ -20,23 +20,28 @@ class DeliveryPlanner:
             reasoning_engine: 推理引擎实例，用于生成交付计划
             logger: 可选，日志记录器实例
         """
+        self.work_dir = Path(work_dir)
+        self.work_dir.mkdir(parents=True, exist_ok=True)
         self.logger = logger or logging.getLogger(__name__)
-        self.work_dir = work_dir
         self.reasoning_engine = reasoning_engine
         
         if not self.reasoning_engine:
             self.logger.warning("未配置推理引擎，无法生成交付计划")
         
     async def generate_plan(self, results: Dict) -> Optional[Dict]:
-        """生成交付计划
-
-        Args:
-            results: 推理结果
-                    
-        Returns:
-            Optional[Dict]: 交付计划
-        """
+        """生成交付计划"""
         try:
+            # 创建计划目录
+            plan_dir = self.work_dir / "delivery_plans" 
+            plan_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 保存输入结果
+            input_dir = plan_dir / "inputs"
+            input_dir.mkdir(exist_ok=True)
+            
+            with open(input_dir / "search_results.json", "w", encoding="utf-8") as f:
+                json.dump(results['results'], f, ensure_ascii=False, indent=2)
+            
             if not self.reasoning_engine:
                 raise ValueError("未配置推理引擎，无法生成交付计划")
                             
@@ -54,10 +59,13 @@ class DeliveryPlanner:
                     }
                 }
             }
+            
+            # 保存模板
+            with open(plan_dir / "template.json", "w", encoding="utf-8") as f:
+                json.dump(json_template, f, ensure_ascii=False, indent=2)
                 
             # 添加用户消息
-            message = f"""
-                [用户的意图 begin]
+            message = f"""[用户的意图 begin]
                 {json.dumps(results['results']['parsed_intent'], ensure_ascii=False, indent=2)}
                 [用户的意图 end]
                 
@@ -86,56 +94,40 @@ class DeliveryPlanner:
             
             self.reasoning_engine.add_message("user", message)
             
-            # 生成输出目录
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_dir = Path(self.work_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
+            # 保存提示词
+            prompts_dir = plan_dir / "prompts"
+            prompts_dir.mkdir(exist_ok=True)
             
-            # 创建本次推理的目录
-            plan_dir = output_dir
-            
-            # 保存提示词为markdown格式
-            prompts_file = plan_dir / "prompts.md"
-            with prompts_file.open('w', encoding='utf-8') as f:
-                f.write("# 推理提示词配置\n\n")
-                f.write(f"生成时间：{timestamp}\n")
-                f.write(f"模型：{self.reasoning_engine.model_name}\n")
-                f.write(f"温度：0.7\n")
-                                
-                f.write("## User Message\n\n")
+            with open(prompts_dir / "delivery_plan_prompt.md", "w", encoding="utf-8") as f:
+                f.write("# 交付计划生成提示词\n\n")
+                f.write("## 提示词内容\n\n")
                 f.write("```\n")
-                # 获取最后一条消息的内容
-                last_message = self.reasoning_engine.messages[-1]
-                f.write(last_message.content)  # ChatMessage对象直接访问content属性
-                f.write("\n```\n\n")
-                
-                f.write("## 完整提示词(JSON格式)\n\n")
-                f.write("```json\n")
-                # 将消息历史转换为可序列化的格式
-                serializable_messages = []
-                for msg in self.reasoning_engine.messages:
-                    serializable_messages.append({
-                        'role': msg.role,
-                        'content': msg.content,
-                        'timestamp': msg.timestamp.isoformat(),
-                        'metadata': msg.metadata
-                    })
-                
-                f.write(json.dumps({
-                    "timestamp": timestamp,
-                    "messages": serializable_messages,
-                    "model": self.reasoning_engine.model_name,
-                    "temperature": 0.7,
-                }, ensure_ascii=False, indent=2, cls=DateTimeEncoder))
+                f.write(message)
                 f.write("\n```\n")
             
+            # 保存推理历史
+            with open(prompts_dir / "reasoning_history.json", "w", encoding="utf-8") as f:
+                history = [
+                    {
+                        "role": msg.role,
+                        "content": msg.content,
+                        "timestamp": msg.timestamp.isoformat(),
+                        "metadata": msg.metadata
+                    }
+                    for msg in self.reasoning_engine.messages
+                ]
+                json.dump(history, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            
             max_retries = 3
-            retry_delay = 1  # 初始重试延迟1秒
+            retry_delay = 1
             delivery_plan = None
+            
+            # 保存生成过程
+            generation_dir = plan_dir / "generation"
+            generation_dir.mkdir(exist_ok=True)
             
             for attempt in range(max_retries):
                 try:
-                    # 使用流式输出收集完整响应
                     content = ""
                     async for chunk in self.reasoning_engine.get_stream_response(
                         temperature=0.7,
@@ -144,58 +136,33 @@ class DeliveryPlanner:
                         content += chunk
                         self.logger.info(f"\r生成交付计划: {content}")
                     
+                    # 保存原始响应
+                    with open(generation_dir / f"attempt_{attempt+1}_response.txt", "w", encoding="utf-8") as f:
+                        f.write(content)
+                    
                     if not content:
                         self.logger.error(f"推理引擎未返回响应（尝试 {attempt+1}/{max_retries}）")
                         continue
                     
-                    self.logger.info(f"响应内容: {content}")
-                    
                     try:
-                        # 使用正则表达式提取JSON内容
-                        json_pattern = r'```json\n([\s\S]*?)\n```'
-                        json_match = re.search(json_pattern, content)
-                        
-                        if json_match:
-                            json_content = json_match.group(1).strip()
-                            try:
-                                delivery_plan = json.loads(json_content)
-                                self.logger.debug(f"成功从markdown格式解析JSON")
-                            except json.JSONDecodeError as je:
-                                self.logger.warning(f"从markdown格式解析JSON失败: {str(je)}")
-                                cleaned_content = json_content.replace('\r', '').replace('\t', '  ')
-                                try:
-                                    delivery_plan = json.loads(cleaned_content)
-                                    self.logger.debug("清理特殊字符后成功解析JSON")
-                                except json.JSONDecodeError as je2:
-                                    self.logger.error(f"清理后仍然无法解析JSON: {str(je2)}")
-                                    self.logger.debug(f"问题内容: {cleaned_content}")
-                                    raise
-                        else:
-                            self.logger.warning("未找到markdown格式的JSON，尝试直接解析响应内容")
-                            try:
-                                delivery_plan = json.loads(content)
-                                self.logger.info("成功直接解析响应内容为JSON")
-                            except json.JSONDecodeError as je:
-                                self.logger.error(f"直接解析响应内容失败: {str(je)}")
-                                self.logger.info(f"响应内容: {content}")
-                                raise
-                            
-                        if not isinstance(delivery_plan, dict):
-                            raise ValueError("解析后的内容不是有效的字典格式")
-                            
+                        # 解析JSON内容
+                        delivery_plan = self._parse_json_response(content)
                         if delivery_plan:
+                            # 保存成功的解析结果
+                            with open(generation_dir / f"attempt_{attempt+1}_parsed.json", "w", encoding="utf-8") as f:
+                                json.dump(delivery_plan, f, ensure_ascii=False, indent=2)
                             break
                             
-                    except json.JSONDecodeError as e:
-                        self.logger.error(f"解析响应内容失败: {str(e)}")
+                    except Exception as e:
+                        self.logger.error(f"解析响应内容失败 (尝试 {attempt+1}): {str(e)}")
                         if attempt < max_retries - 1:
                             await asyncio.sleep(retry_delay)
                             retry_delay *= 2
                             continue
-                        return None
+                        raise
                         
                 except Exception as e:
-                    self.logger.error(f"处理响应时发生错误: {str(e)}")
+                    self.logger.error(f"生成响应时发生错误 (尝试 {attempt+1}): {str(e)}")
                     if attempt < max_retries - 1:
                         await asyncio.sleep(retry_delay)
                         retry_delay *= 2
@@ -206,51 +173,73 @@ class DeliveryPlanner:
                 self.logger.error("所有重试尝试均失败")
                 return None
             
-            # 保存推理过程
-            reasoning_file = plan_dir / "reasoning_process.md"
-            with reasoning_file.open('w', encoding='utf-8') as f:
-                f.write("# 交付计划推理过程\n\n")
-                
-                f.write("```json\n")
-                f.write(json.dumps(delivery_plan, ensure_ascii=False, indent=2))
-                f.write("\n```\n")
-
-            
-            # 保存交付计划
-            plan_file = plan_dir / "delivery_plan.json"
-            
-            final_delivery_plan = {
+            # 保存最终计划
+            final_plan = {
                 'metadata': {
                     'query': results['results']['query'],
-                    'generated_at': datetime.now().isoformat()
+                    'generated_at': datetime.now().isoformat(),
+                    'model': self.reasoning_engine.model_name,
+                    'temperature': 0.7
                 },
                 **delivery_plan
             }
             
-            with plan_file.open('w', encoding='utf-8') as f:
-                json.dump(final_delivery_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+            with open(plan_dir / "final_plan.json", "w", encoding="utf-8") as f:
+                json.dump(final_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
             
-            # 生成README文件
-            readme_file = plan_dir / "README.md"
-            with readme_file.open('w', encoding='utf-8') as f:
-                f.write("# 检索结果与交付计划\n\n")
-                f.write(f"生成时间：{timestamp}\n\n")
-                f.write("## 文件说明\n\n")
-                f.write("- prompts.md: 推理提示词配置\n")
-                f.write("- reasoning_process.md: 推理过程详情\n")
-                f.write("- delivery_plan.json: 生成的交付计划\n")
+            # 生成README
+            with open(plan_dir / "README.md", "w", encoding="utf-8") as f:
+                f.write("# 交付计划生成记录\n\n")
+                f.write(f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                f.write("## 目录结构\n\n")
+                f.write("- inputs/: 输入数据\n")
+                f.write("- prompts/: 提示词和推理历史\n")
+                f.write("- generation/: 生成过程记录\n")
+                f.write("- template.json: 计划模板\n")
+                f.write("- final_plan.json: 最终交付计划\n")
             
             # 更新文件路径
-            final_delivery_plan['_file_paths'] = {
+            final_plan['_file_paths'] = {
                 'base_dir': str(plan_dir),
-                'reasoning_process': str(reasoning_file),
-                'delivery_plan': str(plan_file),
-                'readme': str(readme_file),
-                'prompts': str(prompts_file)
+                'inputs': str(input_dir),
+                'prompts': str(prompts_dir),
+                'generation': str(generation_dir),
+                'template': str(plan_dir / "template.json"),
+                'final_plan': str(plan_dir / "final_plan.json"),
+                'readme': str(plan_dir / "README.md")
             }
             
-            return final_delivery_plan
+            return final_plan
             
         except Exception as e:
             self.logger.error(f"生成交付计划时发生错误: {str(e)}")
+            return None
+            
+    def _parse_json_response(self, content: str) -> Optional[Dict]:
+        """解析JSON响应"""
+        try:
+            # 使用正则表达式提取JSON内容
+            json_pattern = r'```json\n([\s\S]*?)\n```'
+            json_match = re.search(json_pattern, content)
+            
+            if json_match:
+                json_content = json_match.group(1).strip()
+                try:
+                    delivery_plan = json.loads(json_content)
+                    self.logger.debug("成功从markdown格式解析JSON")
+                    return delivery_plan
+                except json.JSONDecodeError as je:
+                    self.logger.warning(f"从markdown格式解析JSON失败: {str(je)}")
+                    cleaned_content = json_content.replace('\r', '').replace('\t', '  ')
+                    delivery_plan = json.loads(cleaned_content)
+                    self.logger.debug("清理特殊字符后成功解析JSON")
+                    return delivery_plan
+            else:
+                self.logger.warning("未找到markdown格式的JSON，尝试直接解析响应内容")
+                delivery_plan = json.loads(content)
+                self.logger.info("成功直接解析响应内容为JSON")
+                return delivery_plan
+                
+        except Exception as e:
+            self.logger.error(f"解析JSON响应失败: {str(e)}")
             return None 

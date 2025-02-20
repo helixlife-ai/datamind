@@ -92,7 +92,8 @@ class DataMindAlchemy:
         reasoning_engine = ReasoningEngine(
             model_manager=self.model_manager,
             model_name=DEFAULT_REASONING_MODEL,
-            logger=self.logger
+            logger=self.logger,
+            history_file=self.run_dir / "reasoning_history.json"
         )
         
         # 其他组件初始化
@@ -106,19 +107,21 @@ class DataMindAlchemy:
             logger=self.logger
         )
         planner = SearchPlanner(
+            work_dir=str(self.run_dir),
             logger=self.logger
         )
         executor = SearchPlanExecutor(
             search_engine=search_engine,
-            work_dir=str(self.run_dir / "search_results"),
+            work_dir=str(self.run_dir),
             logger=self.logger
         )
         delivery_planner = DeliveryPlanner(
-            work_dir=str(self.run_dir / "delivery"),
+            work_dir=str(self.run_dir),
             reasoning_engine=reasoning_engine,
             logger=self.logger
         )
         delivery_generator = DeliveryGenerator(
+            work_dir=str(self.run_dir),
             reasoning_engine=reasoning_engine,
             logger=self.logger
         )        
@@ -322,30 +325,10 @@ class DataMindAlchemy:
             delivery_plan = await self.components['delivery_planner'].generate_plan(results)
             
             if delivery_plan:
-                results['results']['delivery_plan'] = delivery_plan
-                # 将字符串路径转换为Path对象
-                delivery_dir = Path(delivery_plan['_file_paths']['base_dir'])
-
-                # 保存搜索结果
-                search_results_file = delivery_dir / "search_results.json"
-                results_to_save = {
-                    "structured_results": search_results["structured"][:10],
-                    "vector_results": search_results["vector"][:10],
-                    "stats": search_results["stats"],
-                    "insights": search_results["insights"],
-                    "context": search_results["context"]
-                }
-                with search_results_file.open('w', encoding='utf-8') as f:
-                    json.dump(results_to_save, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
-
-                # 保存搜索计划
-                search_plan_file = delivery_dir / "search_plan.json"
-                with search_plan_file.open('w', encoding='utf-8') as f:
-                    json.dump(parsed_plan, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
 
                 # 生成交付文件
                 generated_files = await self.components['delivery_generator'].generate_deliverables(
-                    delivery_dir,
+                    delivery_plan,
                     search_results,
                     delivery_plan.get('delivery_config'),
                     test_mode=False
@@ -358,19 +341,6 @@ class DataMindAlchemy:
             # 最后更新推理历史
             chat_history = reasoning_engine.get_chat_history()
             results['results']['reasoning_history'] = chat_history
-            
-            # 保存推理历史到文件
-            history_file = self.run_dir / "reasoning_history.json"
-            try:
-                with history_file.open('w', encoding='utf-8') as f:
-                    json.dump({
-                        'timestamp': datetime.now().isoformat(),
-                        'original_query': query,
-                        'chat_history': chat_history
-                    }, f, ensure_ascii=False, indent=2)
-                self.logger.info(f"推理历史已保存至: {history_file}")
-            except Exception as e:
-                self.logger.error(f"保存推理历史失败: {str(e)}")
             
             return results
                 
