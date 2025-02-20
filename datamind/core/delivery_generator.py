@@ -157,7 +157,7 @@ class DeliveryGenerator:
             self.reasoning_engine.add_message("user", prompt)
             
             # 收集生成的内容
-            content = ""
+            full_response = ""
             process_path = process_dir / "generation_process.txt"
             
             async for chunk in self.reasoning_engine.get_stream_response(
@@ -165,16 +165,65 @@ class DeliveryGenerator:
                 metadata={'stage': 'markdown_generation'}
             ):
                 if chunk:
-                    content += chunk
-                    self.logger.info(f"\r生成Markdown内容: {content}")
+                    full_response += chunk
+                    self.logger.info(f"\r生成Markdown内容: {full_response}")
                     # 保存生成过程
                     with process_path.open("a", encoding="utf-8") as f:
                         f.write(chunk)
             
-            if not content:
+            if not full_response:
                 raise ValueError("生成内容为空")
             
-            return content
+            # 保存完整响应
+            response_path = process_dir / "full_response.md"
+            response_path.write_text(full_response, encoding="utf-8")
+            
+            # 提取Markdown内容
+            # 1. 首先尝试提取第一个```markdown和最后一个```之间的内容
+            start_marker = "```markdown\n"
+            end_marker = "```"
+            
+            if start_marker in full_response:
+                start_idx = full_response.find(start_marker) + len(start_marker)
+                remaining_text = full_response[start_idx:]
+                if end_marker in remaining_text:
+                    end_idx = remaining_text.rfind(end_marker)
+                    md_content = remaining_text[:end_idx].strip()
+                    if md_content:
+                        # 保存提取的Markdown内容
+                        content_path = process_dir / "extracted_content.md"
+                        content_path.write_text(md_content, encoding="utf-8")
+                        return md_content
+            
+            # 2. 如果没有markdown标记，尝试提取任意代码块
+            if "```" in full_response:
+                start_idx = full_response.find("```") + 3
+                # 跳过语言标识符所在行
+                start_idx = full_response.find("\n", start_idx) + 1
+                remaining_text = full_response[start_idx:]
+                if "```" in remaining_text:
+                    end_idx = remaining_text.rfind("```")
+                    md_content = remaining_text[:end_idx].strip()
+                    if md_content:
+                        content_path = process_dir / "extracted_content.md"
+                        content_path.write_text(md_content, encoding="utf-8")
+                        return md_content
+            
+            # 3. 如果没有代码块，检查是否整个响应就是markdown
+            if full_response.startswith('#') or full_response.startswith('---'):
+                content_path = process_dir / "extracted_content.md"
+                content_path.write_text(full_response, encoding="utf-8")
+                return full_response
+            
+            # 如果都不符合，返回错误信息
+            error_content = f"""# 生成失败
+
+很抱歉，无法生成有效的Markdown内容。
+
+原始响应：
+{full_response[:200]}...
+"""
+            return error_content
             
         except Exception as e:
             self.logger.error(f"生成Markdown内容时发生错误: {str(e)}")
