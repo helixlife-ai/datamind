@@ -16,7 +16,6 @@ from datamind import (
 
 from datamind.core.feedback_optimizer import FeedbackOptimizer
 from datamind.services.alchemy_service import DataMindAlchemy
-from datamind.utils.stream_logger import StreamLineHandler
 
 
 async def run_test_optimization(
@@ -99,23 +98,13 @@ async def datamind_alchemy_test(
     """数据炼丹测试"""
     logger = logger or logging.getLogger(__name__)
     
-    # 添加流式日志处理器
-    if not any(isinstance(h, StreamLineHandler) for h in logger.handlers):
-        stream_handler = StreamLineHandler(str(work_dir / "logs" / "alchemy_stream.log"))
-        stream_handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        ))
-        logger.addHandler(stream_handler)
-    
     try:
         logger.info("\n=== 数据炼丹测试 ===")
         
-        # 创建DataMindAlchemy实例
+        # 创建DataMindAlchemy实例，传入logger
         alchemy = DataMindAlchemy(work_dir=work_dir, logger=logger)
         
         logger.info(f"测试查询: {query}")
-        
         
         # 调用处理方法
         result = await alchemy.process(

@@ -3,6 +3,8 @@ from openai import AsyncOpenAI
 import json
 import logging
 import asyncio
+from pathlib import Path
+import time
 from .cache import QueryCache
 from ..core.reasoning import ReasoningEngine
 from ..config.settings import (
@@ -37,19 +39,8 @@ class IntentParser:
         self.logger = logger or logging.getLogger(__name__)
         self.reasoning_engine = reasoning_engine
         
-        # 添加流式日志处理器
-        if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
-            stream_handler = StreamLineHandler("work_dir/logs/delivery_planner_stream.log")
-            stream_handler.setFormatter(logging.Formatter(
-                '%(asctime)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            ))
-            self.logger.addHandler(stream_handler)
-        
         if not self.reasoning_engine:
             self.logger.warning("未配置推理引擎")
-
-
 
         self.model_manager = ModelManager(logger=self.logger)
         
@@ -82,7 +73,7 @@ class IntentParser:
             reasoning_engine = self.reasoning_engine
                   
             # 添加用户查询
-            reasoning_engine.add_message("user", f"用你的理解，复述下面的内容，注意说人话：\n{query}")
+            reasoning_engine.add_message("user", f"以你的理解，用人话复述一遍下面的内容：\n\n{query}")
             
             content = ""
             # 获取流式推理响应

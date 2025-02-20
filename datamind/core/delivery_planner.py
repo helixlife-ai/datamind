@@ -24,15 +24,6 @@ class DeliveryPlanner:
         self.work_dir = work_dir
         self.reasoning_engine = reasoning_engine
         
-        # 添加流式日志处理器
-        if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
-            stream_handler = StreamLineHandler("work_dir/logs/delivery_planner_stream.log")
-            stream_handler.setFormatter(logging.Formatter(
-                '%(asctime)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            ))
-            self.logger.addHandler(stream_handler)
-        
         if not self.reasoning_engine:
             self.logger.warning("未配置推理引擎，无法生成交付计划")
         

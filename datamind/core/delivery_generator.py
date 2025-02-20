@@ -8,7 +8,7 @@ import re
 from ..core.reasoning import ReasoningEngine
 import asyncio
 from io import StringIO
-from datamind.utils.stream_logger import StreamLineHandler
+from ..utils.stream_logger import StreamLineHandler
 
 class DeliveryGenerator:
     """交付文件生成器"""
@@ -22,15 +22,6 @@ class DeliveryGenerator:
         """
         self.logger = logger or logging.getLogger(__name__)
         self.reasoning_engine = reasoning_engine
-        
-        # 添加流式日志处理器
-        if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
-            stream_handler = StreamLineHandler("work_dir/logs/delivery_generator_stream.log")
-            stream_handler.setFormatter(logging.Formatter(
-                '%(asctime)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            ))
-            self.logger.addHandler(stream_handler)
         
         if not self.reasoning_engine:
             self.logger.warning("未提供推理引擎实例，部分功能可能受限")
@@ -609,7 +600,6 @@ class DeliveryGenerator:
             
             # 添加所有问答对的汇总日志
             self.logger.info(f"所有文件的问答对生成完成，共处理 {len(all_qa_pairs)} 个文件")
-            self.logger.info(f"完整的问答对内容：\n{json.dumps(all_qa_pairs, ensure_ascii=False, indent=2)}")
             
             # 从第一个文件路径中获取plan_path
             # 因为所有文件都在plan_id目录下，所以取第一个文件的父目录的父目录即可

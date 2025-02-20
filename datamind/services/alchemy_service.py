@@ -21,6 +21,7 @@ from ..config.settings import (
     DEFAULT_LLM_API_KEY,
     DEFAULT_LLM_API_BASE
 )
+from ..utils.stream_logger import StreamLineHandler
 
 class DataMindAlchemy:
     """数据炼丹工作流封装类"""
@@ -40,21 +41,24 @@ class DataMindAlchemy:
         self.logger.setLevel(logging.INFO)
         
         # 创建控制台处理器
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(console_formatter)
-        self.logger.addHandler(console_handler)
+        if not any(isinstance(h, logging.StreamHandler) for h in self.logger.handlers):
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.INFO)
+            console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            console_handler.setFormatter(console_formatter)
+            self.logger.addHandler(console_handler)
         
-        # 创建文件处理器
+        # 创建日志目录
         log_dir = self.work_dir / "logs"
         log_dir.mkdir(exist_ok=True, parents=True)
-        log_file = log_dir / f"alchemy_{time.strftime('%Y%m%d_%H%M%S')}.log"
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(logging.INFO)
-        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(file_formatter)
-        self.logger.addHandler(file_handler)
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        
+        # 只使用流式日志处理器，它已经包含了文件写入功能
+        if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
+            log_file = log_dir / f"alchemy_{timestamp}.log"
+            stream_handler = StreamLineHandler(str(log_file))
+            stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            self.logger.addHandler(stream_handler)
         
         # 初始化模型管理器
         self.model_manager = model_manager or ModelManager(logger=self.logger)
