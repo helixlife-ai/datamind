@@ -86,9 +86,12 @@ class IntentParser:
             
             content = ""
             # 获取流式推理响应
-            async for chunk in reasoning_engine.get_stream_response(temperature=0.7):
+            async for chunk in reasoning_engine.get_stream_response(
+                temperature=0.7,
+                metadata={'stage': 'query_parsing'}
+            ):
                 content += chunk
-                self.logger.info(f"Reasoning chunk: {content}")
+                self.logger.info(f"\r解析查询: {content}")
 
             # 并行执行关键词和参考文本提取
             keywords_task = self._extract_keywords(query)
