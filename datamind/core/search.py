@@ -3,13 +3,9 @@ import faiss
 import numpy as np
 import pandas as pd
 import re
-from pathlib import Path
-from datetime import datetime
-from sentence_transformers import SentenceTransformer
-from typing import Dict, List, Union, Optional, Tuple
+from typing import Dict, List, Optional
 import logging
 from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_DB_PATH, SEARCH_TOP_K
-from ..utils.common import download_model
 from .planner import SearchPlanner
 from ..llms.model_manager import ModelManager, ModelConfig
 

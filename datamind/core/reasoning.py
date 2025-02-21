@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional, AsyncGenerator
-from ..llms.model_manager import ModelManager, ModelConfig
+from ..llms.model_manager import ModelManager
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging

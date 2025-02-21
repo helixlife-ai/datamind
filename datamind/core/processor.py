@@ -8,12 +8,9 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import logging
 from typing import List, Dict, Optional, Set
-from sentence_transformers import SentenceTransformer
 from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_DB_PATH
-from ..utils.common import download_model
 import pickle
 from ..llms.model_manager import ModelManager, ModelConfig
-import random
 import uuid
 import numpy as np
 from docling.document_converter import DocumentConverter
