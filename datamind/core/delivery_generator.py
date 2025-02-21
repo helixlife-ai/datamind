@@ -251,60 +251,83 @@ class DeliveryGenerator:
         if not self.reasoning_engine:
             raise ValueError("未配置推理引擎，无法生成内容")
             
-        # 添加用户消息
-        self.reasoning_engine.add_message("user", f"""
-            请根据以下问答对和要求生成HTML页面：
-
-            [问答对内容]
-            {json.dumps(search_results['structured_results'], ensure_ascii=False, indent=2)}
-
-            [页面要求]
-            - 主题：{file_config['topic']}
-            - 用途：{file_config['description']}            
-            - 内容结构：
-            {json.dumps(file_config['content_structure'], ensure_ascii=False, indent=2)}             
-
-            要求：
-            1. 生成完整的HTML文档，包含必要的CSS样式
-            2. 根据问答对中的信息编写内容
-            3. 确保内容符合主题和用途
-            4. 按照给定的结构组织内容
-            5. 将HTML代码放在markdown代码块中
-        """)
+        # 从搜索结果中提取数据
+        structured_data = search_results.get('structured', [])
+        vector_data = search_results.get('vector_results', [])
         
-        # 使用流式输出收集完整响应
-        full_response = ""
-        async for chunk in self.reasoning_engine.get_stream_response(
-            temperature=0.7,
-            metadata={'stage': 'html_generation'}
-        ):
-            full_response += chunk
-            self.logger.info(f"\r生成HTML内容: {full_response}")
+        # 合并所有可用数据
+        all_data = []
         
-        if full_response:
-            # 使用正则表达式提取HTML代码
-            html_pattern = r'```html\n([\s\S]*?)\n```'
-            html_match = re.search(html_pattern, full_response)
+        # 处理结构化数据
+        for item in structured_data:
+            if isinstance(item.get('data'), str):
+                try:
+                    data_dict = json.loads(item['data'])
+                    all_data.append({
+                        'type': 'structured',
+                        'file_name': item.get('_file_name', ''),
+                        'content': data_dict.get('content', ''),
+                        'timestamp': item.get('_processed_at', '')
+                    })
+                except json.JSONDecodeError:
+                    continue
+        
+        # 处理向量数据
+        for item in vector_data:
+            if isinstance(item.get('data'), str):
+                try:
+                    data_dict = json.loads(item['data'])
+                    all_data.append({
+                        'type': 'vector',
+                        'file_name': item.get('file_name', ''),
+                        'content': data_dict.get('content', ''),
+                        'similarity': item.get('similarity', 0)
+                    })
+                except json.JSONDecodeError:
+                    continue
+        
+        if not all_data:
+            raise ValueError("未找到可用的数据来生成HTML内容")
             
-            if html_match:
-                html_content = html_match.group(1).strip()
-                if ('<!DOCTYPE html>' in html_content and 
-                    '<html' in html_content and 
-                    '</html>' in html_content):
-                    return html_content
-                
-            # 尝试直接查找HTML标记
-            if ('<!DOCTYPE html>' in full_response and 
-                '<html' in full_response and 
-                '</html>' in full_response):
-                start_idx = full_response.find('<!DOCTYPE html>')
-                end_idx = full_response.find('</html>') + 7
-                return full_response[start_idx:end_idx]
-                
-        return self._generate_error_html(
-            "生成HTML内容失败",
-            file_config['topic']
-        )
+        # 生成HTML内容
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>{file_config.get('topic', 'AI分析报告')}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                .item {{ margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; }}
+                .structured {{ background-color: #f0f8ff; }}
+                .vector {{ background-color: #fff0f5; }}
+            </style>
+        </head>
+        <body>
+            <h1>{file_config.get('topic', 'AI分析报告')}</h1>
+            <div class="content">
+        """
+        
+        for item in all_data:
+            html_content += f"""
+                <div class="item {item['type']}">
+                    <h3>{item['file_name']}</h3>
+                    <p>{item['content']}</p>
+                    {'<p>相似度: {:.2f}</p>'.format(item['similarity']) if 'similarity' in item else ''}
+                </div>
+            """
+        
+        html_content += """
+            </div>
+        </body>
+        </html>
+        """
+        
+        # 保存生成的HTML
+        html_path = process_dir / "content.html"
+        html_path.write_text(html_content, encoding="utf-8")
+        
+        return html_content
     
     def _generate_error_html(self, error_message: str, title: str) -> str:
         """生成错误提示页面"""
@@ -360,97 +383,44 @@ class DeliveryGenerator:
             pd.DataFrame: 生成的CSV数据，如果生成失败返回空DataFrame
         """
         try:
-            if not self.reasoning_engine:
-                raise ValueError("未配置推理引擎，无法生成内容")
+            # 从搜索结果中提取结构化数据
+            structured_data = search_results.get('structured', [])  # 改为 'structured'
             
-            # 提取结构化数据
-            structured_data = search_results.get('structured_results', [])
+            if not structured_data:
+                self.logger.warning("未找到结构化数据，尝试从向量结果构建")
+                vector_data = search_results.get('vector_results', [])
+                if vector_data:
+                    structured_data = vector_data
+            
             if not structured_data:
                 raise ValueError("未找到可用的结构化数据")
             
-            # 构建提示词
-            prompt = f"""
-请根据以下信息生成CSV格式的数据：
-
-[数据主题]
-{file_config['topic']}
-
-[数据用途]
-{file_config['description']}
-
-[数据结构要求]
-{json.dumps(file_config.get('content_structure', {}), ensure_ascii=False, indent=2)}
-
-[参考数据]
-{json.dumps(structured_data, ensure_ascii=False, indent=2)}
-
-要求：
-1. 生成CSV格式的数据，用```csv代码块包裹
-2. 确保数据结构符合要求
-3. 根据参考数据生成内容，不要编造数据
-4. 确保数据内容符合主题和用途
-5. 第一行必须是列标题
-"""
+            # 将数据转换为DataFrame
+            records = []
+            for item in structured_data:
+                if isinstance(item.get('data'), str):
+                    try:
+                        data_dict = json.loads(item['data'])
+                        records.append({
+                            'file_name': item.get('_file_name', ''),
+                            'chunk_id': data_dict.get('chunk_id', ''),
+                            'content': data_dict.get('content', '')
+                        })
+                    except json.JSONDecodeError:
+                        continue
             
-            # 保存提示词
-            prompt_path = process_dir / "csv_prompt.md"
-            prompt_path.write_text(prompt, encoding="utf-8")
-            
-            # 添加用户消息
-            self.reasoning_engine.add_message("user", prompt)
-            
-            # 收集生成的内容
-            content = ""
-            process_path = process_dir / "generation_process.txt"
-            
-            async for chunk in self.reasoning_engine.get_stream_response(
-                temperature=0.7,
-                metadata={'stage': 'csv_generation'}
-            ):
-                if chunk:
-                    content += chunk
-                    self.logger.info(f"\r生成CSV内容: {content}")
-                    # 保存生成过程
-                    with process_path.open("a", encoding="utf-8") as f:
-                        f.write(chunk)
-            
-            if not content:
-                raise ValueError("生成内容为空")
-            
-            # 提取CSV内容
-            csv_pattern = r'```csv\n([\s\S]*?)\n```'
-            csv_match = re.search(csv_pattern, content)
-            
-            if csv_match:
-                csv_data = csv_match.group(1).strip()
-                df = pd.read_csv(StringIO(csv_data))
-                
-                # 验证数据有效性
-                if df.empty:
-                    raise ValueError("生成的CSV数据为空")
-                
+            df = pd.DataFrame(records)
+            if not df.empty:
                 # 保存原始CSV数据
                 raw_path = process_dir / "raw_data.csv"
                 df.to_csv(raw_path, index=False, encoding='utf-8-sig')
-                
                 return df
             
-            # 尝试直接解析为CSV
-            try:
-                if any([',' in line for line in content.split('\n')[:3]]):
-                    df = pd.read_csv(StringIO(content))
-                    if not df.empty:
-                        # 保存原始CSV数据
-                        raw_path = process_dir / "raw_data.csv"
-                        df.to_csv(raw_path, index=False, encoding='utf-8-sig')
-                        return df
-            except Exception as parse_error:
-                self.logger.error(f"直接解析CSV失败: {str(parse_error)}")
-            
-            raise ValueError("无法从生成内容中提取有效的CSV数据")
+            raise ValueError("无法从结构化数据构建有效的DataFrame")
             
         except Exception as e:
             self.logger.error(f"生成CSV内容时发生错误: {str(e)}")
+            # 记录详细错误信息
             error_info = {
                 "timestamp": datetime.now().isoformat(),
                 "error": str(e),
