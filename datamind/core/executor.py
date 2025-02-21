@@ -458,8 +458,20 @@ class SearchPlanExecutor:
             execution_dir = self.work_dir / "search_results" 
             execution_dir.mkdir(parents=True, exist_ok=True)
             
+            # 初始化文件路径跟踪
+            saved_files = {
+                "plan": str(execution_dir / "input_plan.json"),
+                "final_results": str(execution_dir / "final_results.json"),
+                "execution_stats": str(execution_dir / "execution_stats.json"),
+                "analysis": {},
+                "search_results": {
+                    "structured": [],
+                    "vector": []
+                }
+            }
+            
             # 保存输入的计划
-            with open(execution_dir / "input_plan.json", "w", encoding="utf-8") as f:
+            with open(saved_files["plan"], "w", encoding="utf-8") as f:
                 json.dump(plan, f, ensure_ascii=False, indent=2)
             
             # 初始化结果结构
@@ -480,26 +492,34 @@ class SearchPlanExecutor:
                 
                 # 保存关键概念
                 if results['insights']['key_concepts']:
-                    with open(analysis_dir / "key_concepts.json", "w", encoding="utf-8") as f:
+                    key_concepts_path = analysis_dir / "key_concepts.json"
+                    with open(key_concepts_path, "w", encoding="utf-8") as f:
                         json.dump(results['insights']['key_concepts'], f, ensure_ascii=False, indent=2)
+                    saved_files["analysis"]["key_concepts"] = str(key_concepts_path)
                 
                 # 保存关系分析
                 if results['insights']['relationships']:
-                    with open(analysis_dir / "relationships.json", "w", encoding="utf-8") as f:
+                    relationships_path = analysis_dir / "relationships.json"
+                    with open(relationships_path, "w", encoding="utf-8") as f:
                         json.dump(results['insights']['relationships'], f, ensure_ascii=False, indent=2)
+                    saved_files["analysis"]["relationships"] = str(relationships_path)
                 
                 # 保存时间线
                 if results['insights']['timeline']:
-                    with open(analysis_dir / "timeline.json", "w", encoding="utf-8") as f:
+                    timeline_path = analysis_dir / "timeline.json"
+                    with open(timeline_path, "w", encoding="utf-8") as f:
                         json.dump(results['insights']['timeline'], f, ensure_ascii=False, indent=2)
+                    saved_files["analysis"]["timeline"] = str(timeline_path)
                 
                 # 保存重要性排名
                 if results['insights']['importance_ranking']:
-                    with open(analysis_dir / "importance_ranking.json", "w", encoding="utf-8") as f:
+                    ranking_path = analysis_dir / "importance_ranking.json"
+                    with open(ranking_path, "w", encoding="utf-8") as f:
                         json.dump(results['insights']['importance_ranking'], f, ensure_ascii=False, indent=2)
+                    saved_files["analysis"]["importance_ranking"] = str(ranking_path)
             
             # 保存最终结果
-            with open(execution_dir / "final_results.json", "w", encoding="utf-8") as f:
+            with open(saved_files["final_results"], "w", encoding="utf-8") as f:
                 json.dump(results, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
             
             # 保存执行统计信息
@@ -510,8 +530,11 @@ class SearchPlanExecutor:
                 "structured_results": results["stats"]["structured_count"],
                 "vector_results": results["stats"]["vector_count"]
             }
-            with open(execution_dir / "execution_stats.json", "w", encoding="utf-8") as f:
+            with open(saved_files["execution_stats"], "w", encoding="utf-8") as f:
                 json.dump(stats, f, ensure_ascii=False, indent=2)
+            
+            # 将文件路径信息添加到结果中
+            results["saved_files"] = saved_files
             
             return results
             
@@ -544,6 +567,16 @@ class SearchPlanExecutor:
                 "original_query": plan.get("metadata", {}).get("original_query", ""),
                 "generated_at": plan.get("metadata", {}).get("generated_at", ""),
                 "execution_time": datetime.now().isoformat()
+            },
+            "saved_files": {
+                "plan": "",
+                "final_results": "",
+                "execution_stats": "",
+                "analysis": {},
+                "search_results": {
+                    "structured": [],
+                    "vector": []
+                }
             }
         }
         return results
@@ -577,9 +610,11 @@ class SearchPlanExecutor:
                                     filtered_records.append(record)
                                     results["structured"].append(record)
                             
-                            # 使用DateTimeEncoder保存结果
-                            with open(structured_dir / f"query_{i+1}_results.json", "w", encoding="utf-8") as f:
+                            # 保存结果并记录文件路径
+                            result_path = structured_dir / f"query_{i+1}_results.json"
+                            with open(result_path, "w", encoding="utf-8") as f:
                                 json.dump(filtered_records, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+                            results["saved_files"]["search_results"]["structured"].append(str(result_path))
                     except Exception as e:
                         self.logger.error(f"结构化查询执行失败: {str(e)}", exc_info=True)
                         continue
@@ -597,12 +632,10 @@ class SearchPlanExecutor:
                         )
                         
                         if vector_results:
-                            # 过滤相似度阈值并排重
                             filtered_results = []
                             threshold = vector_query["similarity_threshold"]
                             for result in vector_results:
                                 if result["similarity"] >= threshold:
-                                    # 将 float32 转换为 Python float
                                     if isinstance(result["similarity"], np.float32):
                                         result["similarity"] = float(result["similarity"])
                                     
@@ -612,9 +645,11 @@ class SearchPlanExecutor:
                                         filtered_results.append(result)
                                         results["vector"].append(result)
                             
-                            # 保存每个查询的结果
-                            with open(vector_dir / f"query_{i+1}_results.json", "w", encoding="utf-8") as f:
+                            # 保存结果并记录文件路径
+                            result_path = vector_dir / f"query_{i+1}_results.json"
+                            with open(result_path, "w", encoding="utf-8") as f:
                                 json.dump(filtered_results, f, ensure_ascii=False, indent=2)
+                            results["saved_files"]["search_results"]["vector"].append(str(result_path))
                     except Exception as e:
                         self.logger.error(f"向量查询执行失败: {str(e)}", exc_info=True)
                         continue

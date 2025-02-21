@@ -14,6 +14,7 @@ from ..core.parser import IntentParser
 from ..core.delivery_planner import DeliveryPlanner
 from ..core.delivery_generator import DeliveryGenerator
 from ..core.feedback_optimizer import FeedbackOptimizer
+from ..core.artifact import ArtifactGenerator
 from ..config.settings import (
     DEFAULT_REASONING_MODEL,
     DEFAULT_LLM_API_KEY,
@@ -129,6 +130,13 @@ class DataMindAlchemy:
             logger=self.logger
         )
         
+        # 添加制品生成器组件
+        artifact_generator = ArtifactGenerator(
+            work_dir=str(self.run_dir),
+            reasoning_engine=reasoning_engine,
+            logger=self.logger
+        )
+        
         return {
             'reasoning_engine': reasoning_engine,
             'intent_parser': intent_parser,
@@ -136,7 +144,8 @@ class DataMindAlchemy:
             'executor': executor,
             'delivery_planner': delivery_planner,
             'delivery_generator': delivery_generator,
-            'feedback_optimizer': feedback_optimizer
+            'feedback_optimizer': feedback_optimizer,
+            'artifact_generator': artifact_generator
         }
 
     async def process(
@@ -298,7 +307,8 @@ class DataMindAlchemy:
                 'search_plan': None,
                 'search_results': None,
                 'delivery_plan': None,
-                'generated_files': []
+                'generated_files': [],
+                'artifacts': []
             },
             'components': self.components
         }
@@ -319,11 +329,26 @@ class DataMindAlchemy:
             search_results = await self.components['executor'].execute_plan(parsed_plan)
             results['results']['search_results'] = search_results
 
+            # 为搜索结果生成artifact
+            if search_results and search_results.get('saved_files', {}).get('final_results'):
+                search_artifact_path = await self.components['artifact_generator'].generate_artifact(
+                    context_files=[search_results['saved_files']['final_results']],
+                    output_name='search_results',
+                    title=f"搜索结果: {query}",
+                    metadata={
+                        'source_query': query,
+                        'total_results': search_results.get('stats', {}).get('total', 0),
+                        'structured_count': search_results.get('stats', {}).get('structured_count', 0),
+                        'vector_count': search_results.get('stats', {}).get('vector_count', 0)
+                    }
+                )
+                if search_artifact_path:
+                    results['results']['artifacts'].append(str(search_artifact_path))
+
             # 生成交付计划
             delivery_plan = await self.components['delivery_planner'].generate_plan(results)
             
             if delivery_plan:
-
                 # 生成交付文件
                 generated_files = await self.components['delivery_generator'].generate_deliverables(
                     delivery_plan,
@@ -332,6 +357,7 @@ class DataMindAlchemy:
                     test_mode=False
                 )
                 results['results']['generated_files'] = generated_files
+
             else:
                 results['status'] = 'error'
                 results['message'] = '交付计划生成失败'

@@ -1,7 +1,7 @@
 {
     "watchDirs": [
         {
-            "path": "../work_dir/output",
+            "path": "../work_dir/output/alchemy_runs",
             "name": "Alchemy Output",
             "description": "Monitor DataMind's knowledge alchemy process - transforming documents into insights"
         }
