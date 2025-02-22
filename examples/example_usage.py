@@ -117,12 +117,6 @@ async def datamind_alchemy_test(
             logger.info("解析结果:", json.dumps(result['results']['parsed_intent'], indent=2, ensure_ascii=False))
             logger.info("检索计划:", json.dumps(result['results']['search_plan'], indent=2, ensure_ascii=False))
             
-            logger.info("\n检索结果摘要:")
-            if 'formatted' in result['results']['search_results']:
-                logger.info(result['results']['search_results']['formatted'])
-            else:
-                logger.info("总记录数:", result['results']['search_results'].get('stats', {}).get('total', 0))
-            
             if result['results']['delivery_plan']:
                 logger.info("\n交付计划生成成功！")
                 delivery_dir = result['results']['delivery_plan']['_file_paths']['base_dir']

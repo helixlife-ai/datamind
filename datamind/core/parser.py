@@ -114,25 +114,6 @@ class IntentParser:
             if cached_result := self.cache.get(query):
                 self.logger.info("使用缓存的查询结果")
                 return cached_result
-
-            # 首先使用推理引擎分析查询含义
-            reasoning_engine = self.reasoning_engine
-                  
-            # 添加用户查询
-            reasoning_engine.add_message("user", f"用你的理解，复述一遍下面我的想法：\n\n{query}")
-            
-            content = ""
-            # 获取流式推理响应
-            async for chunk in reasoning_engine.get_stream_response(
-                temperature=0.7,
-                metadata={'stage': 'query_parsing'}
-            ):
-                content += chunk
-                self.logger.info(f"\r解析查询: {content}")
-
-            # 保存推理内容
-            with open(query_dir / "reasoning_intent.txt", "w", encoding="utf-8") as f:
-                f.write(content)
             
             # 并行执行关键词和参考文本提取
             keywords_task = self._extract_keywords(query)
@@ -158,8 +139,7 @@ class IntentParser:
             result = self._build_query_conditions(
                 keywords, 
                 reference_texts, 
-                query,
-                reasoning_intent=content
+                query
             )
             
             # 保存最终的查询条件
@@ -232,24 +212,18 @@ class IntentParser:
                 await asyncio.sleep(1)  # 重试前等待
 
     def _build_query_conditions(self, keywords_json: dict, reference_texts_json: dict, 
-                              original_query: str, reasoning_intent: str = None) -> Dict:
+                              original_query: str) -> Dict:
         """组装最终的查询条件"""
         query_conditions = {
             "original_query": original_query,
-            "reasoning_intent": reasoning_intent or "",  # 添加推理意图
             "structured_conditions": [],
-            "vector_conditions": [],
-            "result_format": {
-                "required_fields": ["_file_name", "data"],
-                "display_preferences": ""
-            }
+            "vector_conditions": []
         }
         
         # 处理结构化查询条件
         for keyword in keywords_json.get("keywords", []):
             condition = {
                 "time_range": {"start": "", "end": ""},
-                "file_types": SUPPORTED_FILE_TYPES,
                 "keyword": keyword,
                 "exclusions": []
             }
@@ -266,10 +240,6 @@ class IntentParser:
         
         return query_conditions
 
-    def _build_system_prompt(self) -> str:
-        """此方法可以删除，因为不再使用统一的系统提示词"""
-        pass
-
     def _validate_output(self, raw_json: str) -> Dict:
         """验证并修复模型输出
         
@@ -285,13 +255,7 @@ class IntentParser:
             # 强制类型校验和默认值处理
             validated = {
                 "structured_conditions": [],
-                "vector_conditions": [],
-                "result_format": {
-                    "required_fields": list(filter(None, parsed.get("result_format", {})
-                                                .get("required_fields", ["*"]))),
-                    "display_preferences": str(parsed.get("result_format", {})
-                                             .get("display_preferences", ""))
-                }
+                "vector_conditions": []
             }
             
             # 处理结构化条件数组
@@ -301,7 +265,6 @@ class IntentParser:
                         "start": str(condition.get("time_range", {}).get("start", "")),
                         "end": str(condition.get("time_range", {}).get("end", ""))
                     },
-                    "file_types": list(filter(None, condition.get("file_types", []))),
                     "keyword": str(condition.get("keyword", "")),
                     "exclusions": list(filter(None, condition.get("exclusions", [])))
                 })

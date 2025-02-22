@@ -34,7 +34,6 @@ class SearchPlanner:
                 "steps": [],
                 "structured_queries": [],
                 "vector_queries": [],
-                "expected_fields": intent.get("result_format", {}).get("required_fields", ["*"]),
                 "metadata": {
                     "generated_at": datetime.now().isoformat(),
                     "original_query": intent.get("original_query", "")

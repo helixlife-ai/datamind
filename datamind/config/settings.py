@@ -54,7 +54,6 @@ SUPPORTED_FILE_TYPES = ["txt", "pdf", "doc", "docx", "md", "json", "csv", "xlsx"
 QUERY_TEMPLATE = {
     "structured_conditions": [{
         "time_range": {"start": "", "end": ""},
-        "file_types": SUPPORTED_FILE_TYPES,
         "keyword": "",
         "exclusions": []
     }],
