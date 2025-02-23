@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import traceback
 from .reasoning import ReasoningEngine
+import shutil
+import hashlib
 
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
@@ -57,18 +59,18 @@ class ArtifactGenerator:
         """构建HTML生成的提示词
         
         Args:
-            context_files: 上下文文件内容字典，key为文件名，value为文件内容
+            context_files: 文件内容字典，key为文件名，value为文件内容
             title: HTML页面标题
             
         Returns:
             str: 生成提示词
         """
-        prompt = f"""请根据以下上下文文件内容生成一个HTML页面：
+        prompt = f"""请根据文件内容生成一个HTML页面：
 
 [页面标题]
 {title}
 
-[上下文文件]
+[文件]
 """
         for filename, content in context_files.items():
             prompt += f"\n[{filename}]\n{content}\n"
@@ -77,7 +79,7 @@ class ArtifactGenerator:
 要求：
 1. 生成一个结构良好的HTML页面
 2. 使用适当的CSS样式美化页面
-3. 合理组织和展示上下文文件中的信息
+3. 合理组织和展示文件中的信息
 4. 确保页面具有良好的可读性和导航性
 5. 可以添加适当的交互元素增强用户体验
 """
@@ -203,45 +205,71 @@ class ArtifactGenerator:
             if not self.reasoning_engine:
                 raise ValueError("未配置推理引擎，无法生成内容")
 
-            # 创建制品目录
+            # 创建更有意义的制品目录结构
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            artifact_dir = self.artifacts_dir / f"{output_name}_{timestamp}"
+            artifact_name = f"{output_name}_{timestamp}"
+            
+            # 主目录结构
+            artifact_dir = self.artifacts_dir / artifact_name
             artifact_dir.mkdir(parents=True, exist_ok=True)
             
-            # 读取所有上下文文件内容
-            context_contents = {}
-            for file_path in context_files:
-                content = self._read_file_content(file_path)
-                if content:
-                    context_contents[Path(file_path).name] = content
+            # 创建子目录
+            process_dir = artifact_dir / "process"  # 存放生成过程
+            output_dir = artifact_dir / "output"    # 存放最终输出
             
+            for dir_path in [process_dir, output_dir]:
+                dir_path.mkdir(parents=True, exist_ok=True)
+
+            # 读取上下文文件并记录源文件信息
+            context_contents = {}
+            source_files_info = {}
+            
+            for file_path in context_files:
+                src_path = Path(file_path)
+                if src_path.exists():
+                    content = self._read_file_content(file_path)
+                    if content:
+                        context_contents[src_path.name] = content
+                        # 记录源文件信息
+                        source_files_info[src_path.name] = {
+                            "absolute_path": str(src_path.absolute()),
+                            "size": src_path.stat().st_size,
+                            "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
+                            "content_hash": hashlib.md5(content.encode()).hexdigest()
+                        }
+
             if not context_contents:
                 raise ValueError("未能成功读取任何上下文文件内容")
-            
-            # 保存上下文文件信息
-            context_info = {
+
+            # 保存完整的元数据信息
+            metadata_info = {
+                "artifact_id": artifact_name,
                 "timestamp": timestamp,
-                "files": list(context_contents.keys()),
-                "metadata": metadata or {}
+                "title": title,
+                "output_name": output_name,
+                "source_files": source_files_info,
+                "custom_metadata": metadata or {},
+                "generation_config": {
+                    "engine": self.reasoning_engine.__class__.__name__,
+                    "model": getattr(self.reasoning_engine, 'model_name', 'unknown')
+                }
             }
-            
-            with open(artifact_dir / "context_info.json", "w", encoding="utf-8") as f:
-                json.dump(context_info, f, ensure_ascii=False, indent=2)
-            
-            # 构建提示词
+
+            with open(artifact_dir / "metadata.json", "w", encoding="utf-8") as f:
+                json.dump(metadata_info, f, ensure_ascii=False, indent=2)
+
+            # 构建提示词并保存
             prompt = self._build_html_prompt(context_contents, title)
-            
-            # 保存提示词
-            with open(artifact_dir / "generation_prompt.md", "w", encoding="utf-8") as f:
+            with open(process_dir / "generation_prompt.md", "w", encoding="utf-8") as f:
                 f.write(prompt)
-            
+
             # 添加用户消息
             self.reasoning_engine.add_message("user", prompt)
             
             # 收集生成的内容
             full_response = ""
-            process_path = artifact_dir / "generation_process.txt"
-            temp_html_path = artifact_dir / "temp_content.html"
+            process_path = process_dir / "generation_process.txt"
+            temp_html_path = process_dir / "temp_content.html"
             current_html_content = []  # 使用列表存储HTML片段
             
             # 用于跟踪HTML内容的状态
@@ -302,40 +330,45 @@ class ArtifactGenerator:
                     title
                 )
             
-            # 保存最终HTML文件
-            output_path = artifact_dir / f"{output_name}.html"
+            # 保存最终HTML文件到output目录
+            output_path = output_dir / f"{output_name}.html"
             output_path.write_text(html_content, encoding="utf-8")
-            
-            # 记录生成成功
-            with open(artifact_dir / "generation_success.json", "w", encoding="utf-8") as f:
-                json.dump({
-                    "timestamp": datetime.now().isoformat(),
-                    "output_file": str(output_path),
-                    "file_size": output_path.stat().st_size,
+
+            # 记录生成结果
+            generation_result = {
+                "timestamp": datetime.now().isoformat(),
+                "status": "success",
+                "output_file": str(output_path.relative_to(self.artifacts_dir)),
+                "file_size": output_path.stat().st_size,
+                "generation_stats": {
                     "total_chunks": len(full_response),
                     "final_html_size": len(html_content)
-                }, f, ensure_ascii=False, indent=2)
+                }
+            }
             
+            with open(output_dir / "generation_result.json", "w", encoding="utf-8") as f:
+                json.dump(generation_result, f, ensure_ascii=False, indent=2)
+
             self.logger.info(f"已生成HTML制品: {output_path}")
             return output_path
-            
+
         except Exception as e:
             self.logger.error(f"生成HTML制品时发生错误: {str(e)}")
             
-            # 记录错误信息
-            error_info = {
-                "timestamp": datetime.now().isoformat(),
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }
-            
-            if artifact_dir.exists():
-                with open(artifact_dir / "generation_error.json", "w", encoding="utf-8") as f:
+            # 错误处理和记录
+            if 'artifact_dir' in locals():
+                error_info = {
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "error",
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                
+                with open(process_dir / "generation_error.json", "w", encoding="utf-8") as f:
                     json.dump(error_info, f, ensure_ascii=False, indent=2)
                 
-                # 生成错误页面
                 error_html = self._generate_error_html(str(e), title)
-                error_path = artifact_dir / f"{output_name}_error.html"
+                error_path = output_dir / f"{output_name}_error.html"
                 error_path.write_text(error_html, encoding="utf-8")
             
             return None 

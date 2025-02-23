@@ -117,22 +117,20 @@ async def datamind_alchemy_test(
             logger.info("解析结果:", json.dumps(result['results']['parsed_intent'], indent=2, ensure_ascii=False))
             logger.info("检索计划:", json.dumps(result['results']['search_plan'], indent=2, ensure_ascii=False))
             
-            if result['results']['delivery_plan']:
-                logger.info("\n交付计划生成成功！")
-                delivery_dir = result['results']['delivery_plan']['_file_paths']['base_dir']
-                logger.info(f"相关文件保存在: {delivery_dir}")
+            if result['results']['search_results']:
+                logger.info("\n搜索结果获取成功！")
                 
-                if result['results']['generated_files']:
-                    logger.info("\n已生成以下交付文件:")
-                    for file_path in result['results']['generated_files']:
-                        logger.info(f"- {Path(file_path).name}")
+                if result['results']['artifacts']:
+                    logger.info("\n已生成以下制品文件:")
+                    for artifact_path in result['results']['artifacts']:
+                        logger.info(f"- {Path(artifact_path).name}")
                     
                     # 运行反馈优化流程
-                    await run_test_optimization(
-                        feedback_optimizer=result['components']['feedback_optimizer'],
-                        alchemy_dir=str(Path(delivery_dir).parent),
-                        logger=logger
-                    )
+                    #await run_test_optimization(
+                    #    feedback_optimizer=result['components']['feedback_optimizer'],
+                    #    alchemy_dir=str(Path(result['results']['artifacts'][0]).parent),
+                    #    logger=logger
+                    #)
         else:
             logger.error(f"\n处理失败: {result.get('message', '未知错误')}")
             

@@ -11,8 +11,6 @@ from ..core.planner import SearchPlanner
 from ..core.executor import SearchPlanExecutor
 from ..core.processor import DataProcessor, FileCache
 from ..core.parser import IntentParser
-from ..core.delivery_planner import DeliveryPlanner
-from ..core.delivery_generator import DeliveryGenerator
 from ..core.feedback_optimizer import FeedbackOptimizer
 from ..core.artifact import ArtifactGenerator
 from ..config.settings import (
@@ -75,7 +73,7 @@ class DataMindAlchemy:
         """初始化工作目录"""
         if work_dir is None:
             work_dir = Path("output") / "alchemy_runs"
-        work_dir.mkdir(exist_ok=True, parents=True)
+        work_dir.mkdir(exist_ok=True, parents=True)                
         return work_dir
         
     def _create_run_dir(self) -> Path:
@@ -114,16 +112,6 @@ class DataMindAlchemy:
             work_dir=str(self.run_dir),
             logger=self.logger
         )
-        delivery_planner = DeliveryPlanner(
-            work_dir=str(self.run_dir),
-            reasoning_engine=reasoning_engine,
-            logger=self.logger
-        )
-        delivery_generator = DeliveryGenerator(
-            work_dir=str(self.run_dir),
-            reasoning_engine=reasoning_engine,
-            logger=self.logger
-        )        
         feedback_optimizer = FeedbackOptimizer(
             work_dir=str(self.run_dir),
             reasoning_engine=reasoning_engine,
@@ -132,7 +120,7 @@ class DataMindAlchemy:
         
         # 添加制品生成器组件
         artifact_generator = ArtifactGenerator(
-            work_dir=str(self.run_dir),
+            work_dir=str(self.work_dir),
             reasoning_engine=reasoning_engine,
             logger=self.logger
         )
@@ -142,8 +130,6 @@ class DataMindAlchemy:
             'intent_parser': intent_parser,
             'planner': planner,
             'executor': executor,
-            'delivery_planner': delivery_planner,
-            'delivery_generator': delivery_generator,
             'feedback_optimizer': feedback_optimizer,
             'artifact_generator': artifact_generator
         }
@@ -306,8 +292,6 @@ class DataMindAlchemy:
                 'parsed_intent': None,
                 'search_plan': None,
                 'search_results': None,
-                'delivery_plan': None,
-                'generated_files': [],
                 'artifacts': []
             },
             'components': self.components
@@ -345,23 +329,6 @@ class DataMindAlchemy:
                 if search_artifact_path:
                     results['results']['artifacts'].append(str(search_artifact_path))
 
-            # 生成交付计划
-            delivery_plan = await self.components['delivery_planner'].generate_plan(results)
-            
-            if delivery_plan:
-                # 生成交付文件
-                generated_files = await self.components['delivery_generator'].generate_deliverables(
-                    delivery_plan,
-                    search_results,
-                    delivery_plan.get('delivery_config'),
-                    test_mode=False
-                )
-                results['results']['generated_files'] = generated_files
-
-            else:
-                results['status'] = 'error'
-                results['message'] = '交付计划生成失败'
-                
             # 最后更新推理历史
             chat_history = reasoning_engine.get_chat_history()
             results['results']['reasoning_history'] = chat_history
