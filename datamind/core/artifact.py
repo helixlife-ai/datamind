@@ -11,25 +11,29 @@ import hashlib
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
     
-    def __init__(self, work_dir: str = "work_dir", run_id: str = None, reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, alchemy_dir: str = None, reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化制品生成器
         
         Args:
-            work_dir: 工作目录
-            run_id: 运行ID
+            alchemy_dir: 炼丹目录
             reasoning_engine: 推理引擎实例，用于生成内容
             logger: 可选，日志记录器实例
         """
-        self.work_dir = Path(work_dir)
-        self.run_id = run_id
-        if self.run_id is None:
-            raise ValueError("run_id不能为None")
+        if alchemy_dir is None:
+            raise ValueError("炼丹目录不能为空")
+        self.alchemy_dir = Path(alchemy_dir)
+        
+        # 从炼丹目录路径中提取炼丹ID
+        try:
+            self.alchemy_id = self.alchemy_dir.name.split('alchemy_')[-1]
+        except Exception as e:
+            raise ValueError("无法从炼丹目录路径中提取炼丹ID") from e
         
         # 修改目录结构
-        self.artifacts_base = self.work_dir / "artifacts"  # 基础制品目录
+        self.artifacts_base = self.alchemy_dir / "artifacts"  # 基础制品目录
         
         # 每个制品的目录结构
-        self.artifacts_dir = self.artifacts_base / f"artifact_{self.run_id}"
+        self.artifacts_dir = self.artifacts_base 
         self.iterations_dir = self.artifacts_dir / "iterations"  # 存放迭代版本
         
         # 创建所需目录
@@ -322,7 +326,7 @@ class ArtifactGenerator:
 
             # 更新元数据结构
             metadata_info = {
-                "artifact_id": f"artifact_{self.run_id}",
+                "artifact_id": f"artifact_{self.alchemy_id}",
                 "type": "main" if is_main else f"iteration_{iteration}",
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
@@ -420,12 +424,58 @@ class ArtifactGenerator:
 
             # 更新main.html（作为最新版本的快照）
             main_path = self.artifacts_dir / "main.html"
-            shutil.copy2(output_path, main_path)
+            
+            # 如果main.html已存在，进行版本管理和内容合并
+            if main_path.exists():
+                # 保存当前版本
+                current_version = self._get_next_main_version()
+                main_versions_dir = self.artifacts_dir / "main_versions"
+                version_path = main_versions_dir / f"main_v{current_version}.html"
+                
+                # 备份当前版本
+                shutil.copy2(main_path, version_path)
+                
+                # 读取当前main.html内容
+                current_main_content = main_path.read_text(encoding="utf-8")
+                
+                # 合并内容
+                merged_content = await self._merge_html_contents(current_main_content, html_content, query)
+                if merged_content:
+                    html_content = merged_content
+                else:
+                    self.logger.warning("内容合并失败，将使用新生成的内容")
+                
+                # 更新版本记录
+                versions_info_path = main_versions_dir / "versions_info.json"
+                versions_info = {
+                    "latest_version": current_version,
+                    "versions": []
+                }
+                
+                if versions_info_path.exists():
+                    with open(versions_info_path, "r", encoding="utf-8") as f:
+                        versions_info = json.load(f)
+                
+                version_info = {
+                    "version": current_version,
+                    "timestamp": datetime.now().isoformat(),
+                    "query": query,
+                    "path": str(version_path.relative_to(self.artifacts_base))
+                }
+                
+                versions_info["versions"].append(version_info)
+                versions_info["latest_version"] = current_version
+                
+                with open(versions_info_path, "w", encoding="utf-8") as f:
+                    json.dump(versions_info, f, ensure_ascii=False, indent=2)
+            
+            # 写入新的main.html
+            main_path.write_text(html_content, encoding="utf-8")
             self.logger.info(f"已更新主制品: {main_path}")
 
             # 更新状态信息
             status_info = {
-                "artifact_id": f"artifact_{self.run_id}",
+                "artifact_id": f"artifact_{self.alchemy_id}",
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "latest_iteration": iteration,
@@ -494,4 +544,88 @@ class ArtifactGenerator:
                 error_path = output_dir / f"{output_name}_error.html"
                 error_path.write_text(error_html, encoding="utf-8")
             
+            return None 
+
+    def _get_next_main_version(self) -> int:
+        """获取main.html的下一个版本号"""
+        main_versions_dir = self.artifacts_dir / "main_versions"
+        main_versions_dir.mkdir(exist_ok=True)
+        
+        try:
+            # 使用更健壮的版本号提取方法
+            existing_versions = []
+            for file_path in main_versions_dir.glob("main_v*.html"):
+                try:
+                    # 从文件名中提取版本号，格式应该是 main_v{number}.html
+                    version_str = file_path.stem.split('v')[-1]  # 使用stem去掉.html后缀
+                    if version_str.isdigit():
+                        existing_versions.append(int(version_str))
+                except (ValueError, IndexError):
+                    self.logger.warning(f"跳过无效的版本文件名: {file_path.name}")
+                    continue
+            
+            return max(existing_versions, default=0) + 1
+            
+        except Exception as e:
+            self.logger.error(f"获取下一个版本号时发生错误: {str(e)}")
+            return 1  # 发生错误时返回1作为安全的默认值
+
+    async def _merge_html_contents(self, current_main: str, new_content: str, query: str) -> Optional[str]:
+        """合并当前main.html和新生成的HTML内容
+        
+        Args:
+            current_main: 当前main.html的内容
+            new_content: 新生成的HTML内容
+            query: 用户的查询内容
+            
+        Returns:
+            Optional[str]: 合并后的HTML内容
+        """
+        try:
+            if not self.reasoning_engine:
+                raise ValueError("未配置推理引擎，无法合并内容")
+
+            prompt = f"""请分析并合并以下两个HTML内容，生成一个新的综合版本。
+
+当前main.html内容：
+{current_main}
+
+新生成的HTML内容：
+{new_content}
+
+用户的查询内容：
+{query}
+
+要求：
+1. 保留两个版本中的重要信息
+2. 确保合并后的内容结构合理、样式统一
+3. 新内容应该自然地融入现有结构
+4. 保持页面的整体一致性和美观性
+5. 只输出合并后的HTML内容，不要其他说明
+
+请生成合并后的HTML内容："""
+
+            # 添加用户消息
+            self.reasoning_engine.add_message("user", prompt)
+            
+            # 收集合并后的内容
+            merged_content = []
+            async for chunk in self.reasoning_engine.get_stream_response(
+                temperature=0.7,
+                metadata={'stage': 'html_merge'}
+            ):
+                if chunk:
+                    merged_content.append(chunk)
+                    self.logger.info(f"\r合并内容: {''.join(merged_content)}")
+
+            final_content = ''.join(merged_content)
+            html_content = self._extract_html_content(final_content)
+            
+            if not html_content:
+                raise ValueError("无法从合并响应中提取有效的HTML内容")
+                
+            return html_content
+
+        except Exception as e:
+            self.logger.error(f"合并HTML内容时发生错误: {str(e)}")
             return None 

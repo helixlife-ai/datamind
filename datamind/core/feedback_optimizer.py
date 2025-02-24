@@ -18,7 +18,7 @@ class FeedbackOptimizer:
         """初始化反馈优化工作流管理器
         
         Args:
-            work_dir: 工作目录，现在是迭代目录 (run_dir/iterations/iterX)
+            work_dir: 工作目录，现在是迭代目录 (alchemy_runs/alchemy_{id}/search/iterations/iterX)
             reasoning_engine: 推理引擎实例
             logger: 可选，日志记录器实例
         """
@@ -28,16 +28,23 @@ class FeedbackOptimizer:
         
         # 从迭代目录计算各个重要路径
         self.iter_dir = self.work_dir  # 当前迭代目录
-        self.run_dir = self.iter_dir.parent.parent  # 运行目录
-        self.artifacts_dir = self.run_dir.parent.parent / "artifacts"  # 制品目录
+        self.iterations_dir = self.iter_dir.parent  # iterations目录
+        self.search_dir = self.iterations_dir.parent  # search目录
+        self.alchemy_dir = self.search_dir.parent  # alchemy_{id}目录
         
         # 获取当前迭代信息
         self.current_iteration = int(self.iter_dir.name.replace('iter', ''))
-        self.run_id = self.run_dir.name.replace('run_', '')
+        self.alchemy_id = self.alchemy_dir.name.split('alchemy_')[-1]
+        
+        # 设置制品目录
+        self.artifacts_dir = self.alchemy_dir / "artifacts"
         
         if not self.reasoning_engine:
             self.logger.warning("未提供推理引擎实例，部分功能可能受限")
-                
+            
+        # 初始化反馈队列
+        self.feedback_stack = []
+        
     async def push_feedback(self, feedback: str, alchemy_dir: str):
         """压入新反馈到处理队列"""
         self.feedback_stack.append({
@@ -62,17 +69,16 @@ class FeedbackOptimizer:
         })
         return result
 
-    async def get_latest_artifact_suggestion(self, run_id: Optional[str] = None) -> Optional[str]:
+    async def get_latest_artifact_suggestion(self, alchemy_id: Optional[str] = None) -> Optional[str]:
         """获取最新制品的优化建议"""
         try:
-            run_id = run_id or self.run_id
-            artifact_dir = self.artifacts_dir / f"artifact_{run_id}"
+            alchemy_id = alchemy_id or self.alchemy_id
             
-            if not artifact_dir.exists():
-                self.logger.warning(f"未找到制品目录: {artifact_dir}")
+            if not self.artifacts_dir.exists():
+                self.logger.warning(f"未找到制品目录: {self.artifacts_dir}")
                 return None
 
-            status_path = artifact_dir / "status.json"
+            status_path = self.artifacts_dir / "status.json"
             if not status_path.exists():
                 self.logger.warning(f"未找到状态文件: {status_path}")
                 return None
@@ -108,12 +114,9 @@ class FeedbackOptimizer:
         try:
             if not self.reasoning_engine:
                 raise ValueError("未配置推理引擎，无法处理反馈")
-
-            # 获取当前运行ID
-            run_id = Path(alchemy_dir).name.split('_')[-1]
             
             # 首先尝试获取制品的优化建议
-            optimization_query = await self.get_latest_artifact_suggestion(run_id)
+            optimization_query = await self.get_latest_artifact_suggestion()
             
             if optimization_query:
                 return {
@@ -238,7 +241,7 @@ class FeedbackOptimizer:
             previous_feedbacks = []
             if self.current_iteration > 1:
                 for i in range(1, self.current_iteration):
-                    prev_iter_dir = self.run_dir / "iterations" / f"iter{i}"
+                    prev_iter_dir = self.iterations_dir / f"iter{i}"
                     prev_context_file = prev_iter_dir / "context.json"
                     if prev_context_file.exists():
                         with open(prev_context_file, 'r', encoding='utf-8') as f:

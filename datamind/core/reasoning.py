@@ -169,6 +169,8 @@ class ReasoningEngine:
             full_content = ""
             reasoning_content = ""
             content = ""
+            has_started_think = False
+            has_started_answer = False
             
             async for chunk in stream:
                 try:
@@ -179,8 +181,9 @@ class ReasoningEngine:
                     
                     # 处理推理内容
                     if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                        if reasoning_content == "":
-                            reasoning_content += delta.reasoning_content
+                        if not has_started_think:
+                            has_started_think = True
+                            reasoning_content = delta.reasoning_content
                             yield "<think>\n" + delta.reasoning_content
                         else:
                             reasoning_content += delta.reasoning_content
@@ -188,9 +191,13 @@ class ReasoningEngine:
                     
                     # 处理回答内容
                     if hasattr(delta, 'content') and delta.content:
-                        if content == "":
-                            content += delta.content
-                            yield "\n</think>\n\n<answer>\n" + delta.content
+                        if not has_started_answer:
+                            has_started_answer = True
+                            content = delta.content
+                            # 只有在有推理内容时才添加分隔标签
+                            if has_started_think:
+                                yield "\n</think>\n\n<answer>\n"
+                            yield delta.content
                         else:
                             content += delta.content
                             yield delta.content
@@ -199,7 +206,9 @@ class ReasoningEngine:
                     self.logger.error(f"处理流式响应chunk时出错: {str(e)}")
                     continue
 
-            yield "\n</answer>"
+            # 只在有回答内容时才添加结束标签
+            if has_started_answer:
+                yield "\n</answer>"
                     
             # 构建完整响应
             if reasoning_content:

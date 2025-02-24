@@ -24,17 +24,22 @@ from datetime import datetime
 class DataMindAlchemy:
     """数据炼丹工作流封装类"""
     
-    def __init__(self, work_dir: Path = None, model_manager: ModelManager = None, logger: logging.Logger = None, run_id: str = None):
+    def __init__(self, work_dir: Path = None, model_manager: ModelManager = None, logger: logging.Logger = None, alchemy_id: str = None):
         """初始化数据炼丹工作流
         
         Args:
             work_dir: 工作目录，默认为None时会使用默认路径
             model_manager: 模型管理器实例，用于推理引擎
             logger: 日志记录器实例，用于记录日志
-            run_id: 运行ID，默认为None时会自动生成
+            alchemy_id: 炼丹ID，默认为None时会自动生成
         """
-        self.work_dir = self._init_work_dir(work_dir)
-        self.run_id = run_id or time.strftime("%Y%m%d_%H%M%S")
+        # 初始化工作目录
+        if work_dir is None:
+            work_dir = Path("work_dir") / "data_alchemy"
+        self.work_dir = work_dir
+        self.work_dir.mkdir(exist_ok=True, parents=True)
+        
+        self.alchemy_id = alchemy_id or time.strftime("%Y%m%d_%H%M%S")
         
         # 初始化日志记录器
         self.logger = logger or logging.getLogger(__name__)
@@ -54,7 +59,7 @@ class DataMindAlchemy:
         
         # 只使用流式日志处理器，它已经包含了文件写入功能
         if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
-            log_file = log_dir / f"alchemy_{self.run_id}.log"
+            log_file = log_dir / f"alchemy_{self.alchemy_id}.log"
             stream_handler = StreamLineHandler(str(log_file))
             stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
             self.logger.addHandler(stream_handler)
@@ -71,11 +76,18 @@ class DataMindAlchemy:
                 api_key=DEFAULT_LLM_API_KEY
             ))
         
-        # 初始化运行目录
-        self.run_dir = self._create_run_dir()
-        self.iterations_dir = self.run_dir / "iterations"  # 添加迭代目录
-        self.iterations_dir.mkdir(exist_ok=True)
+        # 初始化所有必要的目录结构
+        self.alchemy_dir = self.work_dir / "alchemy_runs" / f"alchemy_{self.alchemy_id}"
+        self.search_dir = self.alchemy_dir / "search"
+        self.iterations_dir = self.search_dir / "iterations"
         
+        # 创建所有必要的目录
+        for directory in [self.alchemy_dir, self.search_dir, self.iterations_dir]:
+            directory.mkdir(parents=True, exist_ok=True)
+            
+        # 初始化当前工作目录
+        self.current_work_dir = None
+
     def _init_work_dir(self, work_dir: Path) -> Path:
         """初始化工作目录"""
         if work_dir is None:
@@ -83,11 +95,11 @@ class DataMindAlchemy:
         work_dir.mkdir(exist_ok=True, parents=True)                
         return work_dir
         
-    def _create_run_dir(self) -> Path:
-        """创建运行目录"""
-        run_dir = self.work_dir / "alchemy_runs" / f"run_{self.run_id}"
-        run_dir.mkdir(parents=True, exist_ok=True)
-        return run_dir
+    def _create_alchemy_dir(self) -> Path:
+        """创建炼丹目录"""
+        alchemy_dir = self.work_dir / "alchemy_runs" / f"alchemy_{self.alchemy_id}"
+        alchemy_dir.mkdir(parents=True, exist_ok=True)
+        return alchemy_dir
         
     def _init_components(self, db_path: str):
         """初始化组件
@@ -125,10 +137,9 @@ class DataMindAlchemy:
             logger=self.logger
         )
         
-        # artifact_generator使用全局work_dir，因为它需要访问artifacts目录
+        # artifact_generator使用alchemy_dir，因为它需要访问artifacts目录
         artifact_generator = ArtifactGenerator(
-            work_dir=str(self.work_dir),
-            run_id=self.run_id,
+            alchemy_dir=str(self.alchemy_dir),
             reasoning_engine=reasoning_engine,
             logger=self.logger
         )
@@ -160,8 +171,7 @@ class DataMindAlchemy:
                     "work_dir": str(self.current_work_dir)
                 },
                 "artifact_generator": {
-                    "work_dir": str(self.work_dir),
-                    "run_id": self.run_id
+                    "alchemy_dir": str(self.alchemy_dir)
                 },
                 "feedback_optimizer": {
                     "work_dir": str(self.current_work_dir)
@@ -263,14 +273,14 @@ class DataMindAlchemy:
             
             # 更新状态信息
             status_info = {
-                "run_id": self.run_id,
+                "alchemy_id": self.alchemy_id,
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "latest_iteration": iteration,
                 "iterations": []
             }
             
-            status_path = self.run_dir / "status.json"
+            status_path = self.alchemy_dir / "status.json"
             if status_path.exists():
                 with open(status_path, "r", encoding="utf-8") as f:
                     status_info = json.load(f)
@@ -281,7 +291,7 @@ class DataMindAlchemy:
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
                 "context": context,
-                "path": str(current_iter_dir.relative_to(self.run_dir)),
+                "path": str(current_iter_dir.relative_to(self.alchemy_dir)),
                 "artifacts": results['results'].get('artifacts', []),
                 "optimization_suggestions": results['results'].get('optimization_suggestions', [])
             }
@@ -430,7 +440,7 @@ class DataMindAlchemy:
                     results['results']['artifacts'].append(str(search_artifact_path))
                     
                     # 获取制品生成的优化建议
-                    optimization_query = await self.components['feedback_optimizer'].get_latest_artifact_suggestion(self.run_id)
+                    optimization_query = await self.components['feedback_optimizer'].get_latest_artifact_suggestion(self.alchemy_id)
                     if optimization_query:
                         self.logger.info(f"获取到制品优化建议: {optimization_query}")
                         
