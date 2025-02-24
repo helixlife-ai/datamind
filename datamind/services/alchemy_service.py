@@ -19,19 +19,22 @@ from ..config.settings import (
     DEFAULT_LLM_API_BASE
 )
 from ..utils.stream_logger import StreamLineHandler
+from datetime import datetime
 
 class DataMindAlchemy:
     """数据炼丹工作流封装类"""
     
-    def __init__(self, work_dir: Path = None, model_manager: ModelManager = None, logger: logging.Logger = None):
+    def __init__(self, work_dir: Path = None, model_manager: ModelManager = None, logger: logging.Logger = None, run_id: str = None):
         """初始化数据炼丹工作流
         
         Args:
             work_dir: 工作目录，默认为None时会使用默认路径
             model_manager: 模型管理器实例，用于推理引擎
             logger: 日志记录器实例，用于记录日志
+            run_id: 运行ID，默认为None时会自动生成
         """
         self.work_dir = self._init_work_dir(work_dir)
+        self.run_id = run_id or time.strftime("%Y%m%d_%H%M%S")
         
         # 初始化日志记录器
         self.logger = logger or logging.getLogger(__name__)
@@ -48,11 +51,10 @@ class DataMindAlchemy:
         # 创建日志目录
         log_dir = self.work_dir / "logs"
         log_dir.mkdir(exist_ok=True, parents=True)
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
         
         # 只使用流式日志处理器，它已经包含了文件写入功能
         if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
-            log_file = log_dir / f"alchemy_{timestamp}.log"
+            log_file = log_dir / f"alchemy_{self.run_id}.log"
             stream_handler = StreamLineHandler(str(log_file))
             stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
             self.logger.addHandler(stream_handler)
@@ -69,6 +71,11 @@ class DataMindAlchemy:
                 api_key=DEFAULT_LLM_API_KEY
             ))
         
+        # 初始化运行目录
+        self.run_dir = self._create_run_dir()
+        self.iterations_dir = self.run_dir / "iterations"  # 添加迭代目录
+        self.iterations_dir.mkdir(exist_ok=True)
+        
     def _init_work_dir(self, work_dir: Path) -> Path:
         """初始化工作目录"""
         if work_dir is None:
@@ -78,19 +85,21 @@ class DataMindAlchemy:
         
     def _create_run_dir(self) -> Path:
         """创建运行目录"""
-        run_id = time.strftime("%Y%m%d_%H%M%S")
-        run_dir = self.work_dir / "alchemy_runs" / f"run_{run_id}"
+        run_dir = self.work_dir / "alchemy_runs" / f"run_{self.run_id}"
         run_dir.mkdir(parents=True, exist_ok=True)
         return run_dir
         
     def _init_components(self, db_path: str):
-        """初始化组件"""
+        """初始化组件
+        
+        现在使用当前迭代目录作为组件的工作目录
+        """
         # 首先初始化推理引擎
         reasoning_engine = ReasoningEngine(
             model_manager=self.model_manager,
             model_name=DEFAULT_REASONING_MODEL,
             logger=self.logger,
-            history_file=self.run_dir / "reasoning_history.json"
+            history_file=self.current_work_dir / "reasoning_history.json"  # 修改为当前迭代目录
         )
         
         # 其他组件初始化
@@ -98,41 +107,91 @@ class DataMindAlchemy:
             db_path=db_path,
             logger=self.logger
         )
+        
         intent_parser = IntentParser(
-            work_dir=str(self.run_dir),
-            reasoning_engine=reasoning_engine,
-            logger=self.logger
-        )
-        planner = SearchPlanner(
-            work_dir=str(self.run_dir),
-            logger=self.logger
-        )
-        executor = SearchPlanExecutor(
-            search_engine=search_engine,
-            work_dir=str(self.run_dir),
-            logger=self.logger
-        )
-        feedback_optimizer = FeedbackOptimizer(
-            work_dir=str(self.run_dir),
+            work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
             reasoning_engine=reasoning_engine,
             logger=self.logger
         )
         
-        # 添加制品生成器组件
+        planner = SearchPlanner(
+            work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
+            logger=self.logger
+        )
+        
+        executor = SearchPlanExecutor(
+            search_engine=search_engine,
+            work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
+            logger=self.logger
+        )
+        
+        # artifact_generator使用全局work_dir，因为它需要访问artifacts目录
         artifact_generator = ArtifactGenerator(
             work_dir=str(self.work_dir),
+            run_id=self.run_id,
             reasoning_engine=reasoning_engine,
             logger=self.logger
         )
+        
+        feedback_optimizer = FeedbackOptimizer(
+            work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
+            reasoning_engine=reasoning_engine,
+            logger=self.logger
+        )        
+        
+        # 记录组件配置
+        components_config = {
+            "iteration": self._get_next_iteration() - 1,  # 当前迭代号
+            "work_dir": str(self.current_work_dir),
+            "components": {
+                "reasoning_engine": {
+                    "history_file": str(self.current_work_dir / "reasoning_history.json")
+                },
+                "search_engine": {
+                    "db_path": db_path
+                },
+                "intent_parser": {
+                    "work_dir": str(self.current_work_dir)
+                },
+                "planner": {
+                    "work_dir": str(self.current_work_dir)
+                },
+                "executor": {
+                    "work_dir": str(self.current_work_dir)
+                },
+                "artifact_generator": {
+                    "work_dir": str(self.work_dir),
+                    "run_id": self.run_id
+                },
+                "feedback_optimizer": {
+                    "work_dir": str(self.current_work_dir)
+                }
+            }
+        }
+        
+        # 保存组件配置
+        config_file = self.current_work_dir / "components_config.json"
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(components_config, f, ensure_ascii=False, indent=2)
         
         return {
             'reasoning_engine': reasoning_engine,
             'intent_parser': intent_parser,
             'planner': planner,
             'executor': executor,
-            'feedback_optimizer': feedback_optimizer,
-            'artifact_generator': artifact_generator
+            'artifact_generator': artifact_generator,
+            'feedback_optimizer': feedback_optimizer
         }
+
+    def _get_next_iteration(self) -> int:
+        """获取下一个迭代版本号"""
+        if not self.iterations_dir.exists():
+            return 1
+            
+        existing_iterations = [int(v.name.split('iter')[-1]) 
+                             for v in self.iterations_dir.glob("iter*") 
+                             if v.name.startswith('iter')]
+        return max(existing_iterations, default=0) + 1
 
     async def process(
         self,
@@ -151,16 +210,22 @@ class DataMindAlchemy:
             Dict: 处理结果
         """
         try:
-            self.run_dir = self._create_run_dir()
+            # 确定当前迭代版本
+            iteration = self._get_next_iteration()
+            current_iter_dir = self.iterations_dir / f"iter{iteration}"
+            current_iter_dir.mkdir(exist_ok=True)
+            
+            # 更新工作目录到当前迭代目录
+            self.current_work_dir = current_iter_dir
             
             # 处理上下文
             if context:
-                context_file = self.run_dir / "context.json"
+                context_file = current_iter_dir / "context.json"
                 with open(context_file, 'w', encoding='utf-8') as f:
                     json.dump(context, f, ensure_ascii=False, indent=2)
             
             # 准备数据目录
-            source_data = self.run_dir / "source_data"
+            source_data = current_iter_dir / "source_data"
             source_data.mkdir(exist_ok=True)
             
             # 复制上级source_data
@@ -172,7 +237,7 @@ class DataMindAlchemy:
                 await self._copy_input_dirs(input_dirs, source_data)
             
             # 初始化数据处理
-            data_dir = self.run_dir / "data"
+            data_dir = current_iter_dir / "data"
             data_dir.mkdir(exist_ok=True)
             db_path = data_dir / "unified_storage.duckdb"
             cache_file = str(data_dir / "file_cache.pkl")
@@ -194,7 +259,41 @@ class DataMindAlchemy:
             self.components = self._init_components(str(db_path))
             
             # 执行工作流
-            return await self._execute_workflow(query)
+            results = await self._execute_workflow(query)
+            
+            # 更新状态信息
+            status_info = {
+                "run_id": self.run_id,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "latest_iteration": iteration,
+                "iterations": []
+            }
+            
+            status_path = self.run_dir / "status.json"
+            if status_path.exists():
+                with open(status_path, "r", encoding="utf-8") as f:
+                    status_info = json.load(f)
+            
+            # 更新迭代信息
+            iteration_info = {
+                "iteration": iteration,
+                "timestamp": datetime.now().isoformat(),
+                "query": query,
+                "context": context,
+                "path": str(current_iter_dir.relative_to(self.run_dir)),
+                "artifacts": results['results'].get('artifacts', []),
+                "optimization_suggestions": results['results'].get('optimization_suggestions', [])
+            }
+            
+            status_info["iterations"].append(iteration_info)
+            status_info["latest_iteration"] = iteration
+            status_info["updated_at"] = datetime.now().isoformat()
+            
+            with open(status_path, "w", encoding="utf-8") as f:
+                json.dump(status_info, f, ensure_ascii=False, indent=2)
+
+            return results
             
         except Exception as e:
             self.logger.error(f"数据炼丹工作流失败: {str(e)}", exc_info=True)
@@ -292,7 +391,8 @@ class DataMindAlchemy:
                 'parsed_intent': None,
                 'search_plan': None,
                 'search_results': None,
-                'artifacts': []
+                'artifacts': [],
+                'optimization_suggestions': []
             },
             'components': self.components
         }
@@ -317,8 +417,8 @@ class DataMindAlchemy:
             if search_results and search_results.get('saved_files', {}).get('final_results'):
                 search_artifact_path = await self.components['artifact_generator'].generate_artifact(
                     context_files=[search_results['saved_files']['final_results']],
-                    output_name='search_results',
-                    title=f"搜索结果: {query}",
+                    output_name='artifact',
+                    query=query,
                     metadata={
                         'source_query': query,
                         'total_results': search_results.get('stats', {}).get('total', 0),
@@ -328,6 +428,39 @@ class DataMindAlchemy:
                 )
                 if search_artifact_path:
                     results['results']['artifacts'].append(str(search_artifact_path))
+                    
+                    # 获取制品生成的优化建议
+                    optimization_query = await self.components['feedback_optimizer'].get_latest_artifact_suggestion(self.run_id)
+                    if optimization_query:
+                        self.logger.info(f"获取到制品优化建议: {optimization_query}")
+                        
+                        # 使用优化建议执行新一轮工作流
+                        optimization_result = await self.process(
+                            query=optimization_query,
+                            input_dirs=None,  # 使用已有数据
+                            context={
+                                'original_query': query,
+                                'optimization_source': 'artifact_suggestion',
+                                'previous_artifacts': results['results']['artifacts']
+                            }
+                        )
+                        
+                        if optimization_result['status'] == 'success':
+                            self.logger.info("基于制品优化建议的新一轮处理成功")
+                            
+                            # 记录优化建议和结果
+                            optimization_info = {
+                                'suggestion': optimization_query,
+                                'source': 'artifact_suggestion',
+                                'artifacts': optimization_result['results'].get('artifacts', []),
+                                'timestamp': datetime.now().isoformat()
+                            }
+                            results['results']['optimization_suggestions'].append(optimization_info)
+                            
+                            # 将新生成的制品也添加到结果中
+                            results['results']['artifacts'].extend(optimization_result['results'].get('artifacts', []))
+                        else:
+                            self.logger.warning(f"优化建议处理失败: {optimization_result['message']}")
 
             # 最后更新推理历史
             chat_history = reasoning_engine.get_chat_history()

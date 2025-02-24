@@ -11,17 +11,30 @@ import hashlib
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
     
-    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", run_id: str = None, reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化制品生成器
         
         Args:
             work_dir: 工作目录
+            run_id: 运行ID
             reasoning_engine: 推理引擎实例，用于生成内容
             logger: 可选，日志记录器实例
         """
         self.work_dir = Path(work_dir)
-        self.artifacts_dir = self.work_dir / "artifacts"
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self.run_id = run_id
+        if self.run_id is None:
+            raise ValueError("run_id不能为None")
+        
+        # 修改目录结构
+        self.artifacts_base = self.work_dir / "artifacts"  # 基础制品目录
+        
+        # 每个制品的目录结构
+        self.artifacts_dir = self.artifacts_base / f"artifact_{self.run_id}"
+        self.iterations_dir = self.artifacts_dir / "iterations"  # 存放迭代版本
+        
+        # 创建所需目录
+        for dir_path in [self.artifacts_base, self.artifacts_dir, self.iterations_dir]:
+            dir_path.mkdir(parents=True, exist_ok=True)
         
         self.logger = logger or logging.getLogger(__name__)
         self.reasoning_engine = reasoning_engine
@@ -55,27 +68,25 @@ class ArtifactGenerator:
             self.logger.error(f"读取文件 {file_path} 时发生错误: {str(e)}")
             return None
 
-    def _build_html_prompt(self, context_files: Dict[str, str], title: str) -> str:
+    def _build_html_prompt(self, context_files: Dict[str, str], query: str) -> str:
         """构建HTML生成的提示词
         
         Args:
             context_files: 文件内容字典，key为文件名，value为文件内容
-            title: HTML页面标题
+            query: 用户的查询内容
             
         Returns:
             str: 生成提示词
         """
-        prompt = f"""请根据文件内容生成一个HTML页面：
-
-[页面标题]
-{title}
-
-[文件]
+        prompt = f"""[文件]
 """
         for filename, content in context_files.items():
-            prompt += f"\n[{filename}]\n{content}\n"
+            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
         
-        prompt += """
+        prompt += f"""请根据用户的问题，从以下文件中提炼出相关信息，生成一个HTML页面来解决用户的问题：
+
+[用户的问题]
+{query}
 要求：
 1. 生成一个结构良好的HTML页面
 2. 使用适当的CSS样式美化页面
@@ -185,17 +196,84 @@ class ArtifactGenerator:
             self.logger.error(f"提取HTML内容时发生错误: {str(e)}")
             return None
 
+    def _get_next_iteration(self) -> int:
+        """获取下一个迭代版本号"""
+        if not self.iterations_dir.exists():
+            return 1
+            
+        existing_iterations = [int(v.name.split('iter')[-1]) 
+                             for v in self.iterations_dir.glob("iter*") 
+                             if v.name.startswith('iter')]
+        return max(existing_iterations, default=0) + 1
+
+    async def _get_optimization_query(self, html_content: str, previous_query: str) -> Optional[str]:
+        """分析当前HTML内容并生成优化建议查询
+        
+        Args:
+            html_content: 当前生成的HTML内容
+            previous_query: 上一轮的查询内容
+            
+        Returns:
+            Optional[str]: 优化建议查询
+        """
+        try:
+            prompt = f"""请分析以下HTML内容和原始查询，提出一个具体的优化建议问题。这个问题将用于生成下一个优化版本。
+
+原始查询：
+{previous_query}
+
+当前HTML内容：
+{html_content}
+
+请提出一个明确的优化问题，格式要求：
+1. 只输出问题本身，不要其他内容
+2. 问题应该具体且可操作
+3. 问题应该针对内容、结构或用户体验的改进
+4. 使用疑问句式
+"""
+            # 添加用户消息
+            self.reasoning_engine.add_message("user", prompt)
+            
+            # 使用流式输出收集响应
+            full_response = ""
+            suggestion = ""
+            
+            async for chunk in self.reasoning_engine.get_stream_response(
+                temperature=0.7,
+                metadata={'stage': 'optimization_suggestion'}
+            ):
+                if chunk:
+                    full_response += chunk
+                    # 显示流式输出内容
+                    self.logger.info(f"\r生成优化建议: {full_response}")
+                    
+                    # 如果发现完整的句子，更新建议
+                    if any(chunk.strip().endswith(end) for end in ['。', '？', '!']):
+                        suggestion = full_response.strip().strip('`').strip('"').strip()
+            
+            if suggestion:
+                self.logger.info(f"最终优化建议: {suggestion}")
+                return suggestion
+                
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"生成优化建议时发生错误: {str(e)}")
+            return None
+
     async def generate_artifact(self, 
                               context_files: List[str], 
                               output_name: str,
-                              title: str,
+                              query: str,
+                              is_main: bool = True,
                               metadata: Optional[Dict] = None) -> Optional[Path]:
         """生成HTML制品
         
         Args:
             context_files: 上下文文件路径列表
             output_name: 输出文件名
-            title: HTML页面标题
+            query: 用户的查询内容
+            is_main: 是否为主制品，默认为True
             metadata: 可选的元数据字典
             
         Returns:
@@ -205,34 +283,35 @@ class ArtifactGenerator:
             if not self.reasoning_engine:
                 raise ValueError("未配置推理引擎，无法生成内容")
 
-            # 创建更有意义的制品目录结构
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            artifact_name = f"{output_name}_{timestamp}"
+            # 确定生成目录
+            iteration = self._get_next_iteration()
+            work_base = self.iterations_dir / f"iter{iteration}"
+            artifact_name = f"artifact_iter{iteration}"
             
-            # 主目录结构
-            artifact_dir = self.artifacts_dir / artifact_name
-            artifact_dir.mkdir(parents=True, exist_ok=True)
+            # 创建工作目录
+            process_dir = work_base / "process"    # 生成过程
+            output_dir = work_base / "output"      # 最终输出
+            source_dir = work_base / "source"      # 源文件副本
             
-            # 创建子目录
-            process_dir = artifact_dir / "process"  # 存放生成过程
-            output_dir = artifact_dir / "output"    # 存放最终输出
-            
-            for dir_path in [process_dir, output_dir]:
+            for dir_path in [work_base, process_dir, output_dir, source_dir]:
                 dir_path.mkdir(parents=True, exist_ok=True)
 
-            # 读取上下文文件并记录源文件信息
+            # 复制源文件并记录信息
             context_contents = {}
             source_files_info = {}
             
             for file_path in context_files:
                 src_path = Path(file_path)
                 if src_path.exists():
+                    dst_path = source_dir / src_path.name
+                    shutil.copy2(src_path, dst_path)
+                    
                     content = self._read_file_content(file_path)
                     if content:
                         context_contents[src_path.name] = content
-                        # 记录源文件信息
                         source_files_info[src_path.name] = {
-                            "absolute_path": str(src_path.absolute()),
+                            "original_path": str(src_path.absolute()),
+                            "copied_path": str(dst_path.relative_to(work_base)),
                             "size": src_path.stat().st_size,
                             "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
                             "content_hash": hashlib.md5(content.encode()).hexdigest()
@@ -241,11 +320,12 @@ class ArtifactGenerator:
             if not context_contents:
                 raise ValueError("未能成功读取任何上下文文件内容")
 
-            # 保存完整的元数据信息
+            # 更新元数据结构
             metadata_info = {
-                "artifact_id": artifact_name,
-                "timestamp": timestamp,
-                "title": title,
+                "artifact_id": f"artifact_{self.run_id}",
+                "type": "main" if is_main else f"iteration_{iteration}",
+                "timestamp": datetime.now().isoformat(),
+                "query": query,
                 "output_name": output_name,
                 "source_files": source_files_info,
                 "custom_metadata": metadata or {},
@@ -255,11 +335,12 @@ class ArtifactGenerator:
                 }
             }
 
-            with open(artifact_dir / "metadata.json", "w", encoding="utf-8") as f:
+            # 保存元数据
+            with open(work_base / "metadata.json", "w", encoding="utf-8") as f:
                 json.dump(metadata_info, f, ensure_ascii=False, indent=2)
 
             # 构建提示词并保存
-            prompt = self._build_html_prompt(context_contents, title)
+            prompt = self._build_html_prompt(context_contents, query)
             with open(process_dir / "generation_prompt.md", "w", encoding="utf-8") as f:
                 f.write(prompt)
 
@@ -327,47 +408,89 @@ class ArtifactGenerator:
                 self.logger.warning("无法从响应中提取有效的HTML内容，将生成错误页面")
                 html_content = self._generate_error_html(
                     "无法从AI响应中提取有效的HTML内容",
-                    title
+                    query
                 )
             
-            # 保存最终HTML文件到output目录
-            output_path = output_dir / f"{output_name}.html"
+            # 保存迭代版本HTML文件
+            output_path = output_dir / f"{artifact_name}.html"
             output_path.write_text(html_content, encoding="utf-8")
 
-            # 记录生成结果
-            generation_result = {
+            # 获取优化建议
+            optimization_query = await self._get_optimization_query(html_content, query)
+
+            # 更新main.html（作为最新版本的快照）
+            main_path = self.artifacts_dir / "main.html"
+            shutil.copy2(output_path, main_path)
+            self.logger.info(f"已更新主制品: {main_path}")
+
+            # 更新状态信息
+            status_info = {
+                "artifact_id": f"artifact_{self.run_id}",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "latest_iteration": iteration,
+                "main_artifact": {
+                    "path": str(main_path.relative_to(self.artifacts_base)),
+                    "timestamp": datetime.now().isoformat()
+                },
+                "iterations": []
+            }
+            
+            status_path = self.artifacts_dir / "status.json"
+            if status_path.exists():
+                with open(status_path, "r", encoding="utf-8") as f:
+                    status_info = json.load(f)
+            
+            # 更新迭代信息，包含优化建议
+            iteration_info = {
+                "iteration": iteration,
                 "timestamp": datetime.now().isoformat(),
-                "status": "success",
-                "output_file": str(output_path.relative_to(self.artifacts_dir)),
-                "file_size": output_path.stat().st_size,
+                "path": str(work_base.relative_to(self.artifacts_base)),
+                "query": query,
+                "optimization_suggestion": optimization_query
+            }
+            
+            status_info["iterations"].append(iteration_info)
+            status_info["latest_iteration"] = iteration
+            status_info["updated_at"] = datetime.now().isoformat()
+            
+            with open(status_path, "w", encoding="utf-8") as f:
+                json.dump(status_info, f, ensure_ascii=False, indent=2)
+
+            # 保存本轮生成的完整信息
+            generation_info = {
+                "iteration": iteration,
+                "timestamp": datetime.now().isoformat(),
+                "input_query": query,
+                "output_file": str(output_path.relative_to(self.artifacts_base)),
+                "optimization_suggestion": optimization_query,
                 "generation_stats": {
-                    "total_chunks": len(full_response),
-                    "final_html_size": len(html_content)
+                    "html_size": len(html_content)
                 }
             }
             
-            with open(output_dir / "generation_result.json", "w", encoding="utf-8") as f:
-                json.dump(generation_result, f, ensure_ascii=False, indent=2)
+            with open(output_dir / "generation_info.json", "w", encoding="utf-8") as f:
+                json.dump(generation_info, f, ensure_ascii=False, indent=2)
 
-            self.logger.info(f"已生成HTML制品: {output_path}")
             return output_path
 
         except Exception as e:
             self.logger.error(f"生成HTML制品时发生错误: {str(e)}")
             
             # 错误处理和记录
-            if 'artifact_dir' in locals():
+            if 'work_base' in locals():
                 error_info = {
                     "timestamp": datetime.now().isoformat(),
                     "status": "error",
                     "error": str(e),
+                    "query": query,
                     "traceback": traceback.format_exc()
                 }
                 
                 with open(process_dir / "generation_error.json", "w", encoding="utf-8") as f:
                     json.dump(error_info, f, ensure_ascii=False, indent=2)
                 
-                error_html = self._generate_error_html(str(e), title)
+                error_html = self._generate_error_html(str(e), query)
                 error_path = output_dir / f"{output_name}_error.html"
                 error_path.write_text(error_html, encoding="utf-8")
             

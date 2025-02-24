@@ -8,11 +8,6 @@ import logging
 from datetime import datetime
 
 from ..core.reasoning import ReasoningEngine
-from ..config.settings import (
-    DEFAULT_REASONING_MODEL,
-    DEFAULT_LLM_API_KEY,
-    DEFAULT_LLM_API_BASE
-)
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +18,22 @@ class FeedbackOptimizer:
         """初始化反馈优化工作流管理器
         
         Args:
-            work_dir: 工作目录
-            reasoning_engine: 推理引擎实例，用于生成优化查询
+            work_dir: 工作目录，现在是迭代目录 (run_dir/iterations/iterX)
+            reasoning_engine: 推理引擎实例
             logger: 可选，日志记录器实例
         """
         self.logger = logger or logging.getLogger(__name__)
         self.work_dir = Path(work_dir)
         self.reasoning_engine = reasoning_engine
-        self.feedback_stack = []  # 改为栈结构记录待处理反馈
+        
+        # 从迭代目录计算各个重要路径
+        self.iter_dir = self.work_dir  # 当前迭代目录
+        self.run_dir = self.iter_dir.parent.parent  # 运行目录
+        self.artifacts_dir = self.run_dir.parent.parent / "artifacts"  # 制品目录
+        
+        # 获取当前迭代信息
+        self.current_iteration = int(self.iter_dir.name.replace('iter', ''))
+        self.run_id = self.run_dir.name.replace('run_', '')
         
         if not self.reasoning_engine:
             self.logger.warning("未提供推理引擎实例，部分功能可能受限")
@@ -59,12 +62,68 @@ class FeedbackOptimizer:
         })
         return result
 
+    async def get_latest_artifact_suggestion(self, run_id: Optional[str] = None) -> Optional[str]:
+        """获取最新制品的优化建议"""
+        try:
+            run_id = run_id or self.run_id
+            artifact_dir = self.artifacts_dir / f"artifact_{run_id}"
+            
+            if not artifact_dir.exists():
+                self.logger.warning(f"未找到制品目录: {artifact_dir}")
+                return None
+
+            status_path = artifact_dir / "status.json"
+            if not status_path.exists():
+                self.logger.warning(f"未找到状态文件: {status_path}")
+                return None
+
+            with open(status_path, 'r', encoding='utf-8') as f:
+                status_info = json.load(f)
+
+            iterations = status_info.get('iterations', [])
+            if not iterations:
+                self.logger.info("没有找到迭代记录")
+                return None
+
+            latest_iteration = iterations[-1]
+            suggestion = latest_iteration.get('optimization_suggestion')
+            
+            if suggestion:
+                self.logger.info(f"找到最新的优化建议: {suggestion}")
+                return suggestion
+            else:
+                self.logger.info("最新迭代中没有优化建议")
+            
+            return None
+
+        except Exception as e:
+            self.logger.error(f"获取制品优化建议时发生错误: {str(e)}")
+            return None
+
     async def feedback_to_query(self, alchemy_dir: str, feedback: str) -> Dict[str, Any]:
-        """将用户反馈转换为新的查询"""
+        """将用户反馈转换为新的查询
+        
+        现在会优先使用制品生成的优化建议，如果没有才使用用户反馈生成新查询
+        """
         try:
             if not self.reasoning_engine:
                 raise ValueError("未配置推理引擎，无法处理反馈")
-                
+
+            # 获取当前运行ID
+            run_id = Path(alchemy_dir).name.split('_')[-1]
+            
+            # 首先尝试获取制品的优化建议
+            optimization_query = await self.get_latest_artifact_suggestion(run_id)
+            
+            if optimization_query:
+                return {
+                    'status': 'success',
+                    'message': 'Using artifact optimization suggestion',
+                    'query': optimization_query,
+                    'source': 'artifact_suggestion'
+                }
+
+            # 如果没有制品优化建议，则使用用户反馈生成新查询
             feedback_file = Path(alchemy_dir) / "feedback.txt"
             
             if not feedback_file.exists():
@@ -97,15 +156,23 @@ class FeedbackOptimizer:
                 3. 保持查询的可执行性
             """)
             
-            # 获取响应
-            response = await self.reasoning_engine.get_response(
+            # 使用流式输出获取响应
+            full_response = ""
+            new_query = ""
+            
+            async for chunk in self.reasoning_engine.get_stream_response(
                 temperature=0.7,
                 metadata={'stage': 'feedback_optimization'}
-            )
+            ):
+                if chunk:
+                    full_response += chunk
+                    self.logger.info(f"\r生成新查询: {full_response}")
+                    
+                    # 如果发现完整的句子，更新查询
+                    if any(chunk.strip().endswith(end) for end in ['。', '？', '!']):
+                        new_query = full_response.strip()
             
-            if response:
-                new_query = response.strip()
-                
+            if new_query:
                 # 记录优化过程
                 log_dir = Path(alchemy_dir) / "feedback_logs"
                 log_dir.mkdir(exist_ok=True)
@@ -118,6 +185,7 @@ class FeedbackOptimizer:
                     "original_query": context['original_query'],
                     "user_feedback": feedback_content,
                     "new_query": new_query,
+                    "source": "user_feedback",
                     "chat_history": self.reasoning_engine.get_chat_history()
                 }
                 
@@ -126,8 +194,9 @@ class FeedbackOptimizer:
                 
                 return {
                     'status': 'success',
-                    'message': 'Successfully generated new query',
-                    'query': new_query
+                    'message': 'Successfully generated new query from user feedback',
+                    'query': new_query,
+                    'source': 'user_feedback'
                 }
             else:
                 return {
@@ -142,55 +211,53 @@ class FeedbackOptimizer:
                 'message': str(e)
             }
 
-    def _load_current_context(self, alchemy_dir: str) -> dict:
-        """加载当前迭代上下文
-        
-        从alchemy_dir/context.json加载上下文信息，如果文件不存在或加载失败，
-        则认为是第1次迭代。
+    def _load_current_context(self, iter_dir: Optional[Path] = None) -> Dict:
+        """加载当前迭代的上下文
         
         Args:
-            alchemy_dir: 炼丹工作流运行目录
+            iter_dir: 可选，指定迭代目录，默认使用当前迭代目录
             
         Returns:
-            dict: 包含上下文信息的字典
-            {
-                'iteration': int,
-                'original_query': str,
-                'previous_feedbacks': List[Dict]
-            }
+            Dict: 上下文信息
         """
         try:
-            # context.json现在位于run_xxxx目录内
-            context_file = Path(alchemy_dir) / "context.json"  
+            iter_dir = iter_dir or self.iter_dir
+            context_file = iter_dir / "context.json"
             
-            # 如果文件不存在，返回初始上下文
             if not context_file.exists():
                 return {
-                    'iteration': 1,
-                    'original_query': self._get_original_query(Path(alchemy_dir)),
-                    'previous_feedbacks': []
+                    'original_query': '',
+                    'previous_feedbacks': [],
+                    'iteration': self.current_iteration
                 }
-            
-            # 读取并解析context.json
+                
             with open(context_file, 'r', encoding='utf-8') as f:
-                context_data = json.load(f)
+                context = json.load(f)
                 
-            # 确保context_data包含所需字段
-            if not context_data or not isinstance(context_data, dict):
-                raise ValueError("Invalid context data format")
-                
+            # 获取之前的反馈历史
+            previous_feedbacks = []
+            if self.current_iteration > 1:
+                for i in range(1, self.current_iteration):
+                    prev_iter_dir = self.run_dir / "iterations" / f"iter{i}"
+                    prev_context_file = prev_iter_dir / "context.json"
+                    if prev_context_file.exists():
+                        with open(prev_context_file, 'r', encoding='utf-8') as f:
+                            prev_context = json.load(f)
+                            if prev_context.get('feedback'):
+                                previous_feedbacks.append(prev_context['feedback'])
+            
             return {
-                'iteration': context_data.get('metadata', {}).get('iteration', 1),
-                'original_query': context_data.get('original_query', ''),
-                'previous_feedbacks': context_data.get('feedback_history', [])
+                'original_query': context.get('original_query', ''),
+                'previous_feedbacks': previous_feedbacks,
+                'iteration': self.current_iteration
             }
             
         except Exception as e:
-            self.logger.error(f"加载上下文失败: {str(e)}", exc_info=True)
+            self.logger.error(f"加载上下文失败: {str(e)}")
             return {
-                'iteration': 1,  # 出错时默认为第1次迭代
-                'original_query': self._get_original_query(Path(alchemy_dir)),
-                'previous_feedbacks': []
+                'original_query': '',
+                'previous_feedbacks': [],
+                'iteration': self.current_iteration
             }
 
     def _get_original_query(self, alchemy_path: Path) -> str:
