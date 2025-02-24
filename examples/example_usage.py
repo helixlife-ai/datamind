@@ -166,7 +166,7 @@ async def async_main():
         await datamind_alchemy_test(
             query=query,
             input_dirs=[str(test_data_dir)],
-            work_dir=script_dir.parent / "work_dir" / "output" / "alchemy_runs",  # 路径调整
+            work_dir=script_dir.parent / "work_dir" / "data_alchemy",  
             logger=logger
         )
         logger.info("数据炼丹测试完成")

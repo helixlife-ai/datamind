@@ -72,14 +72,14 @@ class DataMindAlchemy:
     def _init_work_dir(self, work_dir: Path) -> Path:
         """初始化工作目录"""
         if work_dir is None:
-            work_dir = Path("output") / "alchemy_runs"
+            work_dir = Path("data_alchemy") 
         work_dir.mkdir(exist_ok=True, parents=True)                
         return work_dir
         
     def _create_run_dir(self) -> Path:
         """创建运行目录"""
         run_id = time.strftime("%Y%m%d_%H%M%S")
-        run_dir = self.work_dir / f"run_{run_id}"
+        run_dir = self.work_dir / "alchemy_runs" / f"run_{run_id}"
         run_dir.mkdir(parents=True, exist_ok=True)
         return run_dir
         
