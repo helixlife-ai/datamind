@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class FeedbackOptimizer:
     """反馈优化工作流管理器"""
     
-    def __init__(self, work_dir: str, reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化反馈优化工作流管理器
         
         Args:

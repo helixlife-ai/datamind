@@ -1478,8 +1478,11 @@
             // 构建完整路径
             const fullPath = data.dir + '/' + data.path;
             
-            // 更新文件系统结构
-            updateFileSystem(fullPath, data.type);
+            // 只在目录结构变化时更新文件系统
+            if (data.type === 'add' || data.type === 'remove' || 
+                data.type === 'addDir' || data.type === 'removeDir') {
+                updateFileSystem(fullPath, data.type);
+            }
             
             // 格式化时间
             const timeStr = new Date(data.time).toLocaleString('zh-CN', {

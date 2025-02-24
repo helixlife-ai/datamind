@@ -61,7 +61,7 @@ class QueryCache:
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""
     
-    def __init__(self, work_dir: str = "output", reasoning_engine: Optional[ReasoningEngine] = None, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningEngine] = None, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
         """初始化解析器
         
         Args:

@@ -7,7 +7,7 @@ from pathlib import Path
 class SearchPlanner:
     """搜索计划生成器"""
     
-    def __init__(self, work_dir: str = "output", logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", logger: Optional[logging.Logger] = None):
         """初始化搜索计划生成器
         
         Args:

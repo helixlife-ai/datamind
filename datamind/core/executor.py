@@ -107,7 +107,7 @@ class ResultSaver:
 class SearchPlanExecutor:
     """搜索计划执行器"""
     
-    def __init__(self, search_engine, work_dir="output", logger: Optional[logging.Logger] = None):
+    def __init__(self, search_engine, work_dir="work_dir", logger: Optional[logging.Logger] = None):
         """初始化搜索计划执行器
         
         Args:

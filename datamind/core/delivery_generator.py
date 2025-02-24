@@ -12,7 +12,7 @@ import traceback
 class DeliveryGenerator:
     """交付文件生成器"""
     
-    def __init__(self, work_dir: str = "output", reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化交付文件生成器
         
         Args:

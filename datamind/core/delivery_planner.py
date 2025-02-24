@@ -11,7 +11,7 @@ from ..utils.common import DateTimeEncoder
 class DeliveryPlanner:
     """交付计划生成器"""
     
-    def __init__(self, work_dir: str = "output", reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化交付计划生成器
         
         Args:
