@@ -269,7 +269,7 @@ class ArtifactGenerator:
                               context_files: List[str], 
                               output_name: str,
                               query: str,
-                              is_main: bool = True,
+                              is_primary: bool = True,
                               metadata: Optional[Dict] = None) -> Optional[Path]:
         """生成HTML制品
         
@@ -277,7 +277,7 @@ class ArtifactGenerator:
             context_files: 上下文文件路径列表
             output_name: 输出文件名
             query: 用户的查询内容
-            is_main: 是否为主制品，默认为True
+            is_primary: 是否为主制品，默认为True
             metadata: 可选的元数据字典
             
         Returns:
@@ -327,7 +327,7 @@ class ArtifactGenerator:
             # 更新元数据结构
             metadata_info = {
                 "artifact_id": f"artifact_{self.alchemy_id}",
-                "type": "main" if is_main else f"iteration_{iteration}",
+                "type": "primary" if is_primary else f"iteration_{iteration}",
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
                 "output_name": output_name,
@@ -422,31 +422,31 @@ class ArtifactGenerator:
             # 获取优化建议
             optimization_query = await self._get_optimization_query(html_content, query)
 
-            # 更新main.html（作为最新版本的快照）
-            main_path = self.artifacts_dir / "main.html"
+            # 更新artifact.html（作为最新版本的快照）
+            artifact_path = self.artifacts_dir / "artifact.html"
             
-            # 如果main.html已存在，进行版本管理和内容合并
-            if main_path.exists():
+            # 如果artifact.html已存在，进行版本管理和内容合并
+            if artifact_path.exists():
                 # 保存当前版本
-                current_version = self._get_next_main_version()
-                main_versions_dir = self.artifacts_dir / "main_versions"
-                version_path = main_versions_dir / f"main_v{current_version}.html"
+                current_version = self._get_next_artifact_version()
+                artifact_versions_dir = self.artifacts_dir / "artifact_versions"
+                version_path = artifact_versions_dir / f"artifact_v{current_version}.html"
                 
                 # 备份当前版本
-                shutil.copy2(main_path, version_path)
+                shutil.copy2(artifact_path, version_path)
                 
-                # 读取当前main.html内容
-                current_main_content = main_path.read_text(encoding="utf-8")
+                # 读取当前artifact.html内容
+                current_artifact_content = artifact_path.read_text(encoding="utf-8")
                 
                 # 合并内容
-                merged_content = await self._merge_html_contents(current_main_content, html_content, query)
+                merged_content = await self._merge_html_contents(current_artifact_content, html_content, query)
                 if merged_content:
                     html_content = merged_content
                 else:
                     self.logger.warning("内容合并失败，将使用新生成的内容")
                 
                 # 更新版本记录
-                versions_info_path = main_versions_dir / "versions_info.json"
+                versions_info_path = artifact_versions_dir / "versions_info.json"
                 versions_info = {
                     "latest_version": current_version,
                     "versions": []
@@ -469,9 +469,9 @@ class ArtifactGenerator:
                 with open(versions_info_path, "w", encoding="utf-8") as f:
                     json.dump(versions_info, f, ensure_ascii=False, indent=2)
             
-            # 写入新的main.html
-            main_path.write_text(html_content, encoding="utf-8")
-            self.logger.info(f"已更新主制品: {main_path}")
+            # 写入新的artifact.html
+            artifact_path.write_text(html_content, encoding="utf-8")
+            self.logger.info(f"已更新主制品: {artifact_path}")
 
             # 更新状态信息
             status_info = {
@@ -479,8 +479,8 @@ class ArtifactGenerator:
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "latest_iteration": iteration,
-                "main_artifact": {
-                    "path": str(main_path.relative_to(self.artifacts_base)),
+                "artifact": {
+                    "path": str(artifact_path.relative_to(self.artifacts_base)),
                     "timestamp": datetime.now().isoformat()
                 },
                 "iterations": []
@@ -546,17 +546,17 @@ class ArtifactGenerator:
             
             return None 
 
-    def _get_next_main_version(self) -> int:
-        """获取main.html的下一个版本号"""
-        main_versions_dir = self.artifacts_dir / "main_versions"
-        main_versions_dir.mkdir(exist_ok=True)
+    def _get_next_artifact_version(self) -> int:
+        """获取artifact.html的下一个版本号"""
+        artifact_versions_dir = self.artifacts_dir / "artifact_versions"
+        artifact_versions_dir.mkdir(exist_ok=True)
         
         try:
             # 使用更健壮的版本号提取方法
             existing_versions = []
-            for file_path in main_versions_dir.glob("main_v*.html"):
+            for file_path in artifact_versions_dir.glob("artifact_v*.html"):
                 try:
-                    # 从文件名中提取版本号，格式应该是 main_v{number}.html
+                    # 从文件名中提取版本号，格式应该是 artifact_v{number}.html
                     version_str = file_path.stem.split('v')[-1]  # 使用stem去掉.html后缀
                     if version_str.isdigit():
                         existing_versions.append(int(version_str))
@@ -570,11 +570,11 @@ class ArtifactGenerator:
             self.logger.error(f"获取下一个版本号时发生错误: {str(e)}")
             return 1  # 发生错误时返回1作为安全的默认值
 
-    async def _merge_html_contents(self, current_main: str, new_content: str, query: str) -> Optional[str]:
-        """合并当前main.html和新生成的HTML内容
+    async def _merge_html_contents(self, current_artifact: str, new_content: str, query: str) -> Optional[str]:
+        """合并当前artifact.html和新生成的HTML内容
         
         Args:
-            current_main: 当前main.html的内容
+            current_artifact: 当前artifact.html的内容
             new_content: 新生成的HTML内容
             query: 用户的查询内容
             
@@ -587,8 +587,8 @@ class ArtifactGenerator:
 
             prompt = f"""请分析并合并以下两个HTML内容，生成一个新的综合版本。
 
-当前main.html内容：
-{current_main}
+当前artifact.html内容：
+{current_artifact}
 
 新生成的HTML内容：
 {new_content}

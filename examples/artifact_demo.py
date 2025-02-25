@@ -119,12 +119,12 @@ async def demo_artifact_generator():
         generation_task = asyncio.create_task(generator.generate_artifact(
             context_files=example_files,
             output_name="code_analysis",
-            title="Python代码分析报告",
+            query="Python代码分析报告",
+            is_primary=True,
             metadata={
                 "analysis_type": "code_review",
                 "files_analyzed": [f.name for f in example_files],
-                "generator": "ArtifactGenerator",
-                "model": DEFAULT_REASONING_MODEL
+                "title": "Python代码分析报告"  # 保留title作为元数据
             }
         ))
         
@@ -173,8 +173,12 @@ async def demo_artifact_generator():
         error_output = await generator.generate_artifact(
             context_files=[non_existent_file],
             output_name="error_test",
-            title="错误处理测试",
-            metadata={"test_type": "error_handling"}
+            query="错误处理测试",
+            is_primary=False,
+            metadata={
+                "test_type": "error_handling",
+                "title": "错误处理测试"  # 保留title作为元数据
+            }
         )
         
         if not error_output:
