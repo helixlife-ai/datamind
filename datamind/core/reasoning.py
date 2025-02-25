@@ -206,15 +206,17 @@ class ReasoningEngine:
                     self.logger.error(f"处理流式响应chunk时出错: {str(e)}")
                     continue
 
-            # 只在有回答内容时才添加结束标签
-            if has_started_answer:
-                yield "\n</answer>"
-                    
+            # 确保流结束时添加结束标签
+            if has_started_answer and has_started_think:
+                yield "\n</answer>\n"
+            elif has_started_answer:  # 只有回答没有推理的情况
+                yield "\n</answer>\n"
+                
             # 构建完整响应
             if reasoning_content:
                 full_content = f"<think>\n{reasoning_content}\n</think>\n\n<answer>\n{content}\n</answer>"
             else:
-                full_content = content
+                full_content = f"<answer>\n{content}\n</answer>"
                 
             # 将完整响应添加到消息历史（现在会自动保存）
             if full_content:
