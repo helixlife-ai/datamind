@@ -6,6 +6,11 @@
             "description": "Monitor DataMind's knowledge alchemy process - transforming documents into insights"
         }
     ],
+    "chatRecordDir": {
+        "path": "../work_dir/data_alchemy/chat_records",
+        "name": "聊天记录",
+        "description": "保存与AI助手的聊天历史记录"
+    },
     "port": 3000,
     "excludePatterns": [
         "node_modules",

@@ -6,14 +6,15 @@
     <title>DataMind - The Alchemy Cauldron</title>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         body {
-            font-family: 'Arial', sans-serif;
+            font-family: 'Poppins', -apple-system, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f5f5f5;
+            background-color: #f8fafc;
             min-height: 100vh;
+            color: #1e293b;
         }
         .container {
             max-width: none;
@@ -26,6 +27,7 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
+            overflow: hidden;
         }
         h1 {
             color: #333;
@@ -36,33 +38,40 @@
             flex: 1;
             height: 100%;
             overflow-y: auto;
-            border: 1px solid #ddd;
+            border: 1px solid rgba(203, 213, 225, 0.7);
             padding: 10px;
-            border-radius: 4px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
         .change-item {
             padding: 15px;
             margin: 8px 0;
-            border-radius: 6px;
+            border-radius: 10px;
             animation: fadeIn 0.5s;
             display: flex;
             align-items: flex-start;
             gap: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .change-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
         }
         .add {
-            background-color: rgba(76, 175, 80, 0.1);
-            border-left: 4px solid #4CAF50;
+            background-color: rgba(34, 197, 94, 0.05);
+            border-left: 4px solid #22c55e;
         }
         .change {
-            background-color: rgba(33, 150, 243, 0.1);
-            border-left: 4px solid #2196F3;
+            background-color: rgba(59, 130, 246, 0.05);
+            border-left: 4px solid #3b82f6;
         }
         .remove {
-            background-color: rgba(244, 67, 54, 0.1);
-            border-left: 4px solid #f44336;
+            background-color: rgba(239, 68, 68, 0.05);
+            border-left: 4px solid #ef4444;
         }
         .time {
-            color: #666;
+            color: #64748b;
             font-size: 0.85em;
             margin-top: 5px;
             display: block;
@@ -77,8 +86,8 @@
             display: flex;
             gap: 20px;
             margin-top: 8px;
-            height: calc(100vh - 48px);
-            padding: 0 12px 12px;
+            height: calc(100vh - 60px);
+            padding: 0 16px 16px;
             flex: 1;
             overflow: hidden;
         }
@@ -87,26 +96,32 @@
             flex: 1;
             height: 100%;
             overflow-y: auto;
-            border: 1px solid #ddd;
+            border: 1px solid rgba(203, 213, 225, 0.7);
             padding: 10px;
-            border-radius: 4px;
+            border-radius: 10px;
             background-color: white;
             display: flex;
             flex-direction: column;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s;
+        }
+
+        #fileExplorer:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
         }
 
         .folder, .file {
-            padding: 8px;
-            margin: 2px 0;
+            padding: 10px;
+            margin: 3px 0;
             cursor: pointer;
             position: relative;
-            border-radius: 4px;
-            transition: background-color 0.2s;
+            border-radius: 6px;
+            transition: all 0.2s;
         }
 
         .folder-content {
             margin-left: 20px;
-            border-left: 1px solid #ccc;
+            border-left: 1px solid rgba(203, 213, 225, 0.5);
             padding-left: 10px;
             display: block;
         }
@@ -122,7 +137,7 @@
         .folder > .folder-header::before {
             content: "▶";
             font-size: 0.8em;
-            color: #666;
+            color: #64748b;
             transition: transform 0.2s;
             min-width: 12px;
             order: 1;
@@ -150,12 +165,20 @@
 
         .folder.open > .folder-content {
             display: block;
+            animation: slideDown 0.2s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         /* 文件夹名称位置 */
         .folder-name {
             order: 2;
             flex: 1;
+            font-weight: 500;
+            color: #334155;
         }
 
         /* 文件图标和名称对齐 */
@@ -182,51 +205,57 @@
 
         /* 优化文件和文件夹的悬停效果 */
         .folder:hover, .file:hover {
-            background-color: #f5f5f5;
+            background-color: rgba(241, 245, 249, 0.7);
+            transform: translateX(2px);
         }
 
         .file-name {
             flex: 1;
+            color: #475569;
         }
 
         /* 文件路径样式 */
         .file-path {
-            font-family: monospace;
-            background-color: rgba(0, 0, 0, 0.05);
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.9em;
+            font-family: 'Menlo', 'Monaco', monospace;
+            background-color: rgba(226, 232, 240, 0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: #475569;
         }
 
         .path-separator {
-            color: #999;
+            color: #94a3b8;
             font-size: 0.9em;
         }
 
         .path-segment {
-            color: #666;
-            background-color: #f5f5f5;
-            padding: 2px 6px;
-            border-radius: 3px;
+            color: #64748b;
+            background-color: #f1f5f9;
+            padding: 3px 8px;
+            border-radius: 4px;
             font-size: 0.85em;
         }
 
         /* 标题样式 */
         .explorer-header {
-            padding: 8px 12px;
-            margin-bottom: 8px;
-            font-size: 14px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
         }
 
         /* 添加文件夹变更样式 */
         .addDir {
-            background-color: rgba(69, 177, 127, 0.1);
-            border-left: 4px solid #45b17f;
+            background-color: rgba(20, 184, 166, 0.05);
+            border-left: 4px solid #14b8a6;
         }
         
         .removeDir {
-            background-color: rgba(255, 153, 51, 0.1);
-            border-left: 4px solid #ff9933;
+            background-color: rgba(245, 158, 11, 0.05);
+            border-left: 4px solid #f59e0b;
         }
 
         /* 添加图标样式 */
@@ -268,9 +297,12 @@
         }
 
         .explorer-header {
-            padding: 15px;
-            border-bottom: 1px solid #ddd;
+            padding: 16px;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
             flex-shrink: 0;  /* 防止头部被压缩 */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         #fileContentWrapper {
@@ -278,53 +310,61 @@
             position: relative;
             display: flex;
             flex-direction: column;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
             background: #fff;
             height: calc(100% - 32px);
             overflow: hidden;
             visibility: hidden;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s;
+        }
+
+        #fileContentWrapper:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
         }
 
         #fileContentWrapper.active {
             visibility: visible;
+            animation: fadeIn 0.3s;
         }
 
         #fileContent {
-            padding: 10px 15px;
-            font-family: monospace;
+            padding: 16px 20px;
+            font-family: 'Menlo', 'Monaco', monospace;
             white-space: pre-wrap;
             word-wrap: break-word;
-            line-height: 1.5;
+            line-height: 1.6;
             flex: 1;
             overflow: auto;
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+            background-color: #1a1a1a;
+            color: #e6e6e6;
+            border-radius: 8px;
         }
 
         /* 日志文本高亮样式 */
         #fileContent .log-time {
-            color: #6a9955;  /* 时间戳显示为绿色 */
+            color: #7dd3fc;  /* 时间戳显示为浅蓝色 */
         }
         
         #fileContent .log-error {
-            color: #f14c4c;  /* 错误信息显示为红色 */
+            color: #f87171;  /* 错误信息显示为红色 */
         }
         
         #fileContent .log-warning {
-            color: #cca700;  /* 警告信息显示为黄色 */
+            color: #fbbf24;  /* 警告信息显示为黄色 */
         }
         
         #fileContent .log-info {
-            color: #569cd6;  /* 信息显示为蓝色 */
+            color: #60a5fa;  /* 信息显示为蓝色 */
         }
         
         #fileContent .log-success {
-            color: #4ec9b0;  /* 成功信息显示为青色 */
+            color: #34d399;  /* 成功信息显示为青色 */
         }
         
         #fileContent .log-highlight {
-            color: #ce9178;  /* 高亮内容显示为橙色 */
+            color: #fdba74;  /* 高亮内容显示为橙色 */
         }
 
         #renderContent {
@@ -333,6 +373,7 @@
             border: none;
             background: white;
             overflow: auto;
+            border-radius: 8px;
         }
 
         #fileChanges {
@@ -340,41 +381,44 @@
             flex: 1;
             height: calc(100% - 32px);
             overflow: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
             background: white;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
         }
 
         #fileChanges.active {
             display: block;
+            animation: fadeIn 0.3s;
         }
 
         .change-item {
             margin: 10px;
-            border-radius: 4px;
+            border-radius: 8px;
         }
 
         /* 优化滚动条样式 */
         #fileChanges::-webkit-scrollbar,
         #renderContent::-webkit-scrollbar {
-            width: 12px;
+            width: 8px;
         }
         
         #fileChanges::-webkit-scrollbar-track,
         #renderContent::-webkit-scrollbar-track {
-            background: #f5f5f5;
+            background: #f8fafc;
+            border-radius: 4px;
         }
         
         #fileChanges::-webkit-scrollbar-thumb,
         #renderContent::-webkit-scrollbar-thumb {
-            background-color: #ddd;
-            border-radius: 6px;
-            border: 3px solid #f5f5f5;
+            background-color: #cbd5e1;
+            border-radius: 4px;
+            border: 2px solid #f8fafc;
         }
         
         #fileChanges::-webkit-scrollbar-thumb:hover,
         #renderContent::-webkit-scrollbar-thumb:hover {
-            background-color: #ccc;
+            background-color: #94a3b8;
         }
 
         #fileControls button {
@@ -383,13 +427,14 @@
 
         .preview-toolbar {
             position: absolute;
-            top: 5px;
-            right: 5px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 5px;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             z-index: 1000;
+            backdrop-filter: blur(4px);
         }
 
         .file {
@@ -397,12 +442,15 @@
         }
 
         .file.active {
-            background-color: #e3f2fd;
+            background-color: rgba(59, 130, 246, 0.1);
+            color: #1d4ed8;
+            font-weight: 500;
+            transform: translateX(2px);
         }
 
         #currentFileName {
-            font-weight: bold;
-            color: #333;
+            font-weight: 600;
+            color: #0f172a;
         }
 
         #fileControls {
@@ -410,74 +458,84 @@
         }
 
         #fileControls button {
-            padding: 5px 10px;
-            background: #2196F3;
+            padding: 6px 14px;
+            background: #3b82f6;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
         }
 
         #fileControls button:hover {
-            background: #1976D2;
+            background: #2563eb;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
         }
 
         #fileContent::-webkit-scrollbar {
-            width: 12px;
+            width: 8px;
         }
         
         #fileContent::-webkit-scrollbar-track {
-            background: #2d2d2d;
+            background: #242424;
+            border-radius: 4px;
         }
         
         #fileContent::-webkit-scrollbar-thumb {
             background-color: #555;
-            border-radius: 6px;
-            border: 3px solid #2d2d2d;
+            border-radius: 4px;
+            border: 2px solid #242424;
         }
         
         #fileContent::-webkit-scrollbar-thumb:hover {
-            background-color: #666;
+            background-color: #777;
         }
 
         /* Update header styles */
         .header {
             display: flex;
             align-items: center;
-            padding: 4px 24px;
-            background: linear-gradient(to right, #ffffff, #f8f9fa);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-            height: 40px;
+            padding: 8px 24px;
+            background: linear-gradient(to right, #ffffff, #f1f5f9);
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            height: 52px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
         }
 
         .title-container {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
         }
 
         .main-title {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
         }
 
         .product-name {
-            font-size: 18px;
+            font-size: 22px;
+            font-weight: 600;
             margin: 0;
-            background: linear-gradient(135deg, #2c3e50, #3498db);
+            background: linear-gradient(135deg, #1e293b, #3b82f6);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
         }
 
         .product-subtitle {
             font-family: 'Crimson Text', Georgia, serif;
-            font-size: 12px;
+            font-size: 14px;
             font-style: italic;
             color: #64748b;
             margin: 0;
-            padding-left: 24px;
+            padding-left: 28px;
             position: relative;
         }
 
@@ -487,22 +545,25 @@
             left: 0;
             top: 50%;
             transform: translateY(-50%);
+            font-size: 16px;
         }
 
         .product-tagline {
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 600;
-            color: #3498db;
+            color: #3b82f6;
             margin: 0;
-            padding: 2px 8px;
-            border-radius: 4px;
-            background: rgba(52, 152, 219, 0.1);
+            padding: 4px 12px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.08);
             white-space: nowrap;
+            letter-spacing: -0.2px;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
         }
 
         .product-tagline::before {
             content: "✨";
-            margin-right: 6px;
+            margin-right: 8px;
         }
 
         /* 添加响应式样式 */
@@ -529,25 +590,27 @@
         #explorerContent {
             flex: 1;
             overflow: auto;
+            padding: 8px;
         }
 
         /* 修改滚动条样式 */
         #explorerContent::-webkit-scrollbar {
-            width: 12px;
+            width: 8px;
         }
 
         #explorerContent::-webkit-scrollbar-track {
-            background: #f5f5f5;
+            background: #f8fafc;
+            border-radius: 4px;
         }
 
         #explorerContent::-webkit-scrollbar-thumb {
-            background-color: #ddd;
-            border-radius: 6px;
-            border: 3px solid #f5f5f5;
+            background-color: #cbd5e1;
+            border-radius: 4px;
+            border: 2px solid #f8fafc;
         }
 
         #explorerContent::-webkit-scrollbar-thumb:hover {
-            background-color: #ccc;
+            background-color: #94a3b8;
         }
 
         .virtual-scroll-content {
@@ -560,14 +623,19 @@
             flex: 0 0 auto;
             display: flex;
             flex-direction: column;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
             background: white;
             overflow: hidden;
             width: 50px;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             height: 100%;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+        }
+
+        #chatPanel:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
         }
 
         #chatPanel.expanded {
@@ -576,11 +644,12 @@
 
         /* 聊天头部样式 */
         .chat-header {
-            padding: 15px;
-            border-bottom: 1px solid #ddd;
-            font-weight: bold;
-            background: #f8f9fa;
+            padding: 16px;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            font-weight: 600;
+            background: #f8fafc;
             display: none;
+            color: #334155;
         }
 
         #chatPanel.expanded .chat-header {
@@ -595,16 +664,16 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            background: #f8f9fa;
+            background: #f8fafc;
             border: none;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
             font-size: 24px;
             padding: 0;
             transition: background-color 0.2s;
         }
 
         .chat-toggle:hover {
-            background: #e9ecef;
+            background: #f1f5f9;
         }
 
         /* 聊天内容区域样式 */
@@ -618,46 +687,48 @@
 
         #chatPanel.expanded .chat-content {
             display: flex;
+            animation: fadeIn 0.3s;
         }
 
         /* 消息列表样式 */
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            padding: 15px;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
             background: #fff;
         }
 
         /* 消息气泡样式 */
         .message {
             max-width: 80%;
-            padding: 10px 15px;
-            border-radius: 15px;
+            padding: 12px 16px;
+            border-radius: 18px;
             margin: 5px 0;
             word-wrap: break-word;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
 
         .message.user {
             align-self: flex-end;
-            background-color: #007bff;
+            background-color: #3b82f6;
             color: white;
-            border-bottom-right-radius: 5px;
+            border-bottom-right-radius: 6px;
         }
 
         .message.assistant {
             align-self: flex-start;
-            background-color: #f1f3f5;
-            color: #333;
-            border-bottom-left-radius: 5px;
+            background-color: #f1f5f9;
+            color: #334155;
+            border-bottom-left-radius: 6px;
         }
 
         /* 输入区域样式 */
         .chat-input-container {
-            padding: 15px;
-            border-top: 1px solid #ddd;
+            padding: 16px;
+            border-top: 1px solid rgba(203, 213, 225, 0.5);
             display: flex;
             gap: 10px;
             background: #fff;
@@ -665,41 +736,48 @@
 
         .chat-input {
             flex: 1;
-            padding: 10px 15px;
-            border: 1px solid #ddd;
-            border-radius: 20px;
+            padding: 12px 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 24px;
             outline: none;
             resize: none;
-            min-height: 40px;
+            min-height: 24px;
             max-height: 120px;
             font-size: 14px;
             line-height: 1.5;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+            transition: all 0.2s;
         }
 
         .chat-input:focus {
-            border-color: #007bff;
-            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
         }
 
         .send-button {
             padding: 10px 20px;
-            background: #007bff;
+            background: #3b82f6;
             color: white;
             border: none;
-            border-radius: 20px;
+            border-radius: 24px;
             cursor: pointer;
             align-self: flex-end;
             font-size: 14px;
-            transition: background-color 0.2s;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
         }
 
         .send-button:hover {
-            background: #0056b3;
+            background: #2563eb;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
         }
 
         .send-button:disabled {
-            background: #ccc;
+            background: #cbd5e1;
             cursor: not-allowed;
+            box-shadow: none;
         }
 
         /* 滚动条样式 */
@@ -708,16 +786,16 @@
         }
 
         .chat-messages::-webkit-scrollbar-track {
-            background: #f1f1f1;
+            background: #f8fafc;
         }
 
         .chat-messages::-webkit-scrollbar-thumb {
-            background: #ccc;
+            background: #cbd5e1;
             border-radius: 3px;
         }
 
         .chat-messages::-webkit-scrollbar-thumb:hover {
-            background: #999;
+            background: #94a3b8;
         }
 
         /* 适配移动端 */
@@ -764,14 +842,14 @@
         </div>
         <div class="explorer-container">
             <div id="fileExplorer">
-                <div class="explorer-header">File Explorer</div>
+                <div class="explorer-header">文件浏览器</div>
                 <div id="explorerContent"></div>
             </div>
             <div id="contentArea">
                 <div class="explorer-header">
-                    <span id="currentFileName">Select a file</span>
+                    <span id="currentFileName">选择一个文件</span>
                     <div id="fileControls" style="display: none;">
-                        <button id="toggleView" style="display: none;">Toggle View</button>
+                        <button id="toggleView" style="display: none;">切换视图</button>
                     </div>
                 </div>
                 <div id="fileContentWrapper">
@@ -779,7 +857,7 @@
                     <iframe id="renderContent" style="display: none;"></iframe>
                 </div>
                 <div id="fileChanges">
-                    <div class="explorer-header">Change History</div>
+                    <div class="explorer-header">变更历史</div>
                 </div>
             </div>
             <div id="chatPanel">
@@ -819,6 +897,9 @@
 
         // 添加文件监听状态
         let currentWatchingFile = null;
+
+        // 存储当前会话ID
+        let currentSessionId = null;
 
         // 等待 marked 库加载完成
         function waitForMarked() {
@@ -1447,17 +1528,11 @@
         function updateExplorerView(parentElement, structure, parentPath = '', level = 0) {
             parentElement.innerHTML = '';
             
+            // 将所有目录的文件直接添加到父元素
             Object.entries(structure).forEach(([dirPath, dirInfo]) => {
                 if (dirInfo.files) {
-                    const folderDiv = createFolderElement(dirInfo.name || dirPath, dirPath, level);
-                    
-                    const contentDiv = document.createElement('div');
-                    contentDiv.className = 'folder-content';
-                    
-                    updateFileStructure(contentDiv, dirInfo.files, dirPath, level + 1);
-                    
-                    folderDiv.appendChild(contentDiv);
-                    parentElement.appendChild(folderDiv);
+                    // 直接将文件和子文件夹添加到父元素
+                    updateFileStructure(parentElement, dirInfo.files, dirPath, level);
                 }
             });
         }
@@ -1812,31 +1887,159 @@
                 this.style.height = (this.scrollHeight) + 'px';
             });
 
-            // 发送消息
-            function sendMessage() {
-                const message = chatInput.value.trim();
-                if (!message) return;
+            // 存储对话历史
+            let chatHistory = [];
+            
+            // 添加发送中标志
+            let isSending = false;
 
+            // 发送消息到服务器并接收流式响应
+            async function sendMessage() {
+                const message = chatInput.value.trim();
+                if (!message || isSending) return;
+                
+                // 设置发送状态
+                isSending = true;
+                sendButton.disabled = true;
+                
                 // 添加用户消息
                 addMessage(message, 'user');
-
+                
+                // 将用户消息添加到历史记录
+                chatHistory.push({ role: 'user', content: message });
+                
                 // 清空输入框
                 chatInput.value = '';
                 chatInput.style.height = 'auto';
-
-                // 模拟AI助手回复
-                setTimeout(() => {
-                    addMessage('收到您的消息，我会尽快回复。', 'assistant');
-                }, 1000);
+                
+                // 添加AI消息占位符
+                const assistantMessage = document.createElement('div');
+                assistantMessage.className = 'message assistant';
+                assistantMessage.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+                chatMessages.appendChild(assistantMessage);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                try {
+                    // 发送请求到服务器，包含会话ID
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            messages: chatHistory,
+                            provider: 'siliconflow',
+                            stream: true,
+                            sessionId: currentSessionId
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`服务器返回错误: ${response.status}`);
+                    }
+                    
+                    // 创建事件源接收流式响应
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let responseText = '';
+                    
+                    // 处理返回的事件流
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            break;
+                        }
+                        
+                        // 解码并处理chunks
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n\n');
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                
+                                if (data === '[DONE]') {
+                                    continue;
+                                }
+                                
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    
+                                    // 保存会话ID
+                                    if (parsed.sessionId) {
+                                        currentSessionId = parsed.sessionId;
+                                        console.log('收到会话ID:', currentSessionId);
+                                    }
+                                    
+                                    if (parsed.content) {
+                                        responseText += parsed.content;
+                                        assistantMessage.innerHTML = formatMessage(responseText);
+                                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                                    }
+                                    
+                                    if (parsed.error) {
+                                        throw new Error(parsed.error);
+                                    }
+                                } catch (e) {
+                                    console.error('解析流数据失败:', e);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 将完整的AI回复添加到历史记录
+                    chatHistory.push({ role: 'assistant', content: responseText });
+                    
+                } catch (error) {
+                    console.error('发送消息失败:', error);
+                    assistantMessage.innerHTML = `发送消息失败: ${error.message}`;
+                    assistantMessage.classList.add('error');
+                } finally {
+                    // 重置发送状态
+                    isSending = false;
+                    sendButton.disabled = false;
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
             }
 
             // 添加消息到聊天界面
             function addMessage(text, type) {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${type}`;
-                messageDiv.textContent = text;
+                messageDiv.innerHTML = formatMessage(text);
                 chatMessages.appendChild(messageDiv);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            // 格式化消息内容
+            function formatMessage(text) {
+                // 简单的Markdown式格式化
+                if (!text) return '';
+                
+                // 转义HTML
+                text = text.replace(/&/g, '&amp;')
+                           .replace(/</g, '&lt;')
+                           .replace(/>/g, '&gt;');
+                
+                // 格式化代码块
+                text = text.replace(/```([\s\S]*?)```/g, (match, code) => {
+                    return `<pre><code>${code}</code></pre>`;
+                });
+                
+                // 格式化行内代码
+                text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+                
+                // 格式化加粗
+                text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+                
+                // 格式化斜体
+                text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+                
+                // 将换行符转换为<br>
+                text = text.replace(/\n/g, '<br>');
+                
+                return text;
             }
 
             // 发送按钮点击事件
@@ -1849,6 +2052,83 @@
                     sendMessage();
                 }
             });
+            
+            // 添加样式
+            const style = document.createElement('style');
+            style.textContent = `
+                /* 打字指示器样式 */
+                .typing-indicator {
+                    display: flex;
+                    align-items: center;
+                    column-gap: 4px;
+                    padding: 0 10px;
+                }
+                
+                .typing-indicator span {
+                    height: 8px;
+                    width: 8px;
+                    background: #3b82f6;
+                    border-radius: 50%;
+                    display: block;
+                    opacity: 0.4;
+                    animation: typing 1s infinite alternate;
+                }
+                
+                .typing-indicator span:nth-child(1) {
+                    animation-delay: 0.2s;
+                }
+                
+                .typing-indicator span:nth-child(2) {
+                    animation-delay: 0.4s;
+                }
+                
+                .typing-indicator span:nth-child(3) {
+                    animation-delay: 0.6s;
+                }
+                
+                @keyframes typing {
+                    from { opacity: 0.4; transform: translateY(0); }
+                    to { opacity: 1; transform: translateY(-4px); }
+                }
+                
+                .message.error {
+                    background-color: rgba(239, 68, 68, 0.05);
+                    color: #ef4444;
+                }
+                
+                .message code {
+                    font-family: Menlo, Monaco, 'Courier New', monospace;
+                    background-color: rgba(0,0,0,0.1);
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                    font-size: 0.9em;
+                }
+                
+                .message pre {
+                    margin: 8px 0;
+                    padding: 10px;
+                    background-color: rgba(0,0,0,0.05);
+                    border-radius: 5px;
+                    overflow-x: auto;
+                }
+                
+                .message pre code {
+                    background-color: transparent;
+                    padding: 0;
+                    border-radius: 0;
+                    display: block;
+                }
+            `;
+            document.head.appendChild(style);
+
+            // 添加初始欢迎消息
+            setTimeout(() => {
+                addMessage('您好！我是DataMind助手，有什么可以帮您？', 'assistant');
+                chatHistory.push({ 
+                    role: 'assistant', 
+                    content: '您好！我是DataMind助手，有什么可以帮您？' 
+                });
+            }, 1000);
         });
     </script>
 </body>
