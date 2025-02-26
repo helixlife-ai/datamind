@@ -87,6 +87,11 @@ class DataMindAlchemy:
             
         # 初始化当前工作目录
         self.current_work_dir = None
+        
+        # 加载已有的状态信息(如果存在)
+        self.status_info = self._load_status()
+        if self.status_info:
+            self.logger.info(f"已加载alchemy_id={self.alchemy_id}的现有数据，最新迭代为{self.status_info['latest_iteration']}")
 
     def _init_work_dir(self, work_dir: Path) -> Path:
         """初始化工作目录"""
@@ -227,6 +232,9 @@ class DataMindAlchemy:
             
             # 更新工作目录到当前迭代目录
             self.current_work_dir = current_iter_dir
+            
+            # 记录当前处理信息
+            self.logger.info(f"开始处理 alchemy_id={self.alchemy_id} 的第{iteration}次迭代")
             
             # 处理上下文
             if context:
@@ -483,3 +491,18 @@ class DataMindAlchemy:
             results['status'] = 'error'
             results['message'] = str(e)
             return results 
+
+    def _load_status(self) -> Dict:
+        """加载已有的状态信息
+        
+        如果该alchemy_id存在状态文件，则加载并返回，否则返回None
+        """
+        status_path = self.alchemy_dir / "status.json"
+        if status_path.exists():
+            try:
+                with open(status_path, "r", encoding="utf-8") as f:
+                    status_info = json.load(f)
+                    return status_info
+            except Exception as e:
+                self.logger.warning(f"加载状态信息失败: {str(e)}")
+        return None 
