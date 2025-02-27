@@ -147,6 +147,9 @@ class DataMindAlchemy:
         if self.alchemy_manager:
             # 向管理器注册此任务
             self.alchemy_manager.register_task(self.alchemy_id, "", "新建任务")
+            
+        # 初始化时保存一次恢复信息
+        self._save_resume_info()
 
     def _init_work_dir(self, work_dir: Path) -> Path:
         """初始化工作目录"""
@@ -431,6 +434,9 @@ class DataMindAlchemy:
                 }
             )
 
+            # 在每一步完成后保存恢复信息
+            self._save_resume_info(query, input_dirs)
+
             return results
             
         except Exception as e:
@@ -452,6 +458,16 @@ class DataMindAlchemy:
                     "current_step": self._current_step
                 }
             )
+            
+            # 更新任务状态为错误
+            if self.alchemy_manager:
+                self.alchemy_manager.update_task(self.alchemy_id, {
+                    "status": "error",
+                    "error_message": str(e)
+                })
+            
+            # 保存恢复信息，以便从错误中恢复
+            self._save_resume_info(query, input_dirs)
             
             return {
                 'status': 'error',
@@ -745,7 +761,6 @@ class DataMindAlchemy:
 
     def _save_resume_info(self, query: str = None, input_dirs: list = None):
         """保存恢复信息到文件，用于后续恢复"""
-        # 保存恢复信息到任务自己的目录
         resume_info = {
             "alchemy_id": self.alchemy_id,
             "timestamp": datetime.now().isoformat(),
@@ -758,25 +773,45 @@ class DataMindAlchemy:
         if input_dirs:
             resume_info["input_dirs"] = input_dirs
         
-        # 在任务自己的目录下保存resume_info.json
-        resume_info_path = self.work_dir / self.alchemy_id / "resume_info.json"
+        # 如果没有提供query，尝试从任务状态中获取
+        if not query and self.status_info:
+            for iteration in self.status_info.get('iterations', []):
+                if 'query' in iteration:
+                    resume_info["query"] = iteration['query']
+                    break
         
         try:
-            with open(resume_info_path, 'w', encoding='utf-8') as f:
+            # 使用alchemy_dir作为唯一的任务目录
+            task_dir = self.alchemy_dir
+            
+            # 记录目录信息，帮助诊断
+            self.logger.debug(f"保存恢复信息 - alchemy_id: {self.alchemy_id}")
+            self.logger.debug(f"保存恢复信息 - 工作目录: {self.work_dir}")
+            self.logger.debug(f"保存恢复信息 - 任务目录: {task_dir}")
+            
+            
+            task_resume_path = task_dir / "resume_info.json"
+            with open(task_resume_path, 'w', encoding='utf-8') as f:
                 json.dump(resume_info, f, ensure_ascii=False, indent=2)
             
-            # 同时在工作目录的根目录保存一个副本，用于快速恢复最近任务
-            global_resume_info_path = self.work_dir.parent / "resume_info.json"
-            with open(global_resume_info_path, 'w', encoding='utf-8') as f:
-                json.dump(resume_info, f, ensure_ascii=False, indent=2)
-                
-            self.logger.debug(f"已保存恢复信息到 {resume_info_path}")
+            self.logger.debug(f"已保存恢复信息到任务目录")
+            self.logger.debug(f"任务恢复文件: {task_resume_path}")
         except Exception as e:
             self.logger.error(f"保存恢复信息失败: {str(e)}")
+            self.logger.exception(e)
     
     async def cancel_process(self):
         """取消当前处理过程"""
         self._cancel_requested = True
+        
+        # 获取当前任务的最新状态
+        status_info = self._load_status()
+        query = None
+        
+        # 如果状态存在，尝试获取最新查询
+        if status_info and 'iterations' in status_info and status_info['iterations']:
+            latest_iter = status_info['iterations'][-1]
+            query = latest_iter.get('query')
         
         # 发送取消请求事件
         await self._emit_event(AlchemyEventType.CANCELLATION_REQUESTED, {
@@ -785,7 +820,7 @@ class DataMindAlchemy:
         })
         
         # 保存恢复信息，确保可以在中断后恢复
-        self._save_resume_info()
+        self._save_resume_info(query=query)
         
         # 如果有alchemy_manager，更新任务状态
         if self.alchemy_manager:

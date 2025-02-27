@@ -5,6 +5,7 @@ import asyncio
 from pathlib import Path
 import logging
 import argparse
+from datetime import datetime
 
 # 添加项目根目录到Python路径
 script_dir = Path(__file__).parent
@@ -103,25 +104,45 @@ async def on_process_checkpoint(data, logger):
     logger.info(f"时间: {data['timestamp']}")
 
 async def handle_keyboard_interrupt(alchemy, logger):
-    """处理键盘中断(Ctrl+C)事件"""
-    logger.info("\n=== 检测到键盘中断(Ctrl+C)，正在尝试优雅退出 ===")
+    """处理键盘中断事件"""
+    logger.info("处理键盘中断，尝试保存检查点...")
+    
     try:
-        # 调用取消处理方法
+        # 请求取消处理
         await alchemy.cancel_process()
-        logger.info("已请求取消处理，等待当前操作完成...")
-        return {
-            'status': 'interrupted',
-            'message': '用户通过Ctrl+C中断了处理',
-            'checkpoint': {
-                'alchemy_id': alchemy.alchemy_id,
-            }
-        }
+        
+        # 显示任务目录结构，帮助调试
+        work_dir = Path(alchemy.work_dir)
+        logger.info(f"工作目录: {work_dir}")
+        
+        # 使用正确的任务目录路径 - alchemy_dir在DataMindAlchemy中定义
+        task_dir = alchemy.alchemy_dir
+        logger.info(f"任务目录: {task_dir}")
+        
+        # 检查任务目录是否存在
+        if task_dir.exists():
+            logger.info(f"任务目录存在: {task_dir}")
+            # 列出任务目录内容
+            task_files = list(task_dir.glob("*"))
+            logger.info(f"任务目录文件: {[str(f.name) for f in task_files]}")
+            
+            # 打印目录路径以确认正确结构
+            logger.info(f"目录结构: {str(task_dir.relative_to(work_dir.parent))}")
+            
+            # 尝试从resume_info.json读取额外信息
+            resume_info_path = task_dir / "resume_info.json"
+            if resume_info_path.exists():
+                with open(resume_info_path, 'r', encoding='utf-8') as f:
+                    resume_info = json.load(f)
+                    logger.info(f"恢复信息: {resume_info}")
+        else:
+            logger.warning(f"任务目录不存在: {task_dir}")
+            
+        logger.info("中断处理完成")
+        return True
     except Exception as e:
         logger.error(f"处理中断时发生错误: {str(e)}")
-        return {
-            'status': 'error',
-            'message': f'中断处理失败: {str(e)}'
-        }
+        return False
 
 async def datamind_alchemy_process(
     alchemy_id: str = None,
@@ -130,14 +151,16 @@ async def datamind_alchemy_process(
     work_dir: Path = None,
     logger: logging.Logger = None,
     auto_cancel: bool = False,
-    should_resume: bool = False  # 是否尝试从中断点恢复
+    should_resume: bool = False,  # 是否尝试从中断点恢复
+    alchemy_manager = None  # 添加任务管理器参数
 ) -> None:
     """统一的数据炼丹处理函数 - 支持新建和继续/恢复"""
     logger = logger or logging.getLogger(__name__)
     
     try:
-        # 创建任务管理器
-        alchemy_manager = AlchemyManager(work_dir=work_dir.parent, logger=logger)
+        # 如果没有传入任务管理器，创建一个新的
+        if alchemy_manager is None:
+            alchemy_manager = AlchemyManager(work_dir=work_dir.parent, logger=logger)
         
         # 创建DataMindAlchemy实例
         alchemy = DataMindAlchemy(
@@ -209,9 +232,19 @@ async def datamind_alchemy_process(
                 "mode": "continue",
                 "alchemy_id": result.get('checkpoint', {}).get('alchemy_id'),
                 "query": query,
-                "resume": True
+                "resume": True,
+                "input_dirs": input_dirs  # 确保保存输入目录信息
             }
-            resume_file = work_dir / "resume_info.json"
+            
+            # 使用alchemy.alchemy_dir作为恢复信息保存位置
+            # alchemy_dir已经是正确的目录：work_dir/data_alchemy/alchemy_runs/alchemy_{alchemy_id}
+            resume_file = alchemy.alchemy_dir / "resume_info.json"
+            
+            # 记录路径信息，帮助诊断
+            logger.debug(f"保存恢复信息 - 任务ID: {alchemy.alchemy_id}")
+            logger.debug(f"保存恢复信息 - 任务目录: {alchemy.alchemy_dir}")
+            logger.debug(f"保存恢复信息 - 恢复文件: {resume_file}")
+            
             with open(resume_file, "w", encoding="utf-8") as f:
                 json.dump(resume_info, f, ensure_ascii=False, indent=2)
             logger.info(f"恢复信息已保存到: {resume_file}")
@@ -267,22 +300,64 @@ async def async_main():
                     alchemy_id = config.get('alchemy_id', alchemy_id)
                     should_resume = config.get('resume', should_resume)
         
-        # 如果mode是continue但没有提供alchemy_id，尝试从resume_info.json加载
-        if mode == "continue" and not alchemy_id:
-            resume_file = work_dir / "resume_info.json"
-            if resume_file.exists():
-                with open(resume_file, 'r', encoding='utf-8') as f:
-                    resume_info = json.load(f)
-                    alchemy_id = resume_info.get('alchemy_id')
-                    if resume_info.get('query'):
-                        query = resume_info.get('query')
-                    if 'resume' in resume_info:
-                        should_resume = resume_info.get('resume')
-                        
-            # 仍然没有alchemy_id时报错
+        # 创建任务管理器
+        alchemy_manager = AlchemyManager(work_dir=work_dir, logger=logger)
+        
+        # 如果是恢复模式且没有指定alchemy_id
+        if should_resume and not alchemy_id:
+            # 不再尝试从全局latest_task.json中获取
+            # latest_task_file = work_dir / "latest_task.json"
+            # if latest_task_file.exists():
+            #     try:
+            #         with open(latest_task_file, 'r', encoding='utf-8') as f:
+            #             latest_task = json.load(f)
+            #             
+            #             if alchemy_id:
+            #                 logger.info(f"从最近任务记录中找到alchemy_id: {alchemy_id}")
+            #                 
+            #                 # 获取任务目录下的resume_info.json
+            #                 task_dir = work_dir / "data_alchemy" / alchemy_id
+            #                 resume_file = task_dir / "resume_info.json"
+            #                 
+            #                 if resume_file.exists():
+            #                     with open(resume_file, 'r', encoding='utf-8') as rf:
+            #                         resume_info = json.load(rf)
+            #                         
+            #                     # 使用恢复信息中的查询和输入目录(如果有)
+            #                     if not query and "query" in resume_info:
+            #                         query = resume_info["query"]
+            #                     if not input_dirs and "input_dirs" in resume_info:
+            #                         input_dirs = resume_info["input_dirs"]
+            #     except Exception as e:
+            #         logger.error(f"读取最近任务记录失败: {str(e)}")
+            
+            # 如果没有找到alchemy_id，尝试从任务管理器获取可恢复任务
             if not alchemy_id:
-                logger.error("错误: 在continue模式下必须提供alchemy_id！使用--id参数或在配置文件中指定")
-                return
+                # 获取所有可恢复的任务
+                resumable_tasks = alchemy_manager.get_resumable_tasks()
+                
+                if resumable_tasks:
+                    logger.info(f"找到 {len(resumable_tasks)} 个可恢复的任务:")
+                    for idx, task in enumerate(resumable_tasks):
+                        task_id = task.get('id')
+                        task_query = task.get('resume_info', {}).get('query', '未知查询')
+                        task_time = task.get('resume_info', {}).get('timestamp', '未知时间')
+                        logger.info(f"  {idx+1}. ID: {task_id} | 查询: {task_query} | 时间: {task_time}")
+                    
+                    # 使用最近的可恢复任务
+                    latest_task = resumable_tasks[0]
+                    alchemy_id = latest_task.get('id')
+                    
+                    # 使用恢复信息中的查询和输入目录(如果有)
+                    resume_info = latest_task.get('resume_info', {})
+                    if not query and "query" in resume_info:
+                        query = resume_info["query"]
+                    if not input_dirs and "input_dirs" in resume_info:
+                        input_dirs = resume_info["input_dirs"]
+                        
+                    logger.info(f"已选择最近的可恢复任务: ID={alchemy_id}, 查询={query}")
+                else:
+                    logger.warning("未找到可恢复的任务")
         
         # 根据模式执行不同的处理
         if mode == "continue":
@@ -293,7 +368,8 @@ async def async_main():
                 input_dirs=input_dirs,
                 work_dir=work_dir / "data_alchemy",  
                 logger=logger,
-                should_resume=should_resume
+                should_resume=should_resume,
+                alchemy_manager=alchemy_manager  # 添加任务管理器
             )
             logger.info("继续炼丹流程完成")
         elif mode == "cancel_test":
@@ -305,7 +381,8 @@ async def async_main():
                 input_dirs=input_dirs,
                 work_dir=work_dir / "data_alchemy",  
                 logger=logger,
-                auto_cancel=True  # 启用自动取消
+                auto_cancel=True,  # 启用自动取消
+                alchemy_manager=alchemy_manager  # 添加任务管理器
             )
             logger.info("取消测试完成")
         else:
@@ -316,7 +393,8 @@ async def async_main():
                 query=query,
                 input_dirs=input_dirs,
                 work_dir=work_dir / "data_alchemy",  
-                logger=logger
+                logger=logger,
+                alchemy_manager=alchemy_manager  # 添加任务管理器
             )
             logger.info("数据炼丹测试完成")
         
@@ -331,7 +409,7 @@ def main():
     try:
         asyncio.run(async_main())
     except KeyboardInterrupt:
-        print("\n程序被用户中断(Ctrl+C)，尝试优雅退出...")
+        print("\n程序被用户中断(Ctrl+C)，尝试保存检查点...")
         
         # 创建新的事件循环来处理中断
         loop = asyncio.new_event_loop()
@@ -341,15 +419,20 @@ def main():
         
         # 加载配置，尝试获取当前运行的alchemy_id
         try:
-            # 首先尝试从全局resume_info.json中获取alchemy_id
+            # 不再从latest_task.json获取alchemy_id
             work_dir = Path(__file__).parent.parent / "work_dir"
-            global_resume_file = work_dir / "resume_info.json"
             alchemy_id = None
+            query = None
+            input_dirs = None
             
-            if global_resume_file.exists():
-                with open(global_resume_file, 'r', encoding='utf-8') as f:
-                    resume_info = json.load(f)
-                    alchemy_id = resume_info.get('alchemy_id')
+            # 尝试从配置文件获取
+            config_file = work_dir / "config.json"
+            if config_file.exists():
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    alchemy_id = config.get('alchemy_id')
+                    query = config.get('query')
+                    input_dirs = config.get('input_dirs')
             
             if alchemy_id:
                 # 创建任务管理器
@@ -362,6 +445,11 @@ def main():
                     alchemy_id=alchemy_id,
                     alchemy_manager=alchemy_manager
                 )
+                
+                # 主动保存当前查询和输入目录信息
+                if query or input_dirs:
+                    # 确保恢复信息被保存到正确的位置
+                    alchemy._save_resume_info(query, input_dirs)
                 
                 # 处理中断
                 loop.run_until_complete(handle_keyboard_interrupt(alchemy, logger))

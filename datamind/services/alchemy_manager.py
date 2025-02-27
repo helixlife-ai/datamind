@@ -123,33 +123,45 @@ class AlchemyManager:
             self.logger.info(f"扫描发现 {tasks_found} 个新任务")
             self._save_index()
     
-    def register_task(self, alchemy_id: str, query: str, description: str = None):
-        """注册新任务到索引
-        
-        Args:
-            alchemy_id: 任务ID
-            query: 查询文本
-            description: 任务描述
-        """
+    def register_task(self, alchemy_id, name="", description=""):
+        """注册新任务或更新现有任务"""
         now = datetime.now().isoformat()
         
-        # 添加到索引
-        self.alchemy_index["tasks"][alchemy_id] = {
-            "id": alchemy_id,
-            "name": f"任务 {alchemy_id}",
-            "description": description or f"查询: {query}",
-            "status": "created",
-            "created_at": now,
-            "updated_at": now,
-            "iterations": 0,
-            "latest_query": query,
-            "artifacts_count": 0,
-            "artifacts": [],
-            "tags": [],
-            "is_archived": False
-        }
+        if alchemy_id in self.alchemy_index["tasks"]:
+            # 更新现有任务
+            task = self.alchemy_index["tasks"][alchemy_id]
+            task["updated_at"] = now
+            
+            if name and not task.get("name"):
+                task["name"] = name
+            
+            if description and not task.get("description"):
+                task["description"] = description
+        else:
+            # 创建新任务
+            self.alchemy_index["tasks"][alchemy_id] = {
+                "id": alchemy_id,
+                "name": name or f"任务 {alchemy_id}",
+                "description": description or "新建任务",
+                "status": "created",
+                "created_at": now,
+                "updated_at": now,
+                "latest_query": "",
+                "iterations": 0,
+                "is_archived": False
+            }
         
+        # 保存更新后的索引
         self._save_index()
+        
+        # 确保alchemy_runs目录存在
+        runs_dir = self.alchemy_dir / "alchemy_runs"
+        runs_dir.mkdir(exist_ok=True, parents=True)
+        
+        # 确保任务目录存在，使用与get_resumable_tasks一致的路径
+        task_dir = runs_dir / f"alchemy_{alchemy_id}"
+        task_dir.mkdir(exist_ok=True, parents=True)
+        
         return self.alchemy_index["tasks"][alchemy_id]
     
     def update_task(self, alchemy_id: str, updates: Dict):
@@ -295,7 +307,8 @@ class AlchemyManager:
         resumable_tasks = []
         
         for task_id, task_info in self.alchemy_index["tasks"].items():
-            task_dir = self.alchemy_dir / task_id
+            # 修正：使用正确的任务目录路径查找resume_info.json
+            task_dir = self.alchemy_dir / "alchemy_runs" / f"alchemy_{task_id}"
             resume_info_path = task_dir / "resume_info.json"
             
             if resume_info_path.exists():
@@ -317,7 +330,8 @@ class AlchemyManager:
     
     def get_task_resume_info(self, alchemy_id: str):
         """获取指定任务的恢复信息"""
-        task_dir = self.alchemy_dir / alchemy_id
+        # 修正：使用正确的任务目录路径
+        task_dir = self.alchemy_dir / "alchemy_runs" / f"alchemy_{alchemy_id}"
         resume_info_path = task_dir / "resume_info.json"
         
         if resume_info_path.exists():
@@ -334,4 +348,18 @@ class AlchemyManager:
         resumable_tasks = self.get_resumable_tasks()
         if resumable_tasks:
             return resumable_tasks[0]
+        return None
+    
+    def get_latest_task_id(self):
+        """获取最近运行的任务ID"""
+        latest_task_file = self.work_dir / "latest_task.json"
+        
+        if latest_task_file.exists():
+            try:
+                with open(latest_task_file, 'r', encoding='utf-8') as f:
+                    latest_task = json.load(f)
+                    return latest_task.get('alchemy_id')
+            except Exception as e:
+                self.logger.error(f"读取最近任务信息失败: {str(e)}")
+        
         return None 
