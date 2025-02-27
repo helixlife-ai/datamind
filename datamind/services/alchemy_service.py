@@ -449,11 +449,17 @@ class DataMindAlchemy:
                 }
             )
 
+            # 保存结果到文件，方便后续恢复
+            try:
+                results_file = self.current_work_dir / "results.json"
+                with open(results_file, 'w', encoding='utf-8') as f:
+                    json.dump(results, f, ensure_ascii=False, indent=2)
+                self.logger.info(f"已保存处理结果到文件: {results_file}")
+            except Exception as e:
+                self.logger.error(f"保存结果文件失败: {str(e)}")
+
             # 在每一步完成后保存恢复信息
             self._save_resume_info(query, input_dirs)
-
-            # 检查是否需要自动运行下一轮迭代
-            await self._check_auto_run()
 
             return results
             
@@ -790,7 +796,26 @@ class DataMindAlchemy:
                     )
                     
                     # 获取制品生成的优化建议
-                    optimization_query = await self.components['feedback_optimizer'].get_latest_artifact_suggestion(self.alchemy_id)
+                    optimization_query = None
+                    
+                    # 首先尝试从next_iteration_config.json获取优化查询
+                    next_config_path = self.alchemy_dir / "next_iteration_config.json"
+                    if next_config_path.exists():
+                        try:
+                            with open(next_config_path, 'r', encoding='utf-8') as f:
+                                next_config = json.load(f)
+                            
+                            if "query" in next_config:
+                                optimization_query = next_config["query"]
+                                self.logger.info(f"从配置文件获取到优化查询: {optimization_query}")
+                        except Exception as e:
+                            self.logger.error(f"读取next_iteration_config.json失败: {str(e)}")
+                    
+                    # 如果配置文件中没有查询或查询与原始查询相同，则使用feedback_optimizer生成
+                    if not optimization_query:
+                        optimization_query = await self.components['feedback_optimizer'].get_latest_artifact_suggestion(self.alchemy_id)
+                        self.logger.info(f"使用feedback_optimizer生成优化建议: {optimization_query}")
+                    
                     if optimization_query:
                         self.logger.info(f"获取到制品优化建议: {optimization_query}")
                         
@@ -803,23 +828,6 @@ class DataMindAlchemy:
                                 "optimization_query": optimization_query
                             }
                         )
-                        
-                        # 更新下一轮迭代的默认查询为优化后的查询
-                        next_config_path = self.alchemy_dir / "next_iteration_config.json"
-                        if next_config_path.exists():
-                            try:
-                                with open(next_config_path, 'r', encoding='utf-8') as f:
-                                    next_config = json.load(f)
-                                
-                                next_config["query"] = optimization_query
-                                next_config["timestamp"] = datetime.now().isoformat()
-                                
-                                with open(next_config_path, 'w', encoding='utf-8') as f:
-                                    json.dump(next_config, f, ensure_ascii=False, indent=2)
-                                
-                                self.logger.info(f"已更新下一轮迭代的默认查询为优化后的查询: {optimization_query}")
-                            except Exception as e:
-                                self.logger.error(f"更新下一轮迭代配置失败: {str(e)}")
                         
                         # 使用优化建议执行新一轮工作流
                         optimization_result = await self.process(
@@ -865,6 +873,15 @@ class DataMindAlchemy:
             # 最后更新推理历史
             chat_history = reasoning_engine.get_chat_history()
             results['results']['reasoning_history'] = chat_history
+            
+            # 保存工作流结果到文件，方便后续恢复
+            try:
+                workflow_results_file = self.current_work_dir / "workflow_results.json"
+                with open(workflow_results_file, 'w', encoding='utf-8') as f:
+                    json.dump(results, f, ensure_ascii=False, indent=2)
+                self.logger.info(f"已保存工作流结果到文件: {workflow_results_file}")
+            except Exception as e:
+                self.logger.error(f"保存工作流结果文件失败: {str(e)}")
             
             return results
                 
@@ -924,7 +941,10 @@ class DataMindAlchemy:
         resume_info = {
             "alchemy_id": self.alchemy_id,
             "timestamp": datetime.now().isoformat(),
-            "current_step": self._current_step
+            "current_step": self._current_step,
+            "has_components": hasattr(self, 'components'),
+            "current_work_dir": str(self.current_work_dir) if self.current_work_dir else None,
+            "iteration": self._get_next_iteration() - 1 if hasattr(self, '_get_next_iteration') else None
         }
         
         if query:
@@ -939,6 +959,28 @@ class DataMindAlchemy:
                 if 'query' in iteration:
                     resume_info["query"] = iteration['query']
                     break
+        
+        # 添加文件状态信息
+        file_status = {}
+        if self.current_work_dir:
+            # 检查各种关键文件是否存在
+            file_status["checkpoint_exists"] = (self.current_work_dir / "checkpoint.json").exists()
+            file_status["results_exists"] = (self.current_work_dir / "results.json").exists()
+            file_status["workflow_results_exists"] = (self.current_work_dir / "workflow_results.json").exists()
+            file_status["context_exists"] = (self.current_work_dir / "context.json").exists()
+            
+            # 检查数据库文件
+            data_dir = self.current_work_dir / "data"
+            if data_dir.exists():
+                file_status["database_exists"] = (data_dir / "unified_storage.duckdb").exists()
+                file_status["file_cache_exists"] = (data_dir / "file_cache.pkl").exists()
+            
+            # 检查源数据目录
+            source_data = self.current_work_dir / "source_data"
+            if source_data.exists():
+                file_status["has_source_data"] = any(source_data.iterdir())
+        
+        resume_info["file_status"] = file_status
         
         try:
             # 使用alchemy_dir作为唯一的任务目录
@@ -957,9 +999,10 @@ class DataMindAlchemy:
             # 同时保存下一轮迭代配置文件
             next_iteration_config = {
                 "query": query,
-                "input_dirs": input_dirs if input_dirs else [],  # 确保input_dirs为空列表而不是None
+                "input_dirs": input_dirs if input_dirs else [],  
                 "timestamp": datetime.now().isoformat(),
-                "auto_run": True  # 默认自动运行
+                "previous_step": self._current_step,
+                "previous_iteration": resume_info.get("iteration")
             }
             next_config_path = task_dir / "next_iteration_config.json"
             with open(next_config_path, 'w', encoding='utf-8') as f:
@@ -1039,10 +1082,48 @@ class DataMindAlchemy:
             "alchemy_id": self.alchemy_id,
             "timestamp": datetime.now().isoformat(),
             "current_step": self._current_step,
-            "iteration": self._get_next_iteration() - 1  # 当前迭代号
+            "iteration": self._get_next_iteration() - 1,  # 当前迭代号
+            "work_dir": str(self.current_work_dir),
+            "status": "in_progress",
+            "components_initialized": hasattr(self, 'components'),
+            "has_source_data": (self.current_work_dir / "source_data").exists() and any((self.current_work_dir / "source_data").iterdir()),
+            "has_database": (self.current_work_dir / "data" / "unified_storage.duckdb").exists() if (self.current_work_dir / "data").exists() else False
         }
         
+        # 添加当前步骤的详细信息
+        step_details = {}
+        if self._current_step == "parse_intent" and hasattr(self, 'components'):
+            # 记录意图解析相关信息
+            step_details["reasoning_engine_initialized"] = 'reasoning_engine' in self.components
+            step_details["intent_parser_initialized"] = 'intent_parser' in self.components
+        elif self._current_step == "build_plan" and hasattr(self, 'components'):
+            # 记录计划构建相关信息
+            step_details["planner_initialized"] = 'planner' in self.components
+            step_details["parsed_intent_available"] = True  # 如果到了这一步，意图已解析
+        elif self._current_step == "execute_workflow" and hasattr(self, 'components'):
+            # 记录执行工作流相关信息
+            step_details["executor_initialized"] = 'executor' in self.components
+            step_details["search_plan_available"] = True  # 如果到了这一步，搜索计划已构建
+        
+        checkpoint_data["step_details"] = step_details
+        
+        # 记录全局状态信息
+        global_state = {
+            "total_iterations": self._get_next_iteration() - 1,
+            "alchemy_dir": str(self.alchemy_dir),
+            "has_status_file": (self.alchemy_dir / "status.json").exists(),
+            "has_resume_info": (self.alchemy_dir / "resume_info.json").exists(),
+            "has_next_config": (self.alchemy_dir / "next_iteration_config.json").exists()
+        }
+        checkpoint_data["global_state"] = global_state
+        
+        # 保存检查点文件
         with open(checkpoint_file, "w", encoding="utf-8") as f:
+            json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
+            
+        # 同时在alchemy_dir中保存一个最新检查点的副本，方便恢复
+        latest_checkpoint_file = self.alchemy_dir / "latest_checkpoint.json"
+        with open(latest_checkpoint_file, "w", encoding="utf-8") as f:
             json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
             
         # 发布检查点事件
@@ -1051,8 +1132,11 @@ class DataMindAlchemy:
             checkpoint_data
         )
         
-        self.logger.info(f"已保存检查点，current_step={self._current_step}")
-            
+        self.logger.info(f"已保存检查点，current_step={self._current_step}, iteration={checkpoint_data['iteration']}")
+        
+        # 同时更新恢复信息
+        self._save_resume_info()
+
     async def resume_process(self, query: str = None, input_dirs: list = None, context: Dict = None) -> Dict:
         """从上次中断的位置继续处理
         
@@ -1086,41 +1170,84 @@ class DataMindAlchemy:
         checkpoint_file = None
         checkpoint_data = None
         
-        # 首先在上次迭代目录中查找
-        if self.status_info and 'latest_iteration' in self.status_info:
+        # 首先尝试从alchemy_dir中的latest_checkpoint.json加载
+        latest_checkpoint_file = self.alchemy_dir / "latest_checkpoint.json"
+        if latest_checkpoint_file.exists():
+            try:
+                with open(latest_checkpoint_file, 'r', encoding='utf-8') as f:
+                    checkpoint_data = json.load(f)
+                self.logger.info(f"从最新检查点文件加载: {latest_checkpoint_file}")
+                checkpoint_file = latest_checkpoint_file
+            except Exception as e:
+                self.logger.error(f"加载最新检查点文件失败: {str(e)}")
+                checkpoint_data = None
+        
+        # 如果没有找到最新检查点，则在上次迭代目录中查找
+        if not checkpoint_data and self.status_info and 'latest_iteration' in self.status_info:
             latest_iter = self.status_info['latest_iteration']
             iter_dir = self.iterations_dir / f"iter{latest_iter}"
             if iter_dir.exists():
                 checkpoint_path = iter_dir / "checkpoint.json"
                 if checkpoint_path.exists():
-                    checkpoint_file = checkpoint_path
+                    try:
+                        with open(checkpoint_path, 'r', encoding='utf-8') as f:
+                            checkpoint_data = json.load(f)
+                        self.logger.info(f"从迭代目录加载检查点: {checkpoint_path}")
+                        checkpoint_file = checkpoint_path
+                    except Exception as e:
+                        self.logger.error(f"加载迭代目录检查点失败: {str(e)}")
+                        checkpoint_data = None
         
-        # 如果没有找到，则在整个alchemy目录中查找最新的检查点
-        if not checkpoint_file:
+        # 如果仍然没有找到，则在整个alchemy目录中查找最新的检查点
+        if not checkpoint_data:
             checkpoints = list(self.alchemy_dir.glob("**/checkpoint.json"))
             if checkpoints:
                 # 按修改时间排序，找到最新的检查点
                 checkpoint_file = max(checkpoints, key=lambda p: p.stat().st_mtime)
-        
-        # 如果找到了检查点文件，则加载它
-        if checkpoint_file:
-            try:
-                with open(checkpoint_file, 'r', encoding='utf-8') as f:
-                    checkpoint_data = json.load(f)
-                self.logger.info(f"找到检查点: {checkpoint_file}, 当前步骤: {checkpoint_data.get('current_step')}")
-            except Exception as e:
-                self.logger.error(f"加载检查点失败: {str(e)}")
-                checkpoint_data = None
+                try:
+                    with open(checkpoint_file, 'r', encoding='utf-8') as f:
+                        checkpoint_data = json.load(f)
+                    self.logger.info(f"从全局搜索加载检查点: {checkpoint_file}")
+                except Exception as e:
+                    self.logger.error(f"加载全局搜索检查点失败: {str(e)}")
+                    checkpoint_data = None
         
         # 如果没有找到有效的检查点，则重新开始处理
         if not checkpoint_data:
             self.logger.warning(f"未找到有效的检查点，将重新开始处理")
             return await self.process(query, input_dirs, context)
         
-        # 设置当前步骤
+        # 设置当前步骤和工作目录
         self._current_step = checkpoint_data.get('current_step', 'unknown')
         
+        # 恢复工作目录
+        if 'work_dir' in checkpoint_data:
+            self.current_work_dir = Path(checkpoint_data['work_dir'])
+            self.logger.info(f"恢复工作目录: {self.current_work_dir}")
+        elif 'iteration' in checkpoint_data:
+            iteration = checkpoint_data['iteration']
+            self.current_work_dir = self.iterations_dir / f"iter{iteration}"
+            self.logger.info(f"根据迭代号恢复工作目录: {self.current_work_dir}")
+        
+        # 检查工作目录是否存在
+        if not self.current_work_dir.exists():
+            self.logger.warning(f"恢复的工作目录不存在: {self.current_work_dir}，将重新开始处理")
+            return await self.process(query, input_dirs, context)
+        
         # 根据检查点的步骤决定如何恢复
+        self.logger.info(f"准备从步骤 '{self._current_step}' 恢复处理")
+        
+        # 检查是否需要重新初始化组件
+        if checkpoint_data.get('components_initialized', False) and not hasattr(self, 'components'):
+            # 尝试重新初始化组件
+            db_path = self.current_work_dir / "data" / "unified_storage.duckdb"
+            if db_path.exists():
+                self.logger.info(f"重新初始化组件，使用数据库: {db_path}")
+                self.components = self._init_components(str(db_path))
+            else:
+                self.logger.warning("无法重新初始化组件，数据库文件不存在")
+        
+        # 根据当前步骤决定如何恢复
         if self._current_step == "initialization":
             # 如果是初始化阶段中断，直接重新开始
             self.logger.info("在初始化阶段中断，重新开始处理")
@@ -1137,24 +1264,25 @@ class DataMindAlchemy:
             self.logger.info("从处理数据阶段继续")
             return await self.process(query, input_dirs, context)
             
-        elif self._current_step in ["parse_intent", "build_plan", "execute_search", "generate_artifact"]:
+        elif self._current_step == "initialize_components":
+            # 如果是在初始化组件阶段中断
+            self.logger.info("从初始化组件阶段继续")
+            return await self.process(query, input_dirs, context)
+            
+        elif self._current_step in ["parse_intent", "build_plan", "execute_workflow"]:
             # 如果是在工作流执行阶段中断，可以尝试从该步骤继续
             self.logger.info(f"从工作流执行阶段继续: {self._current_step}")
             
-            # 恢复到上次的迭代目录
-            if 'iteration' in checkpoint_data:
-                iteration = checkpoint_data['iteration']
-                self.current_work_dir = self.iterations_dir / f"iter{iteration}"
-                self.logger.info(f"恢复到迭代: {iteration}, 目录: {self.current_work_dir}")
-                
-                # 重新初始化组件
-                if self.current_work_dir.exists():
-                    data_dir = self.current_work_dir / "data"
-                    if data_dir.exists():
-                        db_path = data_dir / "unified_storage.duckdb"
-                        if db_path.exists():
-                            self.components = self._init_components(str(db_path))
-                            self.logger.info("已重新初始化组件")
+            # 检查组件是否已初始化
+            if not hasattr(self, 'components') or not self.components:
+                self.logger.warning("组件未初始化，尝试重新初始化")
+                db_path = self.current_work_dir / "data" / "unified_storage.duckdb"
+                if db_path.exists():
+                    self.components = self._init_components(str(db_path))
+                    self.logger.info("已重新初始化组件")
+                else:
+                    self.logger.error("无法重新初始化组件，数据库文件不存在")
+                    return await self.process(query, input_dirs, context)
             
             # 根据中断的步骤决定如何继续
             if self._current_step == "parse_intent":
@@ -1166,8 +1294,81 @@ class DataMindAlchemy:
                     'message': f'从{self._current_step}阶段恢复处理',
                     'results': results
                 }
+            
+            elif self._current_step == "build_plan":
+                # 如果是在构建计划阶段中断
+                self.logger.info("从构建计划阶段继续执行工作流")
+                # 需要先解析意图
+                parsed_intent = await self.components['intent_parser'].parse_query(query)
+                # 然后从构建计划开始执行
+                parsed_plan = self.components['planner'].build_search_plan(parsed_intent)
+                # 执行搜索计划
+                search_results = await self.components['executor'].execute_plan(parsed_plan)
+                # 生成制品
+                # ... 这里可以添加更多的恢复逻辑 ...
                 
-            # ... 可以添加更多特定步骤的恢复逻辑 ...
+                # 简化处理：直接重新执行工作流
+                results = await self._execute_workflow(query)
+                return {
+                    'status': 'resumed',
+                    'message': f'从{self._current_step}阶段恢复处理',
+                    'results': results
+                }
+            
+            elif self._current_step == "execute_workflow":
+                # 如果是在执行工作流阶段中断
+                self.logger.info("从执行工作流阶段继续")
+                
+                # 检查是否有工作流结果文件
+                workflow_results_file = self.current_work_dir / "workflow_results.json"
+                if workflow_results_file.exists():
+                    try:
+                        with open(workflow_results_file, 'r', encoding='utf-8') as f:
+                            workflow_results = json.load(f)
+                        self.logger.info("已从工作流结果文件恢复处理结果")
+                        return {
+                            'status': 'resumed',
+                            'message': '从执行工作流阶段恢复处理，已找到工作流结果文件',
+                            'results': workflow_results
+                        }
+                    except Exception as e:
+                        self.logger.error(f"加载工作流结果文件失败: {str(e)}")
+                
+                # 如果没有工作流结果文件，重新执行工作流
+                self.logger.info("未找到工作流结果文件，重新执行工作流")
+                results = await self._execute_workflow(query)
+                return {
+                    'status': 'resumed',
+                    'message': f'从{self._current_step}阶段恢复处理',
+                    'results': results
+                }
+        
+        elif self._current_step == "finalize":
+            # 如果是在最终阶段中断，可能已经完成大部分工作
+            self.logger.info("从最终阶段继续，可能已经完成大部分工作")
+            # 检查是否有结果文件
+            results_file = self.current_work_dir / "results.json"
+            if results_file.exists():
+                try:
+                    with open(results_file, 'r', encoding='utf-8') as f:
+                        results = json.load(f)
+                    self.logger.info("已从结果文件恢复处理结果")
+                    return {
+                        'status': 'resumed',
+                        'message': '从最终阶段恢复处理，已找到结果文件',
+                        'results': results
+                    }
+                except Exception as e:
+                    self.logger.error(f"加载结果文件失败: {str(e)}")
+            
+            # 如果没有结果文件，重新执行工作流
+            self.logger.info("未找到结果文件，重新执行工作流")
+            results = await self._execute_workflow(query)
+            return {
+                'status': 'resumed',
+                'message': '从最终阶段恢复处理，重新执行工作流',
+                'results': results
+            }
             
         # 默认情况：无法精确恢复，重新开始处理
         self.logger.warning(f"无法从步骤{self._current_step}精确恢复，将重新开始处理")
@@ -1176,73 +1377,3 @@ class DataMindAlchemy:
     async def _emit_event(self, event_type: AlchemyEventType, data: Any = None):
         """发出事件（内部方法）"""
         await self.event_bus.publish(event_type, data)
-
-    async def _check_auto_run(self):
-        """检查是否需要自动运行下一轮迭代"""
-        next_config_path = self.alchemy_dir / "next_iteration_config.json"
-        if not next_config_path.exists():
-            return
-            
-        try:
-            with open(next_config_path, 'r', encoding='utf-8') as f:
-                next_config = json.load(f)
-                
-            # 检查auto_run参数
-            if next_config.get("auto_run", False):
-                self.logger.info("检测到auto_run=True，准备自动启动下一轮迭代")
-                
-                # 获取下一轮迭代的参数
-                next_query = next_config.get("query")
-                next_input_dirs = next_config.get("input_dirs")
-                
-                if next_query:
-                    # 创建一个新的配置文件，但将auto_run设置为False，防止无限循环
-                    updated_config = next_config.copy()
-                    updated_config["auto_run"] = False
-                    updated_config["timestamp"] = datetime.now().isoformat()
-                    
-                    with open(next_config_path, 'w', encoding='utf-8') as f:
-                        json.dump(updated_config, f, ensure_ascii=False, indent=2)
-                    
-                    self.logger.info(f"已更新配置文件，将auto_run设置为False")
-                    
-                    # 异步启动下一轮迭代
-                    self.logger.info(f"开始自动启动下一轮迭代，query={next_query}")
-                    asyncio.create_task(self.process(
-                        query=next_query,
-                        input_dirs=next_input_dirs,
-                        context=None
-                    ))
-                else:
-                    self.logger.warning("auto_run=True但未提供有效的query，无法自动启动下一轮迭代")
-        except Exception as e:
-            self.logger.error(f"检查auto_run失败: {str(e)}")
-            self.logger.exception(e)
-
-    # 添加一个方法来设置auto_run参数
-    def set_auto_run(self, auto_run: bool = True):
-        """设置下一轮迭代是否自动运行
-        
-        Args:
-            auto_run: 是否自动运行，默认为True
-        """
-        next_config_path = self.alchemy_dir / "next_iteration_config.json"
-        if not next_config_path.exists():
-            self.logger.warning("未找到next_iteration_config.json文件，无法设置auto_run")
-            return False
-            
-        try:
-            with open(next_config_path, 'r', encoding='utf-8') as f:
-                next_config = json.load(f)
-                
-            next_config["auto_run"] = auto_run
-            next_config["timestamp"] = datetime.now().isoformat()
-            
-            with open(next_config_path, 'w', encoding='utf-8') as f:
-                json.dump(next_config, f, ensure_ascii=False, indent=2)
-                
-            self.logger.info(f"已设置auto_run={auto_run}")
-            return True
-        except Exception as e:
-            self.logger.error(f"设置auto_run失败: {str(e)}")
-            return False
