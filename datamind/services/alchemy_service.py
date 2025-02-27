@@ -283,6 +283,29 @@ class DataMindAlchemy:
             Dict: 处理结果
         """
         try:
+            # 首先检查是否存在next_iteration_config.json文件并读取配置
+            next_config_path = self.alchemy_dir / "next_iteration_config.json"
+            config_input_dirs = None
+            if next_config_path.exists():
+                try:
+                    with open(next_config_path, 'r', encoding='utf-8') as f:
+                        next_config = json.load(f)
+                    
+                    # 如果配置文件中有query且未提供query参数，则使用配置文件中的query
+                    if query is None and "query" in next_config:
+                        query = next_config["query"]
+                        self.logger.info(f"从配置文件加载查询: {query}")
+                    
+                    # 读取配置文件中的input_dirs
+                    if "input_dirs" in next_config and next_config["input_dirs"]:
+                        config_input_dirs = next_config["input_dirs"]
+                        self.logger.info(f"从配置文件读取到输入目录: {config_input_dirs}")
+                        
+                    # 记录已读取配置文件
+                    self.logger.info(f"已从配置文件读取下一轮迭代配置")
+                except Exception as e:
+                    self.logger.error(f"读取下一轮迭代配置失败: {str(e)}")
+            
             # 重置取消标志
             self._cancel_requested = False
             
@@ -331,7 +354,7 @@ class DataMindAlchemy:
             # 检查是否请求取消
             await self._check_cancellation()
             
-            # 如果是新模式（没有context），则创建source_data目录并复制用户指定的目录
+            # 首先执行原有的数据复制逻辑
             if not context:
                 # 在炼金运行目录中创建source_data目录
                 alchemy_source_data = self.alchemy_dir / "source_data"
@@ -356,6 +379,12 @@ class DataMindAlchemy:
             # 复制输入目录（如果在优化模式下还有额外输入）
             if input_dirs and context:
                 await self._copy_input_dirs(input_dirs, source_data)
+            
+            # 最后，复制配置文件中的input_dirs内容（如果有）
+            if config_input_dirs:
+                self.logger.info("最后复制配置文件中指定的input_dirs内容")
+                await self._copy_input_dirs(config_input_dirs, source_data)
+                self.logger.info(f"已从配置文件指定的目录复制数据到: {source_data}")
             
             # 设置当前步骤
             self._current_step = "process_data"
@@ -422,6 +451,9 @@ class DataMindAlchemy:
 
             # 在每一步完成后保存恢复信息
             self._save_resume_info(query, input_dirs)
+
+            # 检查是否需要自动运行下一轮迭代
+            await self._check_auto_run()
 
             return results
             
@@ -772,6 +804,23 @@ class DataMindAlchemy:
                             }
                         )
                         
+                        # 更新下一轮迭代的默认查询为优化后的查询
+                        next_config_path = self.alchemy_dir / "next_iteration_config.json"
+                        if next_config_path.exists():
+                            try:
+                                with open(next_config_path, 'r', encoding='utf-8') as f:
+                                    next_config = json.load(f)
+                                
+                                next_config["query"] = optimization_query
+                                next_config["timestamp"] = datetime.now().isoformat()
+                                
+                                with open(next_config_path, 'w', encoding='utf-8') as f:
+                                    json.dump(next_config, f, ensure_ascii=False, indent=2)
+                                
+                                self.logger.info(f"已更新下一轮迭代的默认查询为优化后的查询: {optimization_query}")
+                            except Exception as e:
+                                self.logger.error(f"更新下一轮迭代配置失败: {str(e)}")
+                        
                         # 使用优化建议执行新一轮工作流
                         optimization_result = await self.process(
                             query=optimization_query,
@@ -905,8 +954,20 @@ class DataMindAlchemy:
             with open(task_resume_path, 'w', encoding='utf-8') as f:
                 json.dump(resume_info, f, ensure_ascii=False, indent=2)
             
+            # 同时保存下一轮迭代配置文件
+            next_iteration_config = {
+                "query": query,
+                "input_dirs": input_dirs if input_dirs else [],  # 确保input_dirs为空列表而不是None
+                "timestamp": datetime.now().isoformat(),
+                "auto_run": True  # 默认自动运行
+            }
+            next_config_path = task_dir / "next_iteration_config.json"
+            with open(next_config_path, 'w', encoding='utf-8') as f:
+                json.dump(next_iteration_config, f, ensure_ascii=False, indent=2)
+            
             self.logger.debug(f"已保存恢复信息到任务目录")
             self.logger.debug(f"任务恢复文件: {task_resume_path}")
+            self.logger.debug(f"下一轮迭代配置文件: {next_config_path}")
         except Exception as e:
             self.logger.error(f"保存恢复信息失败: {str(e)}")
             self.logger.exception(e)
@@ -1003,6 +1064,24 @@ class DataMindAlchemy:
         Returns:
             Dict: 处理结果
         """
+        # 如果没有提供query和input_dirs，尝试从next_iteration_config.json加载
+        if query is None or input_dirs is None:
+            next_config_path = self.alchemy_dir / "next_iteration_config.json"
+            if next_config_path.exists():
+                try:
+                    with open(next_config_path, 'r', encoding='utf-8') as f:
+                        next_config = json.load(f)
+                    
+                    if query is None and "query" in next_config:
+                        query = next_config["query"]
+                        self.logger.info(f"从配置文件加载查询: {query}")
+                    
+                    if input_dirs is None and "input_dirs" in next_config:
+                        input_dirs = next_config["input_dirs"]
+                        self.logger.info(f"从配置文件加载输入目录: {input_dirs}")
+                except Exception as e:
+                    self.logger.error(f"加载下一轮迭代配置失败: {str(e)}")
+        
         # 查找检查点文件
         checkpoint_file = None
         checkpoint_data = None
@@ -1097,3 +1176,73 @@ class DataMindAlchemy:
     async def _emit_event(self, event_type: AlchemyEventType, data: Any = None):
         """发出事件（内部方法）"""
         await self.event_bus.publish(event_type, data)
+
+    async def _check_auto_run(self):
+        """检查是否需要自动运行下一轮迭代"""
+        next_config_path = self.alchemy_dir / "next_iteration_config.json"
+        if not next_config_path.exists():
+            return
+            
+        try:
+            with open(next_config_path, 'r', encoding='utf-8') as f:
+                next_config = json.load(f)
+                
+            # 检查auto_run参数
+            if next_config.get("auto_run", False):
+                self.logger.info("检测到auto_run=True，准备自动启动下一轮迭代")
+                
+                # 获取下一轮迭代的参数
+                next_query = next_config.get("query")
+                next_input_dirs = next_config.get("input_dirs")
+                
+                if next_query:
+                    # 创建一个新的配置文件，但将auto_run设置为False，防止无限循环
+                    updated_config = next_config.copy()
+                    updated_config["auto_run"] = False
+                    updated_config["timestamp"] = datetime.now().isoformat()
+                    
+                    with open(next_config_path, 'w', encoding='utf-8') as f:
+                        json.dump(updated_config, f, ensure_ascii=False, indent=2)
+                    
+                    self.logger.info(f"已更新配置文件，将auto_run设置为False")
+                    
+                    # 异步启动下一轮迭代
+                    self.logger.info(f"开始自动启动下一轮迭代，query={next_query}")
+                    asyncio.create_task(self.process(
+                        query=next_query,
+                        input_dirs=next_input_dirs,
+                        context=None
+                    ))
+                else:
+                    self.logger.warning("auto_run=True但未提供有效的query，无法自动启动下一轮迭代")
+        except Exception as e:
+            self.logger.error(f"检查auto_run失败: {str(e)}")
+            self.logger.exception(e)
+
+    # 添加一个方法来设置auto_run参数
+    def set_auto_run(self, auto_run: bool = True):
+        """设置下一轮迭代是否自动运行
+        
+        Args:
+            auto_run: 是否自动运行，默认为True
+        """
+        next_config_path = self.alchemy_dir / "next_iteration_config.json"
+        if not next_config_path.exists():
+            self.logger.warning("未找到next_iteration_config.json文件，无法设置auto_run")
+            return False
+            
+        try:
+            with open(next_config_path, 'r', encoding='utf-8') as f:
+                next_config = json.load(f)
+                
+            next_config["auto_run"] = auto_run
+            next_config["timestamp"] = datetime.now().isoformat()
+            
+            with open(next_config_path, 'w', encoding='utf-8') as f:
+                json.dump(next_config, f, ensure_ascii=False, indent=2)
+                
+            self.logger.info(f"已设置auto_run={auto_run}")
+            return True
+        except Exception as e:
+            self.logger.error(f"设置auto_run失败: {str(e)}")
+            return False
