@@ -171,17 +171,17 @@ async def datamind_alchemy_process(
         )
         
         # 注册事件处理函数
-        alchemy.subscribe(AlchemyEventType.PROCESS_STARTED, lambda data: on_process_started(data, logger))
-        alchemy.subscribe(AlchemyEventType.INTENT_PARSED, lambda data: on_intent_parsed(data, logger))
-        alchemy.subscribe(AlchemyEventType.PLAN_BUILT, lambda data: on_plan_built(data, logger))
-        alchemy.subscribe(AlchemyEventType.SEARCH_EXECUTED, lambda data: on_search_executed(data, logger))
-        alchemy.subscribe(AlchemyEventType.ARTIFACT_GENERATED, lambda data: on_artifact_generated(data, logger))
-        alchemy.subscribe(AlchemyEventType.OPTIMIZATION_SUGGESTED, lambda data: on_optimization_suggested(data, logger))
-        alchemy.subscribe(AlchemyEventType.PROCESS_COMPLETED, lambda data: on_process_completed(data, logger))
-        alchemy.subscribe(AlchemyEventType.ERROR_OCCURRED, lambda data: on_error_occurred(data, logger))
-        alchemy.subscribe(AlchemyEventType.CANCELLATION_REQUESTED, lambda data: on_cancellation_requested(data, logger))
-        alchemy.subscribe(AlchemyEventType.PROCESS_CANCELLED, lambda data: on_process_cancelled(data, logger))
-        alchemy.subscribe(AlchemyEventType.PROCESS_CHECKPOINT, lambda data: on_process_checkpoint(data, logger))
+        alchemy.subscribe(AlchemyEventType.PROCESS_STARTED, lambda data: asyncio.create_task(on_process_started(data, logger)))
+        alchemy.subscribe(AlchemyEventType.INTENT_PARSED, lambda data: asyncio.create_task(on_intent_parsed(data, logger)))
+        alchemy.subscribe(AlchemyEventType.PLAN_BUILT, lambda data: asyncio.create_task(on_plan_built(data, logger)))
+        alchemy.subscribe(AlchemyEventType.SEARCH_EXECUTED, lambda data: asyncio.create_task(on_search_executed(data, logger)))
+        alchemy.subscribe(AlchemyEventType.ARTIFACT_GENERATED, lambda data: asyncio.create_task(on_artifact_generated(data, logger)))
+        alchemy.subscribe(AlchemyEventType.OPTIMIZATION_SUGGESTED, lambda data: asyncio.create_task(on_optimization_suggested(data, logger)))
+        alchemy.subscribe(AlchemyEventType.PROCESS_COMPLETED, lambda data: asyncio.create_task(on_process_completed(data, logger)))
+        alchemy.subscribe(AlchemyEventType.ERROR_OCCURRED, lambda data: asyncio.create_task(on_error_occurred(data, logger)))
+        alchemy.subscribe(AlchemyEventType.CANCELLATION_REQUESTED, lambda data: asyncio.create_task(on_cancellation_requested(data, logger)))
+        alchemy.subscribe(AlchemyEventType.PROCESS_CANCELLED, lambda data: asyncio.create_task(on_process_cancelled(data, logger)))
+        alchemy.subscribe(AlchemyEventType.PROCESS_CHECKPOINT, lambda data: asyncio.create_task(on_process_checkpoint(data, logger)))
         
         # 开始处理任务
         if should_resume and alchemy_id:
@@ -305,32 +305,6 @@ async def async_main():
         
         # 如果是恢复模式且没有指定alchemy_id
         if should_resume and not alchemy_id:
-            # 不再尝试从全局latest_task.json中获取
-            # latest_task_file = work_dir / "latest_task.json"
-            # if latest_task_file.exists():
-            #     try:
-            #         with open(latest_task_file, 'r', encoding='utf-8') as f:
-            #             latest_task = json.load(f)
-            #             
-            #             if alchemy_id:
-            #                 logger.info(f"从最近任务记录中找到alchemy_id: {alchemy_id}")
-            #                 
-            #                 # 获取任务目录下的resume_info.json
-            #                 task_dir = work_dir / "data_alchemy" / alchemy_id
-            #                 resume_file = task_dir / "resume_info.json"
-            #                 
-            #                 if resume_file.exists():
-            #                     with open(resume_file, 'r', encoding='utf-8') as rf:
-            #                         resume_info = json.load(rf)
-            #                         
-            #                     # 使用恢复信息中的查询和输入目录(如果有)
-            #                     if not query and "query" in resume_info:
-            #                         query = resume_info["query"]
-            #                     if not input_dirs and "input_dirs" in resume_info:
-            #                         input_dirs = resume_info["input_dirs"]
-            #     except Exception as e:
-            #         logger.error(f"读取最近任务记录失败: {str(e)}")
-            
             # 如果没有找到alchemy_id，尝试从任务管理器获取可恢复任务
             if not alchemy_id:
                 # 获取所有可恢复的任务

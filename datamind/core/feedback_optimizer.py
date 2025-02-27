@@ -17,7 +17,7 @@ class FeedbackOptimizer:
         """初始化反馈优化工作流管理器
         
         Args:
-            work_dir: 工作目录，现在是迭代目录 (alchemy_runs/alchemy_{id}/search/iterations/iterX)
+            work_dir: 工作目录，现在是迭代目录 (alchemy_runs/alchemy_{id}/iterations/iterX)
             reasoning_engine: 推理引擎实例
             logger: 可选，日志记录器实例
         """
@@ -25,11 +25,10 @@ class FeedbackOptimizer:
         self.work_dir = Path(work_dir)
         self.reasoning_engine = reasoning_engine
         
-        # 从迭代目录计算各个重要路径
+        # 从迭代目录计算各个重要路径，与alchemy_service.py保持一致
         self.iter_dir = self.work_dir  # 当前迭代目录
         self.iterations_dir = self.iter_dir.parent  # iterations目录
-        self.search_dir = self.iterations_dir.parent  # search目录
-        self.alchemy_dir = self.search_dir.parent  # alchemy_{id}目录
+        self.alchemy_dir = self.iterations_dir.parent  # alchemy_{id}目录
         
         # 获取当前迭代信息
         self.current_iteration = int(self.iter_dir.name.replace('iter', ''))

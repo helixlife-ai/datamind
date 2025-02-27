@@ -59,7 +59,8 @@ class EventBus:
         if event_type in self.subscribers:
             for callback in self.subscribers[event_type]:
                 if asyncio.iscoroutinefunction(callback):
-                    await callback(data)
+                    # 创建任务而不是等待，避免阻塞事件发布
+                    asyncio.create_task(callback(data))
                 else:
                     callback(data)
 
@@ -123,11 +124,11 @@ class DataMindAlchemy:
         
         # 初始化所有必要的目录结构
         self.alchemy_dir = self.work_dir / "alchemy_runs" / f"alchemy_{self.alchemy_id}"
-        self.search_dir = self.alchemy_dir / "search"
-        self.iterations_dir = self.search_dir / "iterations"
+        self.iterations_dir = self.alchemy_dir / "iterations"
+        self.artifacts_dir = self.alchemy_dir / "artifacts"  # 添加制品目录
         
         # 创建所有必要的目录
-        for directory in [self.alchemy_dir, self.search_dir, self.iterations_dir]:
+        for directory in [self.alchemy_dir, self.iterations_dir, self.artifacts_dir]:
             directory.mkdir(parents=True, exist_ok=True)
             
         # 初始化当前工作目录
@@ -185,7 +186,6 @@ class DataMindAlchemy:
         
         intent_parser = IntentParser(
             work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
-            reasoning_engine=reasoning_engine,
             logger=self.logger
         )
         
@@ -211,7 +211,7 @@ class DataMindAlchemy:
             work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
             reasoning_engine=reasoning_engine,
             logger=self.logger
-        )        
+        )
         
         # 记录组件配置
         components_config = {
@@ -982,6 +982,10 @@ class DataMindAlchemy:
         # 默认情况：无法精确恢复，重新开始处理
         self.logger.warning(f"无法从步骤{self._current_step}精确恢复，将重新开始处理")
         return await self.process(query, input_dirs, context)
+
+    async def _emit_event(self, event_type: AlchemyEventType, data: Any = None):
+        """发出事件（内部方法）"""
+        await self.event_bus.publish(event_type, data)
 
 # 添加取消异常类
 class CancellationException(Exception):

@@ -29,7 +29,7 @@ class ArtifactGenerator:
         except Exception as e:
             raise ValueError("无法从炼丹目录路径中提取炼丹ID") from e
         
-        # 修改目录结构
+        # 修改目录结构，与alchemy_service.py保持一致
         self.artifacts_base = self.alchemy_dir / "artifacts"  # 基础制品目录
         
         # 每个制品的目录结构
