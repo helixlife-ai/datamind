@@ -331,12 +331,30 @@ class DataMindAlchemy:
             # 检查是否请求取消
             await self._check_cancellation()
             
-            # 复制上级source_data
-            if context:
+            # 如果是新模式（没有context），则创建source_data目录并复制用户指定的目录
+            if not context:
+                # 在炼金运行目录中创建source_data目录
+                alchemy_source_data = self.alchemy_dir / "source_data"
+                alchemy_source_data.mkdir(exist_ok=True)
+                
+                # 复制用户指定的目录到炼金运行目录的source_data
+                if input_dirs:
+                    await self._copy_input_dirs(input_dirs, alchemy_source_data)
+                    
+                # 然后将炼金运行目录的source_data复制到当前迭代目录
+                for item in alchemy_source_data.iterdir():
+                    if item.is_dir():
+                        shutil.copytree(item, source_data / item.name, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(item, source_data / item.name)
+                
+                self.logger.info(f"已将炼金运行目录的source_data复制到当前迭代目录: {source_data}")
+            else:
+                # 复制上级source_data
                 await self._copy_parent_source_data(source_data)
                 
-            # 复制输入目录
-            if input_dirs:
+            # 复制输入目录（如果在优化模式下还有额外输入）
+            if input_dirs and context:
                 await self._copy_input_dirs(input_dirs, source_data)
             
             # 设置当前步骤
@@ -392,38 +410,6 @@ class DataMindAlchemy:
             # 检查是否请求取消
             await self._check_cancellation()
             
-            # 更新状态信息
-            status_info = {
-                "alchemy_id": self.alchemy_id,
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-                "latest_iteration": iteration,
-                "iterations": []
-            }
-            
-            status_path = self.alchemy_dir / "status.json"
-            if status_path.exists():
-                with open(status_path, "r", encoding="utf-8") as f:
-                    status_info = json.load(f)
-            
-            # 更新迭代信息
-            iteration_info = {
-                "iteration": iteration,
-                "timestamp": datetime.now().isoformat(),
-                "query": query,
-                "context": context,
-                "path": str(current_iter_dir.relative_to(self.alchemy_dir)),
-                "artifacts": results['results'].get('artifacts', []),
-                "optimization_suggestions": results['results'].get('optimization_suggestions', [])
-            }
-            
-            status_info["iterations"].append(iteration_info)
-            status_info["latest_iteration"] = iteration
-            status_info["updated_at"] = datetime.now().isoformat()
-            
-            with open(status_path, "w", encoding="utf-8") as f:
-                json.dump(status_info, f, ensure_ascii=False, indent=2)
-                
             # 发布处理完成事件
             await self.event_bus.publish(
                 AlchemyEventType.PROCESS_COMPLETED,
@@ -480,24 +466,93 @@ class DataMindAlchemy:
             }
 
     async def _copy_parent_source_data(self, source_data: Path):
-        """复制上级source_data目录"""
-        parent_source = self.work_dir.parent / "source_data"
-        if parent_source.exists() and parent_source.is_dir():
-            self.logger.info("开始复制上级source_data")
-            try:
-                if any(source_data.iterdir()):
+        """复制上一次迭代的源数据到当前迭代目录"""
+        self.logger.info("开始复制上一次迭代的源数据")
+        
+        try:
+            # 获取上一次迭代的信息
+            previous_iteration = None
+            
+            # 从状态信息中获取最新的迭代号
+            status_path = self.alchemy_dir / "status.json"
+            if status_path.exists():
+                try:
+                    with open(status_path, "r", encoding="utf-8") as f:
+                        status_info = json.load(f)
+                        if 'latest_iteration' in status_info:
+                            previous_iteration = status_info['latest_iteration']
+                            self.logger.info(f"从status.json获取到上一次迭代号: {previous_iteration}")
+                except Exception as e:
+                    self.logger.error(f"读取status.json失败: {str(e)}")
+            
+            if previous_iteration is not None:
+                # 构建上一次迭代的源数据目录路径
+                previous_source_data = self.iterations_dir / f"iter{previous_iteration}" / "source_data"
+                
+                if previous_source_data.exists() and previous_source_data.is_dir():
+                    self.logger.info(f"找到上一次迭代(iter{previous_iteration})的源数据目录: {previous_source_data}")
+                    
+                    # 清空当前源数据目录（如果有内容）
+                    if source_data.exists() and any(source_data.iterdir()):
+                        shutil.rmtree(source_data)
+                        source_data.mkdir()
+                    
+                    # 复制上一次迭代的源数据
+                    for item in previous_source_data.iterdir():
+                        if item.is_dir():
+                            shutil.copytree(item, source_data / item.name, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(item, source_data / item.name)
+                    
+                    self.logger.info(f"已成功复制上一次迭代的源数据到: {source_data}")
+                    return
+                else:
+                    self.logger.warning(f"上一次迭代的源数据目录不存在或为空: {previous_source_data}")
+            
+            # 如果没有找到上一次迭代的源数据，尝试使用炼金运行目录的source_data
+            alchemy_source_data = self.alchemy_dir / "source_data"
+            if alchemy_source_data.exists() and alchemy_source_data.is_dir() and any(alchemy_source_data.iterdir()):
+                self.logger.info(f"使用炼金运行目录的source_data: {alchemy_source_data}")
+                
+                # 清空当前源数据目录（如果有内容）
+                if source_data.exists() and any(source_data.iterdir()):
                     shutil.rmtree(source_data)
                     source_data.mkdir()
                 
+                # 复制炼金运行目录的source_data
+                for item in alchemy_source_data.iterdir():
+                    if item.is_dir():
+                        shutil.copytree(item, source_data / item.name, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(item, source_data / item.name)
+                
+                self.logger.info(f"已复制炼金运行目录的source_data到: {source_data}")
+                return
+            
+            # 如果上述都失败，尝试使用工作目录的父目录中的source_data（兼容旧逻辑）
+            parent_source = self.work_dir.parent / "source_data"
+            if parent_source.exists() and parent_source.is_dir():
+                self.logger.info("未找到上一次迭代的源数据，使用父目录中的source_data")
+                
+                # 清空当前源数据目录（如果有内容）
+                if source_data.exists() and any(source_data.iterdir()):
+                    shutil.rmtree(source_data)
+                    source_data.mkdir()
+                
+                # 复制父目录中的source_data
                 for item in parent_source.iterdir():
                     if item.is_dir():
                         shutil.copytree(item, source_data / item.name, dirs_exist_ok=True)
                     else:
                         shutil.copy2(item, source_data / item.name)
-                self.logger.info(f"上级source_data已复制到: {source_data}")
-            except Exception as e:
-                self.logger.error(f"复制上级source_data失败: {str(e)}", exc_info=True)
-                raise
+                
+                self.logger.info(f"已复制父目录中的source_data到: {source_data}")
+            else:
+                self.logger.warning("未找到任何可用的源数据目录")
+            
+        except Exception as e:
+            self.logger.error(f"复制源数据失败: {str(e)}", exc_info=True)
+            raise
 
     async def _copy_input_dirs(self, input_dirs: list, source_data: Path):
         """复制输入目录"""
@@ -574,6 +629,37 @@ class DataMindAlchemy:
         }
         
         try:
+            # 在迭代之前更新状态信息
+            status_info = {
+                "alchemy_id": self.alchemy_id,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "latest_iteration": self._get_next_iteration() - 1,  # 当前迭代号
+                "iterations": []
+            }
+            
+            status_path = self.alchemy_dir / "status.json"
+            if status_path.exists():
+                with open(status_path, "r", encoding="utf-8") as f:
+                    status_info = json.load(f)
+            
+            # 更新迭代信息
+            iteration_info = {
+                "iteration": self._get_next_iteration() - 1,  # 当前迭代号
+                "timestamp": datetime.now().isoformat(),
+                "query": query,
+                "path": str(self.current_work_dir.relative_to(self.alchemy_dir)) if self.current_work_dir else "",
+                "artifacts": [],
+                "optimization_suggestions": []
+            }
+            
+            status_info["iterations"].append(iteration_info)
+            status_info["latest_iteration"] = self._get_next_iteration() - 1  # 当前迭代号
+            status_info["updated_at"] = datetime.now().isoformat()
+            
+            with open(status_path, "w", encoding="utf-8") as f:
+                json.dump(status_info, f, ensure_ascii=False, indent=2)
+            
             # 设置当前步骤
             self._current_step = "parse_intent"
             await self._save_checkpoint()
@@ -649,6 +735,18 @@ class DataMindAlchemy:
                 if search_artifact_path:
                     results['results']['artifacts'].append(str(search_artifact_path))
                     
+                    # 更新状态文件中的制品信息
+                    if status_path.exists():
+                        with open(status_path, "r", encoding="utf-8") as f:
+                            status_info = json.load(f)
+                        
+                        # 更新最新迭代的制品信息
+                        if status_info.get('iterations'):
+                            status_info['iterations'][-1]['artifacts'] = results['results']['artifacts']
+                            
+                        with open(status_path, "w", encoding="utf-8") as f:
+                            json.dump(status_info, f, ensure_ascii=False, indent=2)
+                    
                     # 发布制品生成事件
                     await self.event_bus.publish(
                         AlchemyEventType.ARTIFACT_GENERATED,
@@ -699,6 +797,19 @@ class DataMindAlchemy:
                             
                             # 将新生成的制品也添加到结果中
                             results['results']['artifacts'].extend(optimization_result['results'].get('artifacts', []))
+                            
+                            # 更新状态文件中的优化建议信息
+                            if status_path.exists():
+                                with open(status_path, "r", encoding="utf-8") as f:
+                                    status_info = json.load(f)
+                                
+                                # 更新最新迭代的优化建议信息
+                                if status_info.get('iterations'):
+                                    status_info['iterations'][-1]['optimization_suggestions'] = results['results']['optimization_suggestions']
+                                    status_info['iterations'][-1]['artifacts'] = results['results']['artifacts']
+                                    
+                                with open(status_path, "w", encoding="utf-8") as f:
+                                    json.dump(status_info, f, ensure_ascii=False, indent=2)
                         else:
                             self.logger.warning(f"优化建议处理失败: {optimization_result['message']}")
 
@@ -855,7 +966,7 @@ class DataMindAlchemy:
             )
             
             # 抛出取消异常
-            raise CancellationException(f"处理被用户取消 (alchemy_id={self.alchemy_id})")
+            raise Exception(f"处理被用户取消 (alchemy_id={self.alchemy_id})")
             
     async def _save_checkpoint(self):
         """保存当前处理状态到检查点文件"""
@@ -986,8 +1097,3 @@ class DataMindAlchemy:
     async def _emit_event(self, event_type: AlchemyEventType, data: Any = None):
         """发出事件（内部方法）"""
         await self.event_bus.publish(event_type, data)
-
-# 添加取消异常类
-class CancellationException(Exception):
-    """取消处理异常"""
-    pass 

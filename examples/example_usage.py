@@ -16,7 +16,7 @@ from datamind import (
     setup_logging
 )
 
-from datamind.services.alchemy_service import DataMindAlchemy, AlchemyEventType, CancellationException
+from datamind.services.alchemy_service import DataMindAlchemy, AlchemyEventType
 from datamind.services.alchemy_manager import AlchemyManager
 
 # 事件处理函数
