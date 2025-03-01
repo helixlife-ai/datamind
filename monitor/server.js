@@ -751,7 +751,10 @@ io.on('connection', (socket) => {
     });
 });
 
-// 添加执行任务API
+// 添加子进程管理
+const activeProcesses = new Set();
+
+// 修改执行任务API，添加子进程跟踪
 app.post('/api/execute-task', async (req, res) => {
     const { mode, query, alchemy_id, resume } = req.body;
     
@@ -778,6 +781,9 @@ app.post('/api/execute-task', async (req, res) => {
             cwd: path.join(__dirname, '..'), // 假设monitor目录在项目根目录下
             env: { ...process.env, PYTHONIOENCODING: 'utf-8' } // 确保Python输出使用UTF-8编码
         });
+        
+        // 将子进程添加到活动进程集合中
+        activeProcesses.add(childProcess);
         
         // 生成任务ID
         const taskId = alchemy_id || crypto.randomBytes(8).toString('hex');
@@ -825,6 +831,9 @@ app.post('/api/execute-task', async (req, res) => {
         
         childProcess.on('close', (code) => {
             console.log(`[Task ${taskId}] 进程退出，代码: ${code}`);
+            
+            // 从活动进程集合中移除
+            activeProcesses.delete(childProcess);
             
             // 通过WebSocket发送完成消息
             io.emit('taskOutput', {
@@ -1112,9 +1121,78 @@ process.on('SIGINT', () => {
         }
     });
     
-    // 关闭HTTP服务器
-    http.close(() => {
-        console.log('HTTP服务器已关闭');
-        process.exit(0);
+    // 关闭所有子进程
+    console.log(`正在终止 ${activeProcesses.size} 个活动子进程...`);
+    for (const proc of activeProcesses) {
+        try {
+            // 在Windows上，需要使用特殊方法终止进程树
+            if (process.platform === 'win32') {
+                // 使用taskkill终止进程及其子进程
+                require('child_process').execSync(`taskkill /pid ${proc.pid} /T /F`, {
+                    stdio: 'ignore'
+                });
+            } else {
+                // 在Unix系统上，发送SIGTERM信号
+                proc.kill('SIGTERM');
+                
+                // 如果进程没有在1秒内退出，发送SIGKILL
+                setTimeout(() => {
+                    try {
+                        if (!proc.killed) {
+                            proc.kill('SIGKILL');
+                        }
+                    } catch (e) {
+                        // 忽略错误，可能进程已经退出
+                    }
+                }, 1000);
+            }
+        } catch (err) {
+            console.error(`终止子进程 ${proc.pid} 失败:`, err);
+        }
+    }
+    
+    // 等待所有子进程终止
+    const waitForProcesses = new Promise((resolve) => {
+        if (activeProcesses.size === 0) {
+            resolve();
+            return;
+        }
+        
+        console.log('等待子进程终止...');
+        const checkInterval = setInterval(() => {
+            if (activeProcesses.size === 0) {
+                clearInterval(checkInterval);
+                resolve();
+            }
+        }, 100);
+        
+        // 最多等待3秒
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            if (activeProcesses.size > 0) {
+                console.warn(`${activeProcesses.size} 个子进程未能正常终止`);
+            }
+            resolve();
+        }, 3000);
     });
+    
+    // 等待子进程终止后关闭Socket.IO和HTTP服务器
+    waitForProcesses.then(() => {
+        // 关闭所有 Socket.IO 连接
+        io.close(() => {
+            console.log('Socket.IO 连接已关闭');
+            
+            // 关闭 HTTP 服务器
+            http.close(() => {
+                console.log('HTTP 服务器已关闭');
+                process.exit(0);
+            });
+        });
+    });
+    
+    // 添加超时机制，防止进程卡住
+    setTimeout(() => {
+        console.log('关闭超时，强制退出进程');
+        process.exit(1);
+    }, 5000); // 5秒后强制退出
 });
