@@ -86,6 +86,22 @@
             word-wrap: break-word;
         }
         
+        /* 添加错误文本样式 */
+        .terminal .error-text {
+            color: #ff6b6b;
+            font-weight: 500;
+        }
+        
+        /* 添加警告文本样式 */
+        .terminal .warning-text {
+            color: #ffd166;
+        }
+        
+        /* 添加成功文本样式 */
+        .terminal .success-text {
+            color: #06d6a0;
+        }
+        
         .terminal::-webkit-scrollbar {
             width: 8px;
         }
@@ -659,7 +675,7 @@
         });
 
         // 向终端添加文本
-        function appendToTerminal(text) {
+        function appendToTerminal(text, isError = false) {
             try {
                 // 确保文本是有效的UTF-8字符串
                 if (typeof text !== 'string') {
@@ -670,6 +686,16 @@
                 lines.forEach(line => {
                     if (line.trim()) {
                         const element = document.createElement('div');
+                        
+                        // 检测是否包含错误、警告或成功信息
+                        if (line.includes('[错误]') || isError) {
+                            element.className = 'error-text';
+                        } else if (line.includes('[警告]') || line.includes('Warning')) {
+                            element.className = 'warning-text';
+                        } else if (line.includes('[成功]') || line.includes('Success') || line.includes('完成')) {
+                            element.className = 'success-text';
+                        }
+                        
                         // 使用textContent而不是innerHTML以避免XSS攻击
                         element.textContent = line;
                         outputTerminal.appendChild(element);
@@ -680,6 +706,7 @@
                 console.error('添加文本到终端时出错:', error);
                 // 尝试使用备用方法添加
                 const element = document.createElement('div');
+                element.className = 'error-text';
                 element.textContent = `[解码错误的文本] ${error.message}`;
                 outputTerminal.appendChild(element);
                 outputTerminal.scrollTop = outputTerminal.scrollHeight;
@@ -789,8 +816,8 @@
         // 监听任务输出
         socket.on('taskOutput', (data) => {
             if (data.alchemy_id === currentAlchemyId) {
-                // 确保输出是UTF-8编码
-                appendToTerminal(data.output);
+                // 确保输出是UTF-8编码，并传递错误标志
+                appendToTerminal(data.output, data.isError);
             }
         });
 

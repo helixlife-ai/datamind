@@ -751,72 +751,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// 文件变化事件处理
-watcher
-    .on('addDir', (fullPath) => {
-        const pathInfo = getRelativePath(fullPath);
-        if (pathInfo) {
-            console.log(`Directory added: ${pathInfo.relativePath}`);
-            io.emit('fileChange', {
-                type: 'addDir',
-                dir: pathInfo.dirId,
-                path: pathInfo.relativePath,
-                time: new Date().toLocaleString()
-            });
-        }
-    })
-    .on('unlinkDir', (fullPath) => {
-        const pathInfo = getRelativePath(fullPath);
-        if (pathInfo) {
-            console.log(`Directory removed: ${pathInfo.relativePath}`);
-            io.emit('fileChange', {
-                type: 'removeDir',
-                dir: pathInfo.dirId,
-                path: pathInfo.relativePath,
-                time: new Date().toLocaleString()
-            });
-        }
-    })
-    .on('add', (fullPath) => {
-        const pathInfo = getRelativePath(fullPath);
-        if (pathInfo) {
-            console.log(`File added: ${pathInfo.relativePath}`);
-            io.emit('fileChange', {
-                type: 'add',
-                dir: pathInfo.dirId,
-                path: pathInfo.relativePath,
-                time: new Date().toLocaleString()
-            });
-        }
-    })
-    .on('change', (fullPath) => {
-        const pathInfo = getRelativePath(fullPath);
-        if (pathInfo) {
-            console.log(`File changed: ${pathInfo.relativePath}`);
-            io.emit('fileChange', {
-                type: 'change',
-                dir: pathInfo.dirId,
-                path: pathInfo.relativePath,
-                time: new Date().toLocaleString()
-            });
-        }
-    })
-    .on('unlink', (fullPath) => {
-        const pathInfo = getRelativePath(fullPath);
-        if (pathInfo) {
-            console.log(`File removed: ${pathInfo.relativePath}`);
-            io.emit('fileChange', {
-                type: 'remove',
-                dir: pathInfo.dirId,
-                path: pathInfo.relativePath,
-                time: new Date().toLocaleString()
-            });
-        }
-    })
-    .on('error', error => {
-        console.error('Watcher error:', error);
-    });
-
 // 添加执行任务API
 app.post('/api/execute-task', async (req, res) => {
     const { mode, query, alchemy_id, resume } = req.body;
@@ -870,13 +804,22 @@ app.post('/api/execute-task', async (req, res) => {
         
         childProcess.stderr.on('data', (data) => {
             const output = data.toString('utf8');
-            console.error(`[Task ${taskId} ERROR] ${output}`);
+            console.error(`[Task ${taskId} STDERR] ${output}`);
             
-            // 通过WebSocket发送错误输出
+            // 检查是否为真正的错误信息
+            const isRealError = output.includes('Error') || 
+                               output.includes('错误') || 
+                               output.includes('Exception') || 
+                               output.includes('异常') ||
+                               output.includes('Failed') ||
+                               output.includes('失败');
+            
+            // 通过WebSocket发送错误输出，但不再自动添加[错误]前缀
             io.emit('taskOutput', {
                 alchemy_id: taskId,
-                output: `[错误] ${output}`,
-                encoding: 'utf8' // 明确指定编码
+                output: isRealError ? `[错误] ${output}` : output,
+                encoding: 'utf8', // 明确指定编码
+                isError: isRealError // 添加错误标志
             });
         });
         
@@ -934,11 +877,23 @@ app.post('/api/stop-task', async (req, res) => {
             let output = '';
             
             childProcess.stdout.on('data', (data) => {
-                output += data.toString('utf8');
+                const text = data.toString('utf8');
+                output += text;
             });
             
             childProcess.stderr.on('data', (data) => {
-                output += data.toString('utf8');
+                const text = data.toString('utf8');
+                
+                // 检查是否为真正的错误信息
+                const isRealError = text.includes('Error') || 
+                                   text.includes('错误') || 
+                                   text.includes('Exception') || 
+                                   text.includes('异常') ||
+                                   text.includes('Failed') ||
+                                   text.includes('失败');
+                
+                // 只有真正的错误才添加[错误]前缀
+                output += isRealError ? `[错误] ${text}` : text;
             });
             
             childProcess.on('close', (code) => {
@@ -1141,5 +1096,25 @@ http.listen(PORT, () => {
     console.log(`字符编码: ${Buffer.isEncoding('utf8') ? 'UTF-8支持正常' : 'UTF-8支持异常'}`);
     watchDirs.forEach(dir => {
         console.log(`监控目录: ${dir.fullPath}`);
+    });
+});
+
+// 在应用退出时关闭所有文件监视器
+process.on('SIGINT', () => {
+    console.log('正在关闭服务器...');
+    
+    // 关闭所有文件监视器
+    watchers.forEach(watcher => {
+        try {
+            watcher.close();
+        } catch (err) {
+            console.error('关闭文件监视器失败:', err);
+        }
+    });
+    
+    // 关闭HTTP服务器
+    http.close(() => {
+        console.log('HTTP服务器已关闭');
+        process.exit(0);
     });
 });
