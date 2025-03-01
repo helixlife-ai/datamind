@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>数据炼丹系统控制台</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         body {
@@ -437,7 +438,14 @@
                             
                             <div class="mb-3" id="alchemyIdGroup">
                                 <label for="alchemyId" class="form-label">任务ID</label>
-                                <input type="text" class="form-control" id="alchemyId" placeholder="继续模式下需要填写">
+                                <div class="input-group">
+                                    <select class="form-select" id="alchemyId">
+                                        <option value="">请选择任务ID</option>
+                                    </select>
+                                    <button class="btn btn-outline-secondary" type="button" id="refreshTasksBtn" title="刷新任务列表">
+                                        <i class="bi bi-arrow-clockwise"></i> 刷新
+                                    </button>
+                                </div>
                                 <div class="form-check mt-2">
                                     <input class="form-check-input" type="checkbox" id="resumeCheckbox">
                                     <label class="form-check-label" for="resumeCheckbox">
@@ -542,6 +550,8 @@
         modeSelect.addEventListener('change', () => {
             if (modeSelect.value === 'continue') {
                 alchemyIdGroup.style.display = 'block';
+                // 当切换到继续模式时，重新加载任务列表
+                loadResumableTasks();
             } else {
                 alchemyIdGroup.style.display = 'none';
             }
@@ -554,59 +564,167 @@
 
         // 加载可恢复任务列表
         function loadResumableTasks() {
-            // 这里需要添加一个API来获取可恢复任务
-            fetch('/api/resumable-tasks')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.tasks && data.tasks.length > 0) {
-                        const taskList = data.tasks.map((task, index) => {
-                            return `
-                            <div class="task-item mb-2 p-2 border rounded">
-                                <div><strong>ID:</strong> ${task.id}</div>
-                                <div><strong>查询:</strong> ${task.resume_info?.query || '未知'}</div>
-                                <div><strong>时间:</strong> ${task.resume_info?.timestamp || '未知'}</div>
-                                <button class="btn btn-sm btn-primary mt-1 resume-task-btn" 
-                                        data-id="${task.id}" 
-                                        data-query="${task.resume_info?.query || ''}">
-                                    恢复此任务
-                                </button>
-                            </div>
-                            `;
-                        }).join('');
-                        resumableTasks.innerHTML = taskList;
-                        
-                        // 添加恢复任务按钮事件
-                        document.querySelectorAll('.resume-task-btn').forEach(btn => {
-                            btn.addEventListener('click', (e) => {
-                                const id = e.target.getAttribute('data-id');
-                                const query = e.target.getAttribute('data-query');
-                                
-                                document.getElementById('mode').value = 'continue';
-                                document.getElementById('alchemyId').value = id;
-                                document.getElementById('query').value = query;
-                                document.getElementById('resumeCheckbox').checked = true;
-                                alchemyIdGroup.style.display = 'block';
-                                
-                                // 自动提交表单，开始恢复任务
-                                setTimeout(() => {
-                                    // 如果没有正在运行的任务，自动提交表单
-                                    if (!currentAlchemyId) {
-                                        appendToTerminal(`准备恢复任务 (ID: ${id})...\n`);
-                                        taskForm.dispatchEvent(new Event('submit'));
-                                    } else {
-                                        appendToTerminal(`[警告] 已有任务正在运行 (ID: ${currentAlchemyId})，请先停止当前任务再恢复\n`);
-                                    }
-                                }, 100);
-                            });
-                        });
-                    } else {
-                        resumableTasks.innerHTML = '<p>没有可恢复的任务</p>';
+            // 显示加载状态
+            resumableTasks.innerHTML = '<p>正在加载可恢复任务...</p>';
+            const alchemyIdSelect = document.getElementById('alchemyId');
+            alchemyIdSelect.innerHTML = '<option value="">正在加载任务列表...</option>';
+            
+            // 首先尝试使用直接API
+            fetch('/api/direct-resumable-tasks')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP错误: ${response.status}`);
                     }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('获取到的可恢复任务数据(直接方式):', data);
+                    processResumableTasks(data, '直接方式');
                 })
                 .catch(error => {
-                    console.error('加载可恢复任务失败:', error);
-                    resumableTasks.innerHTML = '<p class="text-danger">加载失败</p>';
+                    console.error('直接加载可恢复任务失败，尝试使用Python脚本方式:', error);
+                    appendToTerminal(`[警告] 直接加载任务列表失败: ${error.message}\n尝试使用Python脚本方式...\n`);
+                    
+                    // 失败后尝试使用Python脚本方式
+                    fetch('/api/resumable-tasks')
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`HTTP错误: ${response.status}`);
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log('获取到的可恢复任务数据(Python脚本方式):', data);
+                            processResumableTasks(data, 'Python脚本方式');
+                        })
+                        .catch(error => {
+                            console.error('两种方式加载可恢复任务均失败:', error);
+                            resumableTasks.innerHTML = `<p class="text-danger">加载失败: ${error.message}</p>`;
+                            alchemyIdSelect.innerHTML = '<option value="">加载失败</option>';
+                            appendToTerminal(`[错误] 加载任务列表失败: ${error.message}\n请检查服务器日志或刷新页面重试。\n`);
+                        });
                 });
+        }
+        
+        // 处理可恢复任务数据
+        function processResumableTasks(data, method) {
+            // 确保tasks字段存在且是数组
+            const tasks = data.tasks || [];
+            console.log(`[${method}] 解析到 ${tasks.length} 个可恢复任务`);
+            
+            const alchemyIdSelect = document.getElementById('alchemyId');
+            
+            if (tasks.length > 0) {
+                // 更新任务ID下拉列表
+                alchemyIdSelect.innerHTML = '<option value="">请选择任务ID</option>';
+                
+                // 添加任务ID选项
+                tasks.forEach(task => {
+                    console.log(`[${method}] 处理任务:`, task.id);
+                    
+                    // 确保task.id存在
+                    if (!task.id) {
+                        console.warn('任务缺少ID:', task);
+                        return;
+                    }
+                    
+                    const option = document.createElement('option');
+                    option.value = task.id;
+                    
+                    // 安全地获取查询文本
+                    const query = task.resume_info && task.resume_info.query 
+                        ? task.resume_info.query 
+                        : (task.latest_query || '未知查询');
+                        
+                    // 截取查询文本前20个字符作为显示
+                    const shortQuery = query.substring(0, 20) + (query.length > 20 ? '...' : '');
+                    option.textContent = `${task.id} - ${shortQuery}`;
+                    option.setAttribute('data-query', query);
+                    alchemyIdSelect.appendChild(option);
+                    
+                    console.log(`已添加选项: ${task.id} - ${shortQuery}`);
+                });
+                
+                // 移除旧的事件监听器，避免重复绑定
+                const newSelect = alchemyIdSelect.cloneNode(true);
+                alchemyIdSelect.parentNode.replaceChild(newSelect, alchemyIdSelect);
+                
+                // 重新获取元素并添加事件监听器
+                const updatedSelect = document.getElementById('alchemyId');
+                updatedSelect.addEventListener('change', function() {
+                    const selectedOption = this.options[this.selectedIndex];
+                    if (!selectedOption || !selectedOption.value) return;
+                    
+                    const query = selectedOption.getAttribute('data-query');
+                    if (query) {
+                        document.getElementById('query').value = query;
+                        console.log(`已自动填充查询文本: ${query}`);
+                    }
+                });
+                
+                // 构建可恢复任务列表HTML
+                const taskList = tasks.map((task, index) => {
+                    // 安全地获取查询和时间戳
+                    const query = task.resume_info && task.resume_info.query 
+                        ? task.resume_info.query 
+                        : (task.latest_query || '未知');
+                    const timestamp = task.resume_info && task.resume_info.timestamp 
+                        ? task.resume_info.timestamp 
+                        : (task.updated_at || '未知');
+                    
+                    return `
+                    <div class="task-item mb-2 p-2 border rounded">
+                        <div><strong>ID:</strong> ${task.id}</div>
+                        <div><strong>查询:</strong> ${query}</div>
+                        <div><strong>时间:</strong> ${timestamp}</div>
+                        <button class="btn btn-sm btn-primary mt-1 resume-task-btn" 
+                                data-id="${task.id}" 
+                                data-query="${query}">
+                            恢复此任务
+                        </button>
+                    </div>
+                    `;
+                }).join('');
+                
+                resumableTasks.innerHTML = taskList;
+                console.log(`[${method}] 已更新可恢复任务列表UI`);
+                
+                // 添加恢复任务按钮事件
+                document.querySelectorAll('.resume-task-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const id = e.target.getAttribute('data-id');
+                        const query = e.target.getAttribute('data-query');
+                        
+                        console.log(`点击恢复任务按钮: ID=${id}, 查询=${query}`);
+                        
+                        document.getElementById('mode').value = 'continue';
+                        document.getElementById('alchemyId').value = id;
+                        document.getElementById('query').value = query;
+                        document.getElementById('resumeCheckbox').checked = true;
+                        alchemyIdGroup.style.display = 'block';
+                        
+                        // 自动提交表单，开始恢复任务
+                        setTimeout(() => {
+                            // 如果没有正在运行的任务，自动提交表单
+                            if (!currentAlchemyId) {
+                                appendToTerminal(`准备恢复任务 (ID: ${id})...\n`);
+                                taskForm.dispatchEvent(new Event('submit'));
+                            } else {
+                                appendToTerminal(`[警告] 已有任务正在运行 (ID: ${currentAlchemyId})，请先停止当前任务再恢复\n`);
+                            }
+                        }, 100);
+                    });
+                });
+                
+                // 显示加载方式
+                appendToTerminal(`[信息] 已通过${method}加载 ${tasks.length} 个可恢复任务\n`);
+            } else {
+                // 更新任务ID下拉列表
+                alchemyIdSelect.innerHTML = '<option value="">没有可用的任务</option>';
+                resumableTasks.innerHTML = '<p>没有可恢复的任务</p>';
+                console.log(`[${method}] 没有找到可恢复的任务`);
+                appendToTerminal(`[信息] 没有找到可恢复的任务\n`);
+            }
         }
 
         // 提交任务表单
@@ -933,13 +1051,42 @@
             updateButtonsVisibility();
             
             // 加载可恢复任务
-            loadResumableTasks();
+            if (modeSelect.value === 'continue') {
+                loadResumableTasks();
+            }
             
             // 检查是否有正在运行的Python进程
             checkRunningTasks();
             
             // 添加页面可见性变化监听器
             document.addEventListener('visibilitychange', handleVisibilityChange);
+            
+            // 添加刷新任务列表按钮事件
+            const refreshTasksBtn = document.getElementById('refreshTasksBtn');
+            if (refreshTasksBtn) {
+                refreshTasksBtn.addEventListener('click', () => {
+                    appendToTerminal('手动刷新任务列表...\n');
+                    loadResumableTasks();
+                });
+            }
+            
+            // 添加刷新任务列表按钮
+            const refreshBtn = document.createElement('button');
+            refreshBtn.className = 'btn btn-sm btn-secondary mt-2';
+            refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> 刷新任务列表';
+            refreshBtn.addEventListener('click', () => {
+                appendToTerminal('手动刷新任务列表...\n');
+                loadResumableTasks();
+            });
+            
+            // 将刷新按钮添加到可恢复任务卡片的底部
+            const resumableTasksCard = document.querySelector('.card:nth-child(2)');
+            if (resumableTasksCard) {
+                const cardFooter = document.createElement('div');
+                cardFooter.className = 'card-footer';
+                cardFooter.appendChild(refreshBtn);
+                resumableTasksCard.appendChild(cardFooter);
+            }
         });
         
         // 处理页面可见性变化

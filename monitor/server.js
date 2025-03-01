@@ -1316,7 +1316,8 @@ app.get('/api/resumable-tasks', async (req, res) => {
         // 使用child_process执行命令
         exec(command, {
             cwd: path.join(__dirname, '..'),
-            env: { ...process.env, PYTHONIOENCODING: 'utf-8' } // 确保Python输出使用UTF-8编码
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8' }, // 确保Python输出使用UTF-8编码
+            maxBuffer: 1024 * 1024 // 增加缓冲区大小到1MB
         }, (error, stdout, stderr) => {
             if (error) {
                 console.error('获取可恢复任务失败:', error);
@@ -1346,21 +1347,103 @@ app.get('/api/resumable-tasks', async (req, res) => {
             }
             
             console.log('命令执行成功，尝试解析JSON输出');
+            console.log('原始输出前50个字符:', stdout.substring(0, 50) + '...');
             
             try {
-                const tasks = JSON.parse(stdout);
+                // 尝试清理输出中可能存在的非JSON内容
+                let cleanedOutput = stdout.trim();
+                // 查找第一个 [ 和最后一个 ] 之间的内容
+                const startIdx = cleanedOutput.indexOf('[');
+                const endIdx = cleanedOutput.lastIndexOf(']');
+                
+                if (startIdx >= 0 && endIdx > startIdx) {
+                    cleanedOutput = cleanedOutput.substring(startIdx, endIdx + 1);
+                    console.log('已清理输出，提取JSON数组');
+                }
+                
+                // 解析JSON
+                const tasks = JSON.parse(cleanedOutput);
+                
+                // 验证解析结果是否为数组
+                if (!Array.isArray(tasks)) {
+                    console.error('解析结果不是数组:', typeof tasks);
+                    throw new Error('解析结果不是数组');
+                }
+                
                 console.log(`成功解析到 ${tasks.length} 个可恢复任务`);
+                
+                // 验证每个任务是否有必要的字段
+                const validTasks = tasks.filter(task => {
+                    if (!task || typeof task !== 'object') {
+                        console.warn('任务不是对象:', task);
+                        return false;
+                    }
+                    
+                    if (!task.id) {
+                        console.warn('任务缺少ID:', task);
+                        return false;
+                    }
+                    
+                    return true;
+                });
+                
+                console.log(`有效任务数量: ${validTasks.length}`);
+                
+                // 返回有效的任务列表
                 res.json({
                     success: true,
-                    tasks: tasks
+                    tasks: validTasks,
+                    original_count: tasks.length,
+                    valid_count: validTasks.length
                 });
+                
+                // 如果有任务，通知客户端刷新任务列表
+                if (validTasks.length > 0) {
+                    setTimeout(() => {
+                        io.emit('refreshResumableTasks');
+                    }, 500);
+                }
             } catch (parseError) {
                 console.error('解析可恢复任务失败:', parseError);
                 console.error('原始输出:', stdout);
+                
+                // 尝试直接返回一个硬编码的示例任务，用于调试
+                const fallbackTasks = [];
+                
+                // 尝试从stdout中提取任务ID
+                const idMatches = stdout.match(/alchemy_([a-zA-Z0-9_]+)/g);
+                if (idMatches && idMatches.length > 0) {
+                    console.log('从输出中提取到任务ID:', idMatches);
+                    
+                    // 为每个匹配的ID创建一个简单的任务对象
+                    idMatches.forEach((match, index) => {
+                        const taskId = match.replace('alchemy_', '');
+                        fallbackTasks.push({
+                            id: taskId,
+                            name: `恢复的任务 ${index + 1}`,
+                            resume_info: {
+                                query: "从错误中恢复的查询",
+                                timestamp: new Date().toISOString()
+                            }
+                        });
+                    });
+                    
+                    console.log(`创建了 ${fallbackTasks.length} 个备用任务`);
+                    
+                    // 返回备用任务
+                    return res.json({
+                        success: true,
+                        tasks: fallbackTasks,
+                        is_fallback: true,
+                        parse_error: parseError.message
+                    });
+                }
+                
+                // 如果无法提取任务ID，返回错误
                 res.status(500).json({
                     success: false,
                     error: `解析任务数据失败: ${parseError.message}`,
-                    rawOutput: stdout
+                    rawOutput: stdout.substring(0, 1000) // 只返回前1000个字符，避免响应过大
                 });
             }
         });
@@ -1607,6 +1690,109 @@ function findPythonProcesses(callback) {
         }
     });
 }
+
+// 添加直接从文件系统获取可恢复任务的API
+app.get('/api/direct-resumable-tasks', async (req, res) => {
+    try {
+        console.log('开始直接从文件系统获取可恢复任务...');
+        
+        // 工作目录路径
+        const workDir = path.join(__dirname, '..');
+        const alchemyDir = path.join(workDir, 'work_dir', 'data_alchemy');
+        const runsDir = path.join(alchemyDir, 'alchemy_runs');
+        
+        console.log(`查找目录: ${runsDir}`);
+        
+        // 检查目录是否存在
+        if (!fs.existsSync(runsDir)) {
+            console.log(`目录不存在: ${runsDir}`);
+            return res.json({
+                success: true,
+                tasks: [],
+                message: '任务目录不存在'
+            });
+        }
+        
+        // 读取目录内容
+        const dirEntries = fs.readdirSync(runsDir, { withFileTypes: true });
+        
+        // 过滤出alchemy_开头的目录
+        const alchemyDirs = dirEntries.filter(entry => 
+            entry.isDirectory() && entry.name.startsWith('alchemy_')
+        );
+        
+        console.log(`找到 ${alchemyDirs.length} 个可能的任务目录`);
+        
+        // 收集可恢复任务
+        const resumableTasks = [];
+        
+        for (const dir of alchemyDirs) {
+            const taskId = dir.name.replace('alchemy_', '');
+            const taskDir = path.join(runsDir, dir.name);
+            const resumeInfoPath = path.join(taskDir, 'resume_info.json');
+            
+            // 检查是否有恢复信息文件
+            if (fs.existsSync(resumeInfoPath)) {
+                try {
+                    // 读取恢复信息
+                    const resumeInfo = JSON.parse(fs.readFileSync(resumeInfoPath, 'utf8'));
+                    
+                    // 读取状态信息（如果存在）
+                    let statusInfo = {};
+                    const statusPath = path.join(taskDir, 'status.json');
+                    if (fs.existsSync(statusPath)) {
+                        try {
+                            statusInfo = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+                        } catch (e) {
+                            console.warn(`读取状态文件失败 ${taskId}: ${e.message}`);
+                        }
+                    }
+                    
+                    // 构建任务对象
+                    const task = {
+                        id: taskId,
+                        name: statusInfo.name || `任务 ${taskId}`,
+                        description: statusInfo.description || '',
+                        latest_query: resumeInfo.query || (statusInfo.latest_query || ''),
+                        resume_info: resumeInfo,
+                        status: statusInfo.status || 'unknown',
+                        created_at: statusInfo.created_at || resumeInfo.timestamp,
+                        updated_at: statusInfo.updated_at || resumeInfo.timestamp
+                    };
+                    
+                    resumableTasks.push(task);
+                    console.log(`添加可恢复任务: ${taskId}`);
+                } catch (e) {
+                    console.error(`处理任务 ${taskId} 失败: ${e.message}`);
+                }
+            }
+        }
+        
+        // 按时间戳排序（最新的在前）
+        resumableTasks.sort((a, b) => {
+            const timeA = a.resume_info?.timestamp || '';
+            const timeB = b.resume_info?.timestamp || '';
+            return timeB.localeCompare(timeA);
+        });
+        
+        console.log(`找到 ${resumableTasks.length} 个可恢复任务`);
+        
+        // 返回结果
+        res.json({
+            success: true,
+            tasks: resumableTasks,
+            count: resumableTasks.length,
+            method: 'direct'
+        });
+        
+    } catch (error) {
+        console.error('直接获取可恢复任务失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
 
 // 启动服务器
 const PORT = config.port || 3000;
