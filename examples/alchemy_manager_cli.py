@@ -223,6 +223,11 @@ def list_resumable_tasks(manager, args):
         print("未找到可恢复的任务")
         return
     
+    # 如果指定了JSON输出格式，直接输出JSON
+    if args.json:
+        print(json.dumps(resumable_tasks, ensure_ascii=False))
+        return
+    
     # 准备表格数据
     table_data = []
     for i, task in enumerate(resumable_tasks, 1):
@@ -326,6 +331,7 @@ def main():
     
     # resumable 命令
     resumable_parser = subparsers.add_parser("resumable", help="列出可恢复的任务")
+    resumable_parser.add_argument("--json", action="store_true", help="以JSON格式输出")
     resumable_parser.set_defaults(func=list_resumable_tasks)
     
     args = parser.parse_args()

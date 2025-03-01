@@ -447,8 +447,8 @@
                             </div>
                             
                             <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-primary">执行任务</button>
-                                <button type="button" id="stopTaskBtn" class="btn btn-danger">停止任务</button>
+                                <button type="submit" class="btn btn-primary" id="startTaskBtn">执行任务</button>
+                                <button type="button" id="stopTaskBtn" class="btn btn-danger" style="display: none;">停止任务</button>
                             </div>
                             
                         </form>
@@ -519,10 +519,24 @@
         const alchemyIdGroup = document.getElementById('alchemyIdGroup');
         const resumableTasks = document.getElementById('resumableTasks');
         const stopTaskBtn = document.getElementById('stopTaskBtn');
+        const startTaskBtn = document.getElementById('startTaskBtn');
         const clearTerminalBtn = document.getElementById('clearTerminal');
 
         // 当前任务ID
         let currentAlchemyId = null;
+
+        // 更新按钮显示状态的函数
+        function updateButtonsVisibility() {
+            if (currentAlchemyId) {
+                // 有任务在运行，显示停止按钮，隐藏开始按钮
+                stopTaskBtn.style.display = 'block';
+                startTaskBtn.style.display = 'none';
+            } else {
+                // 没有任务在运行，隐藏停止按钮，显示开始按钮
+                stopTaskBtn.style.display = 'none';
+                startTaskBtn.style.display = 'block';
+            }
+        }
 
         // 模式切换逻辑
         modeSelect.addEventListener('change', () => {
@@ -588,6 +602,13 @@
         taskForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            // 检查是否已有任务在运行
+            if (currentAlchemyId) {
+                // 如果有任务在运行，表单提交按钮应该已经被禁用，这里是额外的安全检查
+                appendToTerminal(`[警告] 已有任务正在运行 (ID: ${currentAlchemyId})，请先停止当前任务\n`);
+                return;
+            }
+            
             const mode = modeSelect.value;
             const query = document.getElementById('query').value;
             const alchemyId = document.getElementById('alchemyId').value;
@@ -600,6 +621,10 @@
             appendToTerminal(`开始${mode === 'new' ? '新建' : '继续'}任务...\n查询: ${query}\n`);
             
             try {
+                // 在发送请求前先禁用开始按钮，显示停止按钮
+                startTaskBtn.style.display = 'none';
+                stopTaskBtn.style.display = 'block';
+                
                 const response = await fetch('/api/execute-task', {
                     method: 'POST',
                     headers: {
@@ -618,11 +643,18 @@
                 if (data.success) {
                     currentAlchemyId = data.alchemy_id;
                     appendToTerminal(`任务已提交，ID: ${currentAlchemyId}\n`);
+                    updateButtonsVisibility();
                 } else {
                     appendToTerminal(`错误: ${data.error}\n`);
+                    // 如果提交失败，恢复按钮状态
+                    currentAlchemyId = null;
+                    updateButtonsVisibility();
                 }
             } catch (error) {
                 appendToTerminal(`提交任务失败: ${error.message}\n`);
+                // 如果发生错误，恢复按钮状态
+                currentAlchemyId = null;
+                updateButtonsVisibility();
             }
         });
 
@@ -634,8 +666,8 @@
             }
             
             try {
-                // 先尝试优雅停止
-                appendToTerminal(`正在尝试停止任务，ID: ${currentAlchemyId}\n`);
+                // 直接执行强制停止
+                appendToTerminal(`正在强制停止任务，ID: ${currentAlchemyId}\n`);
                 
                 const response = await fetch('/api/stop-task', {
                     method: 'POST',
@@ -644,24 +676,26 @@
                     },
                     body: JSON.stringify({
                         alchemy_id: currentAlchemyId,
-                        stop_type: 'graceful'
+                        stop_type: 'force'
                     })
                 });
                 
                 const data = await response.json();
                 
                 if (data.success) {
-                    appendToTerminal(`已发送停止请求，任务ID: ${currentAlchemyId}\n`);
-                    appendToTerminal(`任务将尝试在下一个检查点处停止\n`);
+                    appendToTerminal(`已强制停止任务，ID: ${currentAlchemyId}\n`);
+                    if (data.pids && data.pids.length > 0) {
+                        appendToTerminal(`已终止进程 PID: ${data.pids.join(', ')}\n`);
+                    }
                     
-                    // 设置超时，如果10秒后任务仍在运行，提示用户可能需要强制停止
-                    setTimeout(() => {
-                        if (currentAlchemyId) {
-                            appendToTerminal(`任务可能仍在运行，如果长时间无响应，请刷新页面后重试\n`);
-                        }
-                    }, 10000);
+                    // 显示恢复提示
+                    appendToTerminal(`\n[提示] 系统将尝试保存任务状态，稍后可能会显示恢复命令\n`);
+                    
+                    // 清除当前任务ID
+                    currentAlchemyId = null;
+                    updateButtonsVisibility();
                 } else {
-                    appendToTerminal(`停止失败: ${data.error}\n`);
+                    appendToTerminal(`强制停止失败: ${data.error}\n`);
                 }
             } catch (error) {
                 appendToTerminal(`发送停止请求失败: ${error.message}\n`);
@@ -814,9 +848,34 @@
 
         // 监听任务输出
         socket.on('taskOutput', (data) => {
-            if (data.alchemy_id === currentAlchemyId) {
+            // 即使当前没有任务ID，也显示恢复信息
+            if (data.output && (data.output.includes('[恢复信息]') || data.output.includes('[检查点保存]'))) {
+                appendToTerminal(data.output, data.isError);
+            }
+            // 正常的任务输出处理
+            else if (data.alchemy_id === currentAlchemyId) {
                 // 确保输出是UTF-8编码，并传递错误标志
                 appendToTerminal(data.output, data.isError);
+                
+                // 检查输出是否表示任务已完成
+                if (data.output.includes('任务完成') || data.output.includes('任务已结束') || data.output.includes('任务已完成')) {
+                    // 任务完成时清除当前任务ID
+                    currentAlchemyId = null;
+                    appendToTerminal('任务已完成，可以开始新任务\n');
+                    updateButtonsVisibility();
+                }
+            }
+        });
+
+        // 监听任务状态变化
+        socket.on('taskStatus', (data) => {
+            if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped') {
+                // 任务结束时清除当前任务ID
+                if (data.alchemy_id === currentAlchemyId) {
+                    currentAlchemyId = null;
+                    appendToTerminal(`任务状态: ${data.status}\n`);
+                    updateButtonsVisibility();
+                }
             }
         });
 
@@ -832,9 +891,79 @@
 
         // 页面加载完成后执行
         document.addEventListener('DOMContentLoaded', () => {
+            // 重置当前任务ID
+            currentAlchemyId = null;
+            
+            // 初始化按钮状态
+            updateButtonsVisibility();
+            
             // 加载可恢复任务
             loadResumableTasks();
-        });        
+            
+            // 检查是否有正在运行的Python进程
+            checkRunningTasks();
+            
+            // 添加页面可见性变化监听器
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+        });
+        
+        // 处理页面可见性变化
+        function handleVisibilityChange() {
+            if (document.visibilityState === 'visible') {
+                console.log('页面重新变为可见，检查任务状态');
+                // 页面重新变为可见时，检查任务状态
+                checkRunningTasks();
+                // 重新加载可恢复任务列表
+                loadResumableTasks();
+            }
+        }
+        
+        // 检查是否有正在运行的任务
+        function checkRunningTasks() {
+            // 通过WebSocket发送请求，检查是否有正在运行的Python进程
+            socket.emit('checkRunningTasks');
+            console.log('发送检查运行中任务请求');
+        }
+        
+        // 监听运行中任务检查结果
+        socket.on('runningTasksResult', (data) => {
+            console.log('收到运行中任务检查结果:', data);
+            if (data.running) {
+                currentAlchemyId = data.taskId;
+                appendToTerminal(`检测到正在运行的任务 (ID: ${currentAlchemyId})\n`);
+                updateButtonsVisibility();
+                
+                // 如果有任务正在运行，尝试获取该任务的历史输出
+                fetchTaskHistory(currentAlchemyId);
+            }
+        });
+        
+        // 获取任务历史输出
+        async function fetchTaskHistory(taskId) {
+            try {
+                const response = await fetch(`/api/task-history?id=${encodeURIComponent(taskId)}`);
+                const data = await response.json();
+                
+                if (data.success && data.history) {
+                    // 清空当前终端
+                    outputTerminal.innerHTML = '';
+                    
+                    // 添加历史记录标记
+                    appendToTerminal(`--- 恢复任务历史输出 (ID: ${taskId}) ---\n`);
+                    
+                    // 添加历史输出
+                    data.history.forEach(item => {
+                        appendToTerminal(item.output, item.isError);
+                    });
+                    
+                    // 添加分隔线
+                    appendToTerminal(`--- 新输出将显示在下方 ---\n`);
+                }
+            } catch (error) {
+                console.error('获取任务历史失败:', error);
+                appendToTerminal(`[警告] 无法获取任务历史输出: ${error.message}\n`);
+            }
+        }
     </script>
 </body>
 </html>

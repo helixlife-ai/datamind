@@ -283,16 +283,20 @@ async def async_main():
             logger.info(f"从配置文件加载: {config_path}")
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                query = config.get('query', query)
-                if config.get('input_dirs'):
+                # 修改：只有当命令行参数未提供时，才使用配置文件中的值
+                if args.query is None:
+                    query = config.get('query', query)
+                if not args.mode and config.get('mode'):
+                    mode = config.get('mode')
+                if args.id is None and config.get('input_dirs'):
                     input_dirs = config.get('input_dirs')
                     logger.info(f"从配置中读取input_dirs: {input_dirs}")
-                # 读取运行模式
-                mode = config.get('mode', mode)
                 # 在continue模式下读取alchemy_id和resume标志
                 if mode == "continue":
-                    alchemy_id = config.get('alchemy_id', alchemy_id)
-                    should_resume = config.get('resume', should_resume)
+                    if args.id is None and config.get('alchemy_id'):
+                        alchemy_id = config.get('alchemy_id')
+                    if not args.resume and config.get('resume'):
+                        should_resume = config.get('resume')
         
         # 创建任务管理器
         alchemy_manager = AlchemyManager(work_dir=work_dir, logger=logger)
