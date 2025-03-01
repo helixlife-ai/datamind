@@ -781,6 +781,22 @@ app.post('/api/execute-task', async (req, res) => {
     const { mode, query, alchemy_id, resume } = req.body;
     
     try {
+        // 验证必填参数
+        if (!query) {
+            return res.status(400).json({
+                success: false,
+                error: '查询文本不能为空'
+            });
+        }
+        
+        // 在continue模式下验证任务ID
+        if (mode === 'continue' && !alchemy_id) {
+            return res.status(400).json({
+                success: false,
+                error: '继续任务模式下必须提供任务ID'
+            });
+        }
+        
         // 构建命令参数
         const args = [
             'examples/example_usage.py',
@@ -820,16 +836,19 @@ app.post('/api/execute-task', async (req, res) => {
             env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
         });
         
+        // 生成任务ID - 在continue模式下使用提供的ID，否则生成新ID
+        let taskId = mode === 'continue' ? alchemy_id : (alchemy_id || crypto.randomBytes(8).toString('hex'));
+        
         // 添加到活动进程集合
         const processInfo = { 
             pid: pythonProcess.pid, 
-            taskId: alchemy_id,
-            startTime: new Date()
+            taskId: taskId,
+            startTime: new Date(),
+            mode: mode,
+            query: query,
+            resume: resume
         };
         activeProcesses.add(processInfo);
-        
-        // 生成任务ID
-        const taskId = alchemy_id || crypto.randomBytes(8).toString('hex');
         
         // 设置输出处理
         pythonProcess.stdout.on('data', (data) => {
@@ -846,8 +865,19 @@ app.post('/api/execute-task', async (req, res) => {
             // 尝试从输出中提取alchemy_id
             const idMatch = output.match(/ID: ([a-f0-9]+)/i);
             if (idMatch && idMatch[1]) {
+                const newTaskId = idMatch[1];
+                console.log(`任务ID已更新: ${taskId} -> ${newTaskId}`);
+                
+                // 更新活动进程集合中的任务ID
+                for (const process of activeProcesses) {
+                    if (process.pid === pythonProcess.pid) {
+                        process.taskId = newTaskId;
+                        break;
+                    }
+                }
+                
                 // 更新任务ID
-                taskId = idMatch[1];
+                taskId = newTaskId;
             }
         });
         
@@ -1055,6 +1085,9 @@ app.post('/api/stop-task', async (req, res) => {
                 // 发送任务停止消息
                 emitTaskOutput(alchemy_id, `\n[任务停止] 任务已被强制停止 (ID: ${alchemy_id})\n`, false);
                 
+                // 处理任务中断，保存恢复信息
+                handleTaskInterrupt(alchemy_id);
+                
                 // 清理任务历史记录（延迟执行）
                 cleanupTaskHistory(alchemy_id);
                 
@@ -1124,6 +1157,18 @@ function handleTaskInterrupt(alchemy_id) {
                     output: `\n[恢复信息] 任务已保存中断状态，可以使用以下命令恢复:\npython examples/example_usage.py --mode=continue --id=${alchemy_id} --resume\n`,
                     encoding: 'utf8'
                 });
+                
+                // 同时发送Web界面恢复提示
+                io.emit('taskOutput', {
+                    alchemy_id: alchemy_id,
+                    output: `\n[提示] 您也可以在Web界面上点击"可恢复任务"列表中的"恢复此任务"按钮来恢复\n`,
+                    encoding: 'utf8'
+                });
+                
+                // 刷新可恢复任务列表
+                setTimeout(() => {
+                    io.emit('refreshResumableTasks');
+                }, 1000);
             } else {
                 console.log(`恢复信息文件不存在: ${resumeInfoPath}`);
                 
@@ -1136,11 +1181,33 @@ function handleTaskInterrupt(alchemy_id) {
                     current_step: 'unknown'
                 };
                 
+                // 尝试从活动进程中获取更多信息
+                for (const process of activeProcesses) {
+                    if (process.taskId === alchemy_id) {
+                        basicResumeInfo.query = process.query;
+                        basicResumeInfo.mode = process.mode;
+                        basicResumeInfo.resume = process.resume;
+                        break;
+                    }
+                }
+                
                 // 保存基本恢复信息
                 fs.writeFileSync(resumeInfoPath, JSON.stringify(basicResumeInfo, null, 2), 'utf8');
                 console.log(`已创建基本恢复信息: ${resumeInfoPath}`);
                 
                 emitTaskOutput(alchemy_id, `\n[恢复信息] 已创建基本恢复信息，可以尝试使用以下命令恢复:\npython examples/example_usage.py --mode=continue --id=${alchemy_id} --resume\n`, false);
+                
+                // 同时发送Web界面恢复提示
+                io.emit('taskOutput', {
+                    alchemy_id: alchemy_id,
+                    output: `\n[提示] 您也可以在Web界面上点击"可恢复任务"列表中的"恢复此任务"按钮来恢复\n`,
+                    encoding: 'utf8'
+                });
+                
+                // 刷新可恢复任务列表
+                setTimeout(() => {
+                    io.emit('refreshResumableTasks');
+                }, 1000);
             }
             
             // 尝试执行Python脚本来保存检查点

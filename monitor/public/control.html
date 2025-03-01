@@ -586,6 +586,17 @@
                                 document.getElementById('query').value = query;
                                 document.getElementById('resumeCheckbox').checked = true;
                                 alchemyIdGroup.style.display = 'block';
+                                
+                                // 自动提交表单，开始恢复任务
+                                setTimeout(() => {
+                                    // 如果没有正在运行的任务，自动提交表单
+                                    if (!currentAlchemyId) {
+                                        appendToTerminal(`准备恢复任务 (ID: ${id})...\n`);
+                                        taskForm.dispatchEvent(new Event('submit'));
+                                    } else {
+                                        appendToTerminal(`[警告] 已有任务正在运行 (ID: ${currentAlchemyId})，请先停止当前任务再恢复\n`);
+                                    }
+                                }, 100);
                             });
                         });
                     } else {
@@ -614,11 +625,29 @@
             const alchemyId = document.getElementById('alchemyId').value;
             const resume = document.getElementById('resumeCheckbox').checked;
             
+            // 验证必填字段
+            if (!query.trim()) {
+                appendToTerminal(`[错误] 查询文本不能为空\n`);
+                return;
+            }
+            
+            // 在继续模式下验证任务ID
+            if (mode === 'continue' && !alchemyId.trim()) {
+                appendToTerminal(`[错误] 继续任务模式下必须提供任务ID\n`);
+                return;
+            }
+            
             // 清空终端
             outputTerminal.innerHTML = '';
             
             // 添加初始消息
             appendToTerminal(`开始${mode === 'new' ? '新建' : '继续'}任务...\n查询: ${query}\n`);
+            if (mode === 'continue') {
+                appendToTerminal(`任务ID: ${alchemyId}\n`);
+                if (resume) {
+                    appendToTerminal(`模式: 从中断点恢复\n`);
+                }
+            }
             
             try {
                 // 在发送请求前先禁用开始按钮，显示停止按钮
@@ -887,6 +916,12 @@
         // 监听配置更新
         socket.on('configUpdate', (config) => {
             console.log('配置已更新:', config);
+        });
+
+        // 监听刷新可恢复任务列表事件
+        socket.on('refreshResumableTasks', () => {
+            console.log('收到刷新可恢复任务列表请求');
+            loadResumableTasks();
         });
 
         // 页面加载完成后执行
