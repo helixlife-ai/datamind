@@ -372,9 +372,16 @@ setInterval(() => {
     chatSessionManager.cleanupSessions();
 }, 60 * 60 * 1000);
 
-// 设置静态文件目录
+// 设置Express应用
 app.use(express.static('public'));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// 设置响应头，确保正确的字符编码
+app.use((req, res, next) => {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    next();
+});
 
 // 处理监控目录的路径
 const watchDirs = config.watchDirs.map(dir => ({
@@ -390,12 +397,68 @@ watchDirs.forEach(dir => {
     }
 });
 
+// 设置文件监控函数
+function setupFileWatcher(dir, dirKey) {
+    const watcher = chokidar.watch(dir.fullPath, {
+        ignored: config.excludePatterns,
+        persistent: true,
+        ignoreInitial: true, // 忽略初始扫描事件
+        awaitWriteFinish: {
+            stabilityThreshold: 1000, // 等待文件写入完成
+            pollInterval: 100
+        }
+    });
+    
+    // 监听文件变化事件
+    watcher.on('all', (event, path) => {
+        const relativePath = path.replace(dir.fullPath, '').replace(/^[\/\\]/, '');
+        const time = new Date().toLocaleTimeString();
+        
+        // 记录到服务器日志，但不发送到客户端终端
+        console.log(`[文件变化] ${event}: ${dirKey}/${relativePath} (${time})`);
+        
+        // 仅发送文件变化事件，不包含在终端输出中
+        io.emit('fileChange', {
+            type: event,
+            dir: dirKey,
+            path: relativePath,
+            time: time,
+            shouldDisplay: false // 添加标志，表示不应在终端显示
+        });
+        
+        // 更新文件结构
+        updateFileStructure();
+    });
+    
+    return watcher;
+}
+
+// 更新文件结构函数
+function updateFileStructure() {
+    const structure = {};
+    
+    watchDirs.forEach(dir => {
+        const dirKey = dir.path;
+        structure[dirKey] = {
+            name: dir.name || dirKey,
+            description: dir.description || '',
+            files: buildFileSystemStructure(dir.fullPath)
+        };
+    });
+    
+    io.emit('initialStructure', structure);
+}
+
 // 初始化文件监控
-const watcher = chokidar.watch(watchDirs.map(dir => dir.fullPath), {
-    ignored: config.excludePatterns,
-    persistent: true,
-    alwaysStat: true
+let watchers = [];
+watchDirs.forEach(dir => {
+    const dirKey = dir.path;
+    const watcher = setupFileWatcher(dir, dirKey);
+    watchers.push(watcher);
 });
+
+// 初始化时发送文件结构
+updateFileStructure();
 
 // 构建文件系统结构的函数
 function buildFileSystemStructure(dirPath, baseDir = dirPath) {
@@ -485,6 +548,7 @@ app.get('/api/file', (req, res) => {
             return res.status(400).json({ error: 'Not a file' });
         }
 
+        // 明确指定UTF-8编码读取文件
         const content = fs.readFileSync(fullPath, 'utf8');
         res.json({ content });
     } catch (err) {
@@ -594,6 +658,9 @@ app.post('/api/chat', async (req, res) => {
 // WebSocket连接处理
 io.on('connection', (socket) => {
     console.log('Client connected');
+    
+    // 设置WebSocket编码
+    socket.setEncoding && socket.setEncoding('utf8');
     
     // 发送配置信息
     socket.emit('configUpdate', config);
@@ -750,10 +817,328 @@ watcher
         console.error('Watcher error:', error);
     });
 
+// 添加执行任务API
+app.post('/api/execute-task', async (req, res) => {
+    const { mode, query, alchemy_id, resume } = req.body;
+    
+    try {
+        // 构建命令参数
+        const args = [
+            'python',
+            'examples/example_usage.py',
+            `--mode=${mode}`,
+            `--query=${query}`
+        ];
+        
+        if (mode === 'continue' && alchemy_id) {
+            args.push(`--id=${alchemy_id}`);
+            
+            if (resume) {
+                args.push('--resume');
+            }
+        }
+        
+        // 使用child_process执行命令
+        const { spawn } = require('child_process');
+        const childProcess = spawn(args[0], args.slice(1), {
+            cwd: path.join(__dirname, '..'), // 假设monitor目录在项目根目录下
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8' } // 确保Python输出使用UTF-8编码
+        });
+        
+        // 生成任务ID
+        const taskId = alchemy_id || crypto.randomBytes(8).toString('hex');
+        
+        // 设置输出处理
+        childProcess.stdout.on('data', (data) => {
+            const output = data.toString('utf8');
+            console.log(`[Task ${taskId}] ${output}`);
+            
+            // 通过WebSocket发送输出
+            io.emit('taskOutput', {
+                alchemy_id: taskId,
+                output: output,
+                encoding: 'utf8' // 明确指定编码
+            });
+            
+            // 尝试从输出中提取alchemy_id
+            const idMatch = output.match(/ID: ([a-f0-9]+)/i);
+            if (idMatch && idMatch[1]) {
+                // 更新任务ID
+                taskId = idMatch[1];
+            }
+        });
+        
+        childProcess.stderr.on('data', (data) => {
+            const output = data.toString('utf8');
+            console.error(`[Task ${taskId} ERROR] ${output}`);
+            
+            // 通过WebSocket发送错误输出
+            io.emit('taskOutput', {
+                alchemy_id: taskId,
+                output: `[错误] ${output}`,
+                encoding: 'utf8' // 明确指定编码
+            });
+        });
+        
+        childProcess.on('close', (code) => {
+            console.log(`[Task ${taskId}] 进程退出，代码: ${code}`);
+            
+            // 通过WebSocket发送完成消息
+            io.emit('taskOutput', {
+                alchemy_id: taskId,
+                output: `\n[任务完成] 退出代码: ${code}\n`,
+                encoding: 'utf8' // 明确指定编码
+            });
+        });
+        
+        res.json({
+            success: true,
+            alchemy_id: taskId,
+            message: '任务已启动'
+        });
+    } catch (error) {
+        console.error('执行任务失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 添加停止任务API（合并取消任务和中止任务）
+app.post('/api/stop-task', async (req, res) => {
+    const { alchemy_id, stop_type = 'graceful' } = req.body;
+    
+    if (!alchemy_id) {
+        return res.status(400).json({
+            success: false,
+            error: '缺少任务ID'
+        });
+    }
+    
+    try {
+        // 默认先尝试优雅停止
+        if (stop_type === 'graceful') {
+            console.log(`尝试优雅停止任务: ${alchemy_id}`);
+            // 优雅停止 - 使用 --cancel 参数发送取消请求
+            const { spawn } = require('child_process');
+            const childProcess = spawn('python', [
+                'examples/example_usage.py',
+                `--id=${alchemy_id}`,
+                `--cancel`
+            ], {
+                cwd: path.join(__dirname, '..'),
+                env: { ...process.env, PYTHONIOENCODING: 'utf-8' } // 确保Python输出使用UTF-8编码
+            });
+            
+            let output = '';
+            
+            childProcess.stdout.on('data', (data) => {
+                output += data.toString('utf8');
+            });
+            
+            childProcess.stderr.on('data', (data) => {
+                output += data.toString('utf8');
+            });
+            
+            childProcess.on('close', (code) => {
+                console.log(`停止任务进程退出，代码: ${code}`);
+                
+                // 通过WebSocket发送取消消息
+                io.emit('taskOutput', {
+                    alchemy_id: alchemy_id,
+                    output: `\n[停止请求] ${output}\n`,
+                    encoding: 'utf8' // 明确指定编码
+                });
+            });
+            
+            res.json({
+                success: true,
+                message: '已发送停止请求'
+            });
+        } else if (stop_type === 'force') {
+            console.log(`尝试强制停止任务: ${alchemy_id}`);
+            // 强制停止 - 使用系统命令查找并强制终止相关进程
+            const { exec } = require('child_process');
+            
+            // 查找包含特定任务ID的Python进程
+            const findCmd = process.platform === 'win32' 
+                ? `tasklist /FI "IMAGENAME eq python.exe" /FO CSV` 
+                : `ps aux | grep "python.*${alchemy_id}" | grep -v grep`;
+            
+            exec(findCmd, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('查找进程失败:', error);
+                    return res.status(500).json({
+                        success: false,
+                        error: '查找进程失败: ' + error.message
+                    });
+                }
+                
+                // 解析进程ID
+                let pids = [];
+                if (process.platform === 'win32') {
+                    // Windows下解析tasklist输出
+                    const lines = stdout.split('\n').filter(line => line.includes(alchemy_id));
+                    lines.forEach(line => {
+                        const match = line.match(/"python.exe","(\d+)",/);
+                        if (match && match[1]) {
+                            pids.push(match[1]);
+                        }
+                    });
+                } else {
+                    // Linux/Mac下解析ps输出
+                    const lines = stdout.split('\n');
+                    lines.forEach(line => {
+                        const parts = line.trim().split(/\s+/);
+                        if (parts.length > 1) {
+                            pids.push(parts[1]);
+                        }
+                    });
+                }
+                
+                if (pids.length === 0) {
+                    // 没有找到相关进程
+                    io.emit('taskOutput', {
+                        alchemy_id: alchemy_id,
+                        output: `\n[停止请求] 未找到相关任务进程\n`,
+                        encoding: 'utf8' // 明确指定编码
+                    });
+                    
+                    return res.json({
+                        success: true,
+                        message: '未找到相关任务进程'
+                    });
+                }
+                
+                // 终止找到的进程
+                const killCmd = process.platform === 'win32'
+                    ? `taskkill /F /PID ${pids.join(' /PID ')}` 
+                    : `kill -9 ${pids.join(' ')}`;
+                
+                exec(killCmd, (killError, killStdout, killStderr) => {
+                    if (killError) {
+                        console.error('终止进程失败:', killError);
+                        io.emit('taskOutput', {
+                            alchemy_id: alchemy_id,
+                            output: `\n[停止请求失败] ${killError.message}\n`,
+                            encoding: 'utf8' // 明确指定编码
+                        });
+                        
+                        return res.status(500).json({
+                            success: false,
+                            error: '终止进程失败: ' + killError.message
+                        });
+                    }
+                    
+                    // 发送成功消息
+                    io.emit('taskOutput', {
+                        alchemy_id: alchemy_id,
+                        output: `\n[停止请求成功] 已强制终止任务进程 (PID: ${pids.join(', ')})\n`,
+                        encoding: 'utf8' // 明确指定编码
+                    });
+                    
+                    res.json({
+                        success: true,
+                        message: '已强制终止任务进程',
+                        pids: pids
+                    });
+                });
+            });
+        } else {
+            return res.status(400).json({
+                success: false,
+                error: '无效的停止类型'
+            });
+        }
+    } catch (error) {
+        console.error('停止任务失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 保留原有API端点以保持向后兼容
+app.post('/api/cancel-task', async (req, res) => {
+    const { alchemy_id } = req.body;
+    
+    if (!alchemy_id) {
+        return res.status(400).json({
+            success: false,
+            error: '缺少任务ID'
+        });
+    }
+    
+    // 直接调用新API的处理逻辑
+    req.body.stop_type = 'graceful';
+    req.url = '/api/stop-task';
+    app.handle(req, res);
+});
+
+app.post('/api/terminate-task', async (req, res) => {
+    const { alchemy_id } = req.body;
+    
+    if (!alchemy_id) {
+        return res.status(400).json({
+            success: false,
+            error: '缺少任务ID'
+        });
+    }
+    
+    // 直接调用新API的处理逻辑
+    req.body.stop_type = 'force';
+    req.url = '/api/stop-task';
+    app.handle(req, res);
+});
+
+// 添加获取可恢复任务API
+app.get('/api/resumable-tasks', async (req, res) => {
+    try {
+        // 使用child_process执行命令
+        const { exec } = require('child_process');
+        
+        exec('python examples/alchemy_manager_cli.py resumable --json', {
+            cwd: path.join(__dirname, '..'),
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8' } // 确保Python输出使用UTF-8编码
+        }, (error, stdout, stderr) => {
+            if (error) {
+                console.error('获取可恢复任务失败:', error);
+                return res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+            
+            try {
+                const tasks = JSON.parse(stdout);
+                res.json({
+                    success: true,
+                    tasks: tasks
+                });
+            } catch (parseError) {
+                console.error('解析可恢复任务失败:', parseError);
+                res.status(500).json({
+                    success: false,
+                    error: '解析任务数据失败'
+                });
+            }
+        });
+    } catch (error) {
+        console.error('获取可恢复任务失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // 启动服务器
 const PORT = config.port || 3000;
 http.listen(PORT, () => {
     console.log(`服务器运行在 http://localhost:${PORT}`);
+    console.log(`字符编码: ${Buffer.isEncoding('utf8') ? 'UTF-8支持正常' : 'UTF-8支持异常'}`);
     watchDirs.forEach(dir => {
         console.log(`监控目录: ${dir.fullPath}`);
     });

@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据炼丹系统控制台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc;
+            min-height: 100vh;
+            color: #1e293b;
+        }
+        
+        .container {
+            max-width: none;
+            margin: 0;
+            background-color: white;
+            padding: 0;
+            min-height: 100vh;
+            box-sizing: border-box;
+            padding-top: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        h1 {
+            color: #333;
+            margin: 0;
+            padding: 20px 0;
+            font-weight: 600;
+            background: linear-gradient(135deg, #1e293b, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .card {
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s, transform 0.2s;
+            margin-bottom: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .card:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        .card-header {
+            background-color: #f8fafc;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            font-weight: 600;
+            color: #334155;
+            padding: 16px;
+            flex-shrink: 0;
+        }
+        
+        .card-body {
+            padding: 16px;
+            flex: 1;
+            overflow: auto;
+        }
+        
+        .terminal {
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            font-family: 'Menlo', 'Monaco', 'Microsoft YaHei', monospace;
+            padding: 16px;
+            height: 100%;
+            overflow-y: auto;
+            border-radius: 8px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .terminal::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .terminal::-webkit-scrollbar-track {
+            background: #242424;
+            border-radius: 4px;
+        }
+        
+        .terminal::-webkit-scrollbar-thumb {
+            background-color: #555;
+            border-radius: 4px;
+            border: 2px solid #242424;
+        }
+        
+        .terminal::-webkit-scrollbar-thumb:hover {
+            background-color: #777;
+        }
+        
+        .file-browser {
+            height: 100%;
+            overflow-y: auto;
+            border-radius: 8px;
+            background-color: white;
+        }
+        
+        .file-browser::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .file-browser::-webkit-scrollbar-track {
+            background: #f8fafc;
+            border-radius: 4px;
+        }
+        
+        .file-browser::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 4px;
+            border: 2px solid #f8fafc;
+        }
+        
+        .file-browser::-webkit-scrollbar-thumb:hover {
+            background-color: #94a3b8;
+        }
+        
+        .form-label {
+            font-weight: 500;
+            color: #334155;
+        }
+        
+        .form-control {
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 12px 16px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+            transition: all 0.2s;
+        }
+        
+        .form-control:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+        }
+        
+        .btn-primary:hover {
+            background-color: #2563eb;
+            border-color: #2563eb;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .btn-danger {
+            background-color: #ef4444;
+            border-color: #ef4444;
+            box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+        }
+        
+        .btn-danger:hover {
+            background-color: #dc2626;
+            border-color: #dc2626;
+            box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .btn-warning {
+            background-color: #f59e0b;
+            border-color: #f59e0b;
+            box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            background-color: #d97706;
+            border-color: #d97706;
+            box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+            transform: translateY(-1px);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background-color: #64748b;
+            border-color: #64748b;
+            box-shadow: 0 2px 4px rgba(100, 116, 139, 0.2);
+        }
+        
+        .btn-secondary:hover {
+            background-color: #475569;
+            border-color: #475569;
+            box-shadow: 0 4px 8px rgba(100, 116, 139, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .task-item {
+            background-color: white;
+            transition: all 0.2s;
+        }
+        
+        .task-item:hover {
+            background-color: rgba(241, 245, 249, 0.7);
+            transform: translateX(2px);
+        }
+        
+        .resume-task-btn {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+        }
+        
+        .resume-task-btn:hover {
+            background-color: #2563eb;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .header {
+            display: flex;
+            align-items: center;
+            padding: 8px 24px;
+            background: linear-gradient(to right, #ffffff, #f1f5f9);
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            height: 60px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+            flex-shrink: 0;
+        }
+        
+        .title-container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .main-title {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        
+        .product-name {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 0;
+            background: linear-gradient(135deg, #1e293b, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .product-subtitle {
+            font-family: 'Crimson Text', Georgia, serif;
+            font-size: 14px;
+            font-style: italic;
+            color: #64748b;
+            margin: 0;
+            padding-left: 28px;
+            position: relative;
+        }
+        
+        .product-subtitle::before {
+            content: "⚗️";
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 16px;
+        }
+        
+        .product-tagline {
+            font-size: 13px;
+            font-weight: 600;
+            color: #3b82f6;
+            margin: 0;
+            padding: 4px 12px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.08);
+            white-space: nowrap;
+            letter-spacing: -0.2px;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+        }
+        
+        .product-tagline::before {
+            content: "✨";
+            margin-right: 8px;
+        }
+        
+        /* 文件查看器模态框样式 */
+        .modal-content {
+            border-radius: 10px;
+            border: none;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .modal-header {
+            background-color: #f8fafc;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            border-radius: 10px 10px 0 0;
+        }
+        
+        .modal-title {
+            font-weight: 600;
+            color: #334155;
+        }
+        
+        pre#fileContent {
+            background-color: #1a1a1a;
+            color: #e6e6e6;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Menlo', 'Monaco', monospace;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .content-container {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 60px);
+            padding: 0 16px 16px;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .card-footer {
+            background-color: #f8fafc;
+            border-top: 1px solid rgba(203, 213, 225, 0.5);
+            padding: 12px 16px;
+            flex-shrink: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .content-container {
+                flex-direction: column;
+                height: auto;
+                overflow: auto;
+            }
+            
+            .card {
+                height: auto;
+                margin-bottom: 16px;
+            }
+            
+            .terminal, .file-browser {
+                height: 300px;
+            }
+            
+            .header {
+                padding: 16px;
+            }
+            
+            .product-name {
+                font-size: 20px;
+            }
+            
+            .product-tagline {
+                font-size: 14px;
+                margin-left: 20px;
+                padding: 4px 8px;
+            }
+            
+            .product-subtitle {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-container">
+                <div class="main-title">
+                    <h1 class="product-name">DataMind</h1>
+                    <p class="product-subtitle">The Alchemy Cauldron</p>
+                    <p class="product-tagline">Data in, Surprise out!</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content-container">
+            <!-- 左侧：任务控制面板 -->
+            <div class="col-md-4" style="padding: 0; height: 100%;">
+                <div class="card">
+                    <div class="card-header">任务控制</div>
+                    <div class="card-body">
+                        <form id="taskForm">
+                            <div class="mb-3">
+                                <label for="mode" class="form-label">运行模式</label>
+                                <select class="form-select" id="mode">
+                                    <option value="new">新建任务</option>
+                                    <option value="continue">继续任务</option>
+                                    <option value="cancel_test">取消测试</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="query" class="form-label">查询文本</label>
+                                <textarea class="form-control" id="query" rows="3" placeholder="请输入查询文本..."></textarea>
+                            </div>
+                            
+                            <div class="mb-3" id="alchemyIdGroup">
+                                <label for="alchemyId" class="form-label">任务ID</label>
+                                <input type="text" class="form-control" id="alchemyId" placeholder="继续模式下需要填写">
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" id="resumeCheckbox">
+                                    <label class="form-check-label" for="resumeCheckbox">
+                                        从中断点恢复
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary">执行任务</button>
+                                <button type="button" id="stopTaskBtn" class="btn btn-danger">停止任务</button>
+                            </div>
+                            
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-header">可恢复任务</div>
+                    <div class="card-body">
+                        <div id="resumableTasks">
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 中间：输出终端 -->
+            <div class="col-md-5" style="padding: 0; height: 100%;">
+                <div class="card">
+                    <div class="card-header">任务输出</div>
+                    <div class="card-body p-0">
+                        <div class="terminal" id="outputTerminal"></div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-sm btn-secondary" id="clearTerminal">清空输出</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧：文件浏览器 -->
+            <div class="col-md-3" style="padding: 0; height: 100%;">
+                <div class="card">
+                    <div class="card-header">文件浏览器</div>
+                    <div class="card-body p-0">
+                        <div class="file-browser" id="fileBrowser"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 文件查看器模态框 -->
+        <div class="modal fade" id="fileViewerModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="fileViewerTitle">文件查看器</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <pre id="fileContent"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // 连接WebSocket
+        const socket = io();
+
+        // DOM元素
+        const outputTerminal = document.getElementById('outputTerminal');
+        const fileBrowser = document.getElementById('fileBrowser');
+        const taskForm = document.getElementById('taskForm');
+        const modeSelect = document.getElementById('mode');
+        const alchemyIdGroup = document.getElementById('alchemyIdGroup');
+        const resumableTasks = document.getElementById('resumableTasks');
+        const stopTaskBtn = document.getElementById('stopTaskBtn');
+        const clearTerminalBtn = document.getElementById('clearTerminal');
+
+        // 当前任务ID
+        let currentAlchemyId = null;
+
+        // 模式切换逻辑
+        modeSelect.addEventListener('change', () => {
+            if (modeSelect.value === 'continue') {
+                alchemyIdGroup.style.display = 'block';
+            } else {
+                alchemyIdGroup.style.display = 'none';
+            }
+        });
+
+        // 初始化时隐藏任务ID输入框
+        if (modeSelect.value !== 'continue') {
+            alchemyIdGroup.style.display = 'none';
+        }
+
+        // 加载可恢复任务列表
+        function loadResumableTasks() {
+            // 这里需要添加一个API来获取可恢复任务
+            fetch('/api/resumable-tasks')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.tasks && data.tasks.length > 0) {
+                        const taskList = data.tasks.map((task, index) => {
+                            return `
+                            <div class="task-item mb-2 p-2 border rounded">
+                                <div><strong>ID:</strong> ${task.id}</div>
+                                <div><strong>查询:</strong> ${task.resume_info?.query || '未知'}</div>
+                                <div><strong>时间:</strong> ${task.resume_info?.timestamp || '未知'}</div>
+                                <button class="btn btn-sm btn-primary mt-1 resume-task-btn" 
+                                        data-id="${task.id}" 
+                                        data-query="${task.resume_info?.query || ''}">
+                                    恢复此任务
+                                </button>
+                            </div>
+                            `;
+                        }).join('');
+                        resumableTasks.innerHTML = taskList;
+                        
+                        // 添加恢复任务按钮事件
+                        document.querySelectorAll('.resume-task-btn').forEach(btn => {
+                            btn.addEventListener('click', (e) => {
+                                const id = e.target.getAttribute('data-id');
+                                const query = e.target.getAttribute('data-query');
+                                
+                                document.getElementById('mode').value = 'continue';
+                                document.getElementById('alchemyId').value = id;
+                                document.getElementById('query').value = query;
+                                document.getElementById('resumeCheckbox').checked = true;
+                                alchemyIdGroup.style.display = 'block';
+                            });
+                        });
+                    } else {
+                        resumableTasks.innerHTML = '<p>没有可恢复的任务</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('加载可恢复任务失败:', error);
+                    resumableTasks.innerHTML = '<p class="text-danger">加载失败</p>';
+                });
+        }
+
+        // 提交任务表单
+        taskForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const mode = modeSelect.value;
+            const query = document.getElementById('query').value;
+            const alchemyId = document.getElementById('alchemyId').value;
+            const resume = document.getElementById('resumeCheckbox').checked;
+            
+            // 清空终端
+            outputTerminal.innerHTML = '';
+            
+            // 添加初始消息
+            appendToTerminal(`开始${mode === 'new' ? '新建' : '继续'}任务...\n查询: ${query}\n`);
+            
+            try {
+                const response = await fetch('/api/execute-task', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        mode,
+                        query,
+                        alchemy_id: alchemyId,
+                        resume
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentAlchemyId = data.alchemy_id;
+                    appendToTerminal(`任务已提交，ID: ${currentAlchemyId}\n`);
+                } else {
+                    appendToTerminal(`错误: ${data.error}\n`);
+                }
+            } catch (error) {
+                appendToTerminal(`提交任务失败: ${error.message}\n`);
+            }
+        });
+
+        // 停止任务
+        stopTaskBtn.addEventListener('click', async () => {
+            if (!currentAlchemyId) {
+                appendToTerminal('没有正在运行的任务\n');
+                return;
+            }
+            
+            try {
+                // 先尝试优雅停止
+                appendToTerminal(`正在尝试停止任务，ID: ${currentAlchemyId}\n`);
+                
+                const response = await fetch('/api/stop-task', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        alchemy_id: currentAlchemyId,
+                        stop_type: 'graceful'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    appendToTerminal(`已发送停止请求，任务ID: ${currentAlchemyId}\n`);
+                    appendToTerminal(`任务将尝试在下一个检查点处停止\n`);
+                    
+                    // 设置超时，如果10秒后任务仍在运行，提示用户可能需要强制停止
+                    setTimeout(() => {
+                        if (currentAlchemyId) {
+                            appendToTerminal(`任务可能仍在运行，如果长时间无响应，请刷新页面后重试\n`);
+                        }
+                    }, 10000);
+                } else {
+                    appendToTerminal(`停止失败: ${data.error}\n`);
+                }
+            } catch (error) {
+                appendToTerminal(`发送停止请求失败: ${error.message}\n`);
+            }
+        });
+
+        // 清空终端
+        clearTerminalBtn.addEventListener('click', () => {
+            outputTerminal.innerHTML = '';
+        });
+
+        // 向终端添加文本
+        function appendToTerminal(text) {
+            try {
+                // 确保文本是有效的UTF-8字符串
+                if (typeof text !== 'string') {
+                    text = String(text);
+                }
+                
+                const lines = text.split('\n');
+                lines.forEach(line => {
+                    if (line.trim()) {
+                        const element = document.createElement('div');
+                        // 使用textContent而不是innerHTML以避免XSS攻击
+                        element.textContent = line;
+                        outputTerminal.appendChild(element);
+                    }
+                });
+                outputTerminal.scrollTop = outputTerminal.scrollHeight;
+            } catch (error) {
+                console.error('添加文本到终端时出错:', error);
+                // 尝试使用备用方法添加
+                const element = document.createElement('div');
+                element.textContent = `[解码错误的文本] ${error.message}`;
+                outputTerminal.appendChild(element);
+                outputTerminal.scrollTop = outputTerminal.scrollHeight;
+            }
+        }
+
+        // 文件浏览器构建
+        function buildFileBrowser(structure) {
+            fileBrowser.innerHTML = '';
+            
+            Object.keys(structure).forEach(dirKey => {
+                const dirData = structure[dirKey];
+                
+                const dirElement = document.createElement('div');
+                dirElement.className = 'directory mb-2';
+                
+                const dirHeader = document.createElement('div');
+                dirHeader.className = 'directory-header fw-bold p-1 bg-light';
+                dirHeader.textContent = dirData.name || dirKey;
+                dirElement.appendChild(dirHeader);
+                
+                if (dirData.description) {
+                    const dirDesc = document.createElement('div');
+                    dirDesc.className = 'directory-desc small text-muted ps-2';
+                    dirDesc.textContent = dirData.description;
+                    dirElement.appendChild(dirDesc);
+                }
+                
+                const fileList = document.createElement('div');
+                fileList.className = 'file-list ps-3 pt-1';
+                
+                // 递归构建文件树
+                buildFileTree(fileList, dirData.files, dirKey, '');
+                
+                dirElement.appendChild(fileList);
+                fileBrowser.appendChild(dirElement);
+            });
+        }
+
+        // 递归构建文件树
+        function buildFileTree(parentElement, files, dirKey, currentPath) {
+            Object.keys(files).forEach(name => {
+                const value = files[name];
+                const itemPath = currentPath ? `${currentPath}/${name}` : name;
+                
+                if (value === true) {
+                    // 文件
+                    const fileElement = document.createElement('div');
+                    fileElement.className = 'file-item';
+                    fileElement.innerHTML = `<span class="file-name">${name}</span>`;
+                    fileElement.addEventListener('click', () => {
+                        viewFile(dirKey, itemPath);
+                    });
+                    parentElement.appendChild(fileElement);
+                } else {
+                    // 目录
+                    const subDirElement = document.createElement('div');
+                    subDirElement.className = 'sub-directory mt-1';
+                    
+                    const subDirHeader = document.createElement('div');
+                    subDirHeader.className = 'sub-directory-header';
+                    subDirHeader.innerHTML = `<span class="folder-name">📁 ${name}</span>`;
+                    subDirElement.appendChild(subDirHeader);
+                    
+                    const subFileList = document.createElement('div');
+                    subFileList.className = 'sub-file-list ps-3';
+                    subDirElement.appendChild(subFileList);
+                    
+                    // 递归处理子目录
+                    buildFileTree(subFileList, value, dirKey, itemPath);
+                    
+                    parentElement.appendChild(subDirElement);
+                }
+            });
+        }
+
+        // 查看文件内容
+        async function viewFile(dirKey, filePath) {
+            try {
+                const response = await fetch(`/api/file?dir=${encodeURIComponent(dirKey)}&path=${encodeURIComponent(filePath)}`);
+                const data = await response.json();
+                
+                if (data.content) {
+                    const fileViewerTitle = document.getElementById('fileViewerTitle');
+                    const fileContent = document.getElementById('fileContent');
+                    
+                    fileViewerTitle.textContent = filePath;
+                    fileContent.textContent = data.content;
+                    
+                    const modal = new bootstrap.Modal(document.getElementById('fileViewerModal'));
+                    modal.show();
+                } else {
+                    alert('无法读取文件内容');
+                }
+            } catch (error) {
+                console.error('读取文件失败:', error);
+                alert('读取文件失败: ' + error.message);
+            }
+        }
+
+        // 监听文件变化
+        socket.on('fileChange', (data) => {
+            // 仅在后台更新文件浏览器，不显示通知
+            console.log(`文件变化: ${data.type}: ${data.dir}/${data.path}`);
+        });
+
+        // 监听任务输出
+        socket.on('taskOutput', (data) => {
+            if (data.alchemy_id === currentAlchemyId) {
+                // 确保输出是UTF-8编码
+                appendToTerminal(data.output);
+            }
+        });
+
+        // 监听初始结构
+        socket.on('initialStructure', (structure) => {
+            buildFileBrowser(structure);
+        });
+
+        // 监听配置更新
+        socket.on('configUpdate', (config) => {
+            console.log('配置已更新:', config);
+        });
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', () => {
+            // 加载可恢复任务
+            loadResumableTasks();
+        });        
+    </script>
+</body>
+</html>

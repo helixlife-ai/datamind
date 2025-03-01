@@ -265,6 +265,7 @@ async def async_main():
                      help='运行模式: new(新建), continue(继续/恢复), cancel_test(取消测试)')
     parser.add_argument('--id', type=str, help='要继续的alchemy_id（仅在continue模式下有效）')
     parser.add_argument('--resume', action='store_true', help='是否尝试从中断点恢复（仅在continue模式下有效）')
+    parser.add_argument('--cancel', action='store_true', help='取消指定ID的任务')
     args = parser.parse_args()
     
     logger = setup_logging()
@@ -282,6 +283,7 @@ async def async_main():
         mode = args.mode or "new"  # 默认为新建模式
         alchemy_id = args.id
         should_resume = args.resume
+        should_cancel = args.cancel  # 新增：是否需要取消任务
         
         # 首先尝试从配置文件读取
         config_path = Path(args.config)
@@ -302,6 +304,22 @@ async def async_main():
         
         # 创建任务管理器
         alchemy_manager = AlchemyManager(work_dir=work_dir, logger=logger)
+        
+        # 如果指定了取消参数，则取消指定的任务
+        if should_cancel and alchemy_id:
+            logger.info(f"准备取消任务 (alchemy_id: {alchemy_id})")
+            # 创建DataMindAlchemy实例
+            alchemy = DataMindAlchemy(
+                work_dir=work_dir / "data_alchemy", 
+                logger=logger,
+                alchemy_id=alchemy_id,
+                alchemy_manager=alchemy_manager
+            )
+            
+            # 发送取消请求
+            await alchemy.cancel_process()
+            logger.info(f"已发送取消请求 (alchemy_id: {alchemy_id})")
+            return
         
         # 如果是恢复模式且没有指定alchemy_id
         if should_resume and not alchemy_id:
