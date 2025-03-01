@@ -150,7 +150,6 @@ async def datamind_alchemy_process(
     input_dirs: list = None,
     work_dir: Path = None,
     logger: logging.Logger = None,
-    auto_cancel: bool = False,
     should_resume: bool = False,  # 是否尝试从中断点恢复
     alchemy_manager = None  # 添加任务管理器参数
 ) -> None:
@@ -203,13 +202,6 @@ async def datamind_alchemy_process(
                 input_dirs=input_dirs
             ))
         
-        # 如果启用了自动取消，等待一段时间后取消
-        if auto_cancel:
-            # 等待3秒后取消处理（仅用于测试）
-            await asyncio.sleep(3)
-            logger.info("执行自动取消测试")
-            await alchemy.cancel_process()
-        
         try:
             # 等待处理完成
             result = await process_task
@@ -261,8 +253,8 @@ async def async_main():
     parser = argparse.ArgumentParser(description='数据炼丹测试工具')
     parser.add_argument('--query', type=str, help='查询文本')
     parser.add_argument('--config', type=str, help='配置文件路径', default='work_dir/config.json')
-    parser.add_argument('--mode', type=str, choices=['new', 'continue', 'cancel_test'], 
-                     help='运行模式: new(新建), continue(继续/恢复), cancel_test(取消测试)')
+    parser.add_argument('--mode', type=str, choices=['new', 'continue'], 
+                     help='运行模式: new(新建), continue(继续/恢复)')
     parser.add_argument('--id', type=str, help='要继续的alchemy_id（仅在continue模式下有效）')
     parser.add_argument('--resume', action='store_true', help='是否尝试从中断点恢复（仅在continue模式下有效）')
     parser.add_argument('--cancel', action='store_true', help='取消指定ID的任务')
@@ -364,19 +356,6 @@ async def async_main():
                 alchemy_manager=alchemy_manager  # 添加任务管理器
             )
             logger.info("继续炼丹流程完成")
-        elif mode == "cancel_test":
-            # 取消测试模式：启动处理然后自动取消
-            logger.info("运行模式: 取消测试")
-            logger.info(f"开始数据炼丹测试，查询: {query}，将在3秒后自动取消")
-            await datamind_alchemy_process(
-                query=query,
-                input_dirs=input_dirs,
-                work_dir=work_dir / "data_alchemy",  
-                logger=logger,
-                auto_cancel=True,  # 启用自动取消
-                alchemy_manager=alchemy_manager  # 添加任务管理器
-            )
-            logger.info("取消测试完成")
         else:
             # 新建模式：执行标准数据炼丹流程
             logger.info("运行模式: 新建炼丹流程")
