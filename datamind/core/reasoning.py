@@ -184,9 +184,11 @@ class ReasoningEngine:
                         if not has_started_think:
                             has_started_think = True
                             reasoning_content = delta.reasoning_content
+                            # 只在首次输出<think>标签
                             yield "<think>\n" + delta.reasoning_content
                         else:
                             reasoning_content += delta.reasoning_content
+                            # 只输出增量内容，不重复输出标签
                             yield delta.reasoning_content
                     
                     # 处理回答内容
@@ -194,9 +196,12 @@ class ReasoningEngine:
                         if not has_started_answer:
                             has_started_answer = True
                             content = delta.content
-                            # 只有在有推理内容时才添加分隔标签
+                            # 只有在有推理内容时才添加分隔标签，且只添加一次
                             if has_started_think:
                                 yield "\n</think>\n\n<answer>\n"
+                            else:
+                                # 如果没有推理内容，则添加<answer>标签
+                                yield "<answer>\n"
                             yield delta.content
                         else:
                             content += delta.content
@@ -206,11 +211,9 @@ class ReasoningEngine:
                     self.logger.error(f"处理流式响应chunk时出错: {str(e)}")
                     continue
 
-            # 确保流结束时添加结束标签
-            if has_started_answer and has_started_think:
-                yield "\n</answer>\n"
-            elif has_started_answer:  # 只有回答没有推理的情况
-                yield "\n</answer>\n"
+            # 确保流结束时添加结束标签，但只添加一次
+            if has_started_answer:
+                yield "\n</answer>"
                 
             # 构建完整响应
             if reasoning_content:

@@ -12,12 +12,14 @@ from pathlib import Path
 import hashlib
 from ..utils.common import DateTimeEncoder
 
+# 创建一个模块级别的日志记录器
 logger = logging.getLogger(__name__)
 
 
 class ResultFormatter:
     """统一的结果格式化器"""
     def __init__(self, logger: Optional[logging.Logger] = None):
+        # 使用传入的日志记录器或模块级别的日志记录器
         self.logger = logger or logging.getLogger(__name__)
 
     def format(self, results: Dict) -> Dict:
@@ -54,7 +56,9 @@ class ResultSaver:
     """统一的结果保存器"""
     def __init__(self, work_dir: str = "output", logger: Optional[logging.Logger] = None):
         self.work_dir = work_dir
+        # 使用传入的日志记录器或模块级别的日志记录器
         self.logger = logger or logging.getLogger(__name__)
+        # 传递相同的日志记录器给格式化器
         self.formatter = ResultFormatter(logger=self.logger)
 
     def save(self, results: Dict, filename: str) -> str:
@@ -115,12 +119,13 @@ class SearchPlanExecutor:
             work_dir: 工作目录
             logger: 可选，日志记录器实例
         """
+        # 使用传入的日志记录器或模块级别的日志记录器
         self.logger = logger or logging.getLogger(__name__)
         self.engine = search_engine
         self.work_dir = Path(work_dir)
         self.work_dir.mkdir(parents=True, exist_ok=True)
         
-        # 使用新的内部格式化器和保存器
+        # 传递相同的日志记录器给结果保存器
         self.result_saver = ResultSaver(work_dir=str(self.work_dir), logger=self.logger)
 
     def set_work_dir(self, work_dir: str):
