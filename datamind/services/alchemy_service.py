@@ -283,6 +283,13 @@ class DataMindAlchemy:
             Dict: 处理结果
         """
         try:
+            # 初始验证查询参数
+            if query is None:
+                self.logger.warning("传入的查询为None，将尝试从配置文件或恢复信息中获取")
+            elif not query.strip():
+                self.logger.warning("传入的查询为空字符串，将尝试从配置文件或恢复信息中获取")
+                query = None  # 将空字符串转换为None，以便后续逻辑处理
+                
             # 首先检查是否存在next_iteration_config.json文件并读取配置
             next_config_path = self.alchemy_dir / "next_iteration_config.json"
             config_input_dirs = None
@@ -291,18 +298,44 @@ class DataMindAlchemy:
                     with open(next_config_path, 'r', encoding='utf-8') as f:
                         next_config = json.load(f)
                     
-                    # 如果配置文件中有query且未提供query参数，则使用配置文件中的query
-                    if query is None and "query" in next_config:
-                        query = next_config["query"]
-                        self.logger.info(f"从配置文件加载查询: {query}")
+                    # 优先使用配置文件中的query，无论是否提供了query参数
+                    if "query" in next_config and next_config["query"]:
+                        # 确保配置文件中的查询不为空
+                        if not next_config["query"] or next_config["query"].strip() == "":
+                            self.logger.warning("配置文件中的查询为空，将忽略")
+                        else:
+                            # 如果提供了query参数且与配置不同，记录日志
+                            if query is not None and query != next_config["query"]:
+                                self.logger.info(f"提供的查询文本 '{query}' 将被配置文件中的查询 '{next_config['query']}' 覆盖")
+                            query = next_config["query"]
+                            self.logger.info(f"使用配置文件中的查询: {query}")
+                    elif not query:
+                        self.logger.warning("配置文件中没有有效的查询，且未提供查询参数")
                     
-                    # 读取配置文件中的input_dirs
+                    # 优先使用配置文件中的input_dirs，无论是否提供了input_dirs参数
                     if "input_dirs" in next_config and next_config["input_dirs"]:
+                        # 如果提供了input_dirs参数且与配置不同，记录日志
+                        if input_dirs is not None and input_dirs != next_config["input_dirs"]:
+                            self.logger.info(f"提供的输入目录 {input_dirs} 将被配置文件中的输入目录 {next_config['input_dirs']} 覆盖")
                         config_input_dirs = next_config["input_dirs"]
-                        self.logger.info(f"从配置文件读取到输入目录: {config_input_dirs}")
+                        # 更新input_dirs参数，确保后续处理使用配置文件中的值
+                        input_dirs = config_input_dirs
+                        self.logger.info(f"使用配置文件中的输入目录: {config_input_dirs}")
                         
                     # 记录已读取配置文件
                     self.logger.info(f"已从配置文件读取下一轮迭代配置")
+                    
+                    # 记录元数据信息（如果存在）
+                    if "metadata" in next_config:
+                        metadata = next_config["metadata"]
+                        if "previous_step" in metadata:
+                            self.logger.debug(f"配置文件中的上一步骤: {metadata['previous_step']}")
+                        if "previous_iteration" in metadata:
+                            self.logger.debug(f"配置文件中的上一迭代: {metadata['previous_iteration']}")
+                    
+                    # 记录备注信息（如果存在）
+                    if "notes" in next_config and next_config["notes"]:
+                        self.logger.info(f"配置文件中的备注: {next_config['notes']}")
                 except Exception as e:
                     self.logger.error(f"读取下一轮迭代配置失败: {str(e)}")
             
@@ -336,6 +369,32 @@ class DataMindAlchemy:
             
             # 检查是否请求取消
             await self._check_cancellation()
+            
+            # 确保查询不为None
+            if query is None:
+                error_msg = "查询文本为None，无法执行工作流"
+                self.logger.error(error_msg)
+                
+                # 发布错误事件
+                await self.event_bus.publish(
+                    AlchemyEventType.ERROR_OCCURRED,
+                    {
+                        "alchemy_id": self.alchemy_id,
+                        "error": error_msg,
+                        "query": None,
+                        "current_step": self._current_step
+                    }
+                )
+                
+                return {
+                    'status': 'error',
+                    'message': error_msg,
+                    'results': None,
+                    'checkpoint': {
+                        'alchemy_id': self.alchemy_id,
+                        'current_step': self._current_step
+                    }
+                }
             
             # 处理上下文
             if context:
@@ -380,11 +439,10 @@ class DataMindAlchemy:
             if input_dirs and context:
                 await self._copy_input_dirs(input_dirs, source_data)
             
-            # 最后，复制配置文件中的input_dirs内容（如果有）
-            if config_input_dirs:
-                self.logger.info("最后复制配置文件中指定的input_dirs内容")
-                await self._copy_input_dirs(config_input_dirs, source_data)
-                self.logger.info(f"已从配置文件指定的目录复制数据到: {source_data}")
+            # 注意：不再需要单独处理config_input_dirs，因为已经合并到input_dirs中
+            # 如果仍然存在config_input_dirs且与input_dirs不同，则记录警告
+            if config_input_dirs and config_input_dirs != input_dirs:
+                self.logger.warning(f"检测到config_input_dirs与input_dirs不一致，这可能是代码逻辑错误")
             
             # 设置当前步骤
             self._current_step = "process_data"
@@ -651,6 +709,23 @@ class DataMindAlchemy:
 
     async def _execute_workflow(self, query: str) -> Dict:
         """执行工作流程"""
+        # 添加查询验证，确保查询不为None
+        if query is None:
+            self.logger.error("查询文本为None，无法执行工作流")
+            return {
+                'status': 'error',
+                'message': '查询文本为None，无法执行工作流',
+                'results': {
+                    'query': None,
+                    'reasoning_history': None,
+                    'parsed_intent': None,
+                    'search_plan': None,
+                    'search_results': None,
+                    'artifacts': [],
+                    'optimization_suggestions': []
+                }
+            }
+            
         results = {
             'status': 'success',
             'message': '',
@@ -806,8 +881,12 @@ class DataMindAlchemy:
                                 next_config = json.load(f)
                             
                             if "query" in next_config:
-                                optimization_query = next_config["query"]
-                                self.logger.info(f"从配置文件获取到优化查询: {optimization_query}")
+                                # 检查配置文件中的查询是否与原始查询不同
+                                if next_config["query"] != query:
+                                    optimization_query = next_config["query"]
+                                    self.logger.info(f"从配置文件获取到优化查询: {optimization_query}")
+                                else:
+                                    self.logger.info(f"配置文件中的查询与原始查询相同，将尝试使用feedback_optimizer生成新的优化建议")
                         except Exception as e:
                             self.logger.error(f"读取next_iteration_config.json失败: {str(e)}")
                     
@@ -816,7 +895,8 @@ class DataMindAlchemy:
                         optimization_query = await self.components['feedback_optimizer'].get_latest_artifact_suggestion(self.alchemy_id)
                         self.logger.info(f"使用feedback_optimizer生成优化建议: {optimization_query}")
                     
-                    if optimization_query:
+                    # 确保优化查询不为None或空
+                    if optimization_query and optimization_query.strip():
                         self.logger.info(f"获取到制品优化建议: {optimization_query}")
                         
                         # 发布优化建议事件
@@ -998,13 +1078,43 @@ class DataMindAlchemy:
             
             # 同时保存下一轮迭代配置文件
             next_iteration_config = {
-                "query": query,
-                "input_dirs": input_dirs if input_dirs else [],  
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # 保留previous_step和previous_iteration字段，但将它们放在metadata子对象中
+            # 这样可以清晰区分核心配置和元数据
+            next_iteration_config["metadata"] = {
                 "previous_step": self._current_step,
                 "previous_iteration": resume_info.get("iteration")
             }
+            
+            # 只有当查询不为None时才添加到配置中
+            if query is not None:
+                next_iteration_config["query"] = query
+            else:
+                self.logger.warning("保存恢复信息时查询为None，将不保存查询信息")
+                
+            # 只有当输入目录不为None时才添加到配置中
+            if input_dirs is not None:
+                next_iteration_config["input_dirs"] = input_dirs
+            else:
+                next_iteration_config["input_dirs"] = []
+                
+            # 添加notes字段，初始为空字符串或保留现有值
             next_config_path = task_dir / "next_iteration_config.json"
+            if next_config_path.exists():
+                # 如果配置文件已存在，读取现有的notes
+                try:
+                    with open(next_config_path, 'r', encoding='utf-8') as f:
+                        existing_config = json.load(f)
+                        if "notes" in existing_config:
+                            next_iteration_config["notes"] = existing_config["notes"]
+                        else:
+                            next_iteration_config["notes"] = ""
+                except Exception as e:
+                    self.logger.warning(f"读取现有配置文件失败，将使用空notes: {str(e)}")
+                    next_iteration_config["notes"] = ""
+                
             with open(next_config_path, 'w', encoding='utf-8') as f:
                 json.dump(next_iteration_config, f, ensure_ascii=False, indent=2)
             
@@ -1148,7 +1258,7 @@ class DataMindAlchemy:
         Returns:
             Dict: 处理结果
         """
-        # 如果没有提供query和input_dirs，尝试从resume_info.json加载
+        # 初始化resume_info
         resume_info = None
         resume_info_path = self.alchemy_dir / "resume_info.json"
         
@@ -1160,7 +1270,52 @@ class DataMindAlchemy:
             except Exception as e:
                 self.logger.error(f"加载恢复信息文件失败: {str(e)}")
         
-        # 在恢复模式下，优先使用原任务的查询文本和输入目录
+        # 首先尝试从next_iteration_config.json加载配置，优先级最高
+        next_config_path = self.alchemy_dir / "next_iteration_config.json"
+        if next_config_path.exists():
+            try:
+                with open(next_config_path, 'r', encoding='utf-8') as f:
+                    next_config = json.load(f)
+                
+                # 优先使用配置文件中的query，无论是否提供了query参数
+                if "query" in next_config and next_config["query"]:
+                    # 确保配置文件中的查询不为空
+                    if not next_config["query"] or next_config["query"].strip() == "":
+                        self.logger.warning("配置文件中的查询为空，将忽略")
+                    else:
+                        # 如果提供了query参数且与配置不同，记录日志
+                        if query is not None and query != next_config["query"]:
+                            self.logger.info(f"提供的查询文本 '{query}' 将被配置文件中的查询 '{next_config['query']}' 覆盖")
+                        query = next_config["query"]
+                        self.logger.info(f"使用配置文件中的查询: {query}")
+                elif not query:
+                    self.logger.warning("配置文件中没有有效的查询，且未提供查询参数")
+                
+                # 优先使用配置文件中的input_dirs，无论是否提供了input_dirs参数
+                if "input_dirs" in next_config and next_config["input_dirs"]:
+                    # 如果提供了input_dirs参数且与配置不同，记录日志
+                    if input_dirs is not None and input_dirs != next_config["input_dirs"]:
+                        self.logger.info(f"提供的输入目录 {input_dirs} 将被配置文件中的输入目录 {next_config['input_dirs']} 覆盖")
+                    input_dirs = next_config["input_dirs"]
+                    self.logger.info(f"使用配置文件中的输入目录: {input_dirs}")
+                
+                # 记录元数据信息（如果存在）
+                if "metadata" in next_config:
+                    metadata = next_config["metadata"]
+                    if "previous_step" in metadata:
+                        self.logger.debug(f"恢复时使用的上一步骤: {metadata['previous_step']}")
+                    if "previous_iteration" in metadata:
+                        self.logger.debug(f"恢复时使用的上一迭代: {metadata['previous_iteration']}")
+                
+                # 记录备注信息（如果存在）
+                if "notes" in next_config and next_config["notes"]:
+                    self.logger.info(f"配置文件中的备注: {next_config['notes']}")
+                
+                self.logger.info(f"已从配置文件读取下一轮迭代配置")
+            except Exception as e:
+                self.logger.error(f"读取下一轮迭代配置失败: {str(e)}")
+        
+        # 如果配置文件中没有设置，再尝试从恢复信息中获取
         if resume_info:
             # 如果没有提供查询文本，使用恢复信息中的查询文本
             if query is None and "query" in resume_info:
@@ -1171,24 +1326,6 @@ class DataMindAlchemy:
             if input_dirs is None and "input_dirs" in resume_info:
                 input_dirs = resume_info["input_dirs"]
                 self.logger.info(f"使用原任务的输入目录: {input_dirs}")
-        
-        # 如果仍然没有找到查询文本和输入目录，尝试从next_iteration_config.json加载
-        if query is None or input_dirs is None:
-            next_config_path = self.alchemy_dir / "next_iteration_config.json"
-            if next_config_path.exists():
-                try:
-                    with open(next_config_path, 'r', encoding='utf-8') as f:
-                        next_config = json.load(f)
-                    
-                    if query is None and "query" in next_config:
-                        query = next_config["query"]
-                        self.logger.info(f"从配置文件加载查询: {query}")
-                    
-                    if input_dirs is None and "input_dirs" in next_config:
-                        input_dirs = next_config["input_dirs"]
-                        self.logger.info(f"从配置文件加载输入目录: {input_dirs}")
-                except Exception as e:
-                    self.logger.error(f"加载下一轮迭代配置失败: {str(e)}")
         
         # 查找检查点文件
         checkpoint_file = None
@@ -1312,6 +1449,17 @@ class DataMindAlchemy:
             if self._current_step == "parse_intent":
                 # 如果是在解析意图阶段中断，从工作流开始执行
                 self.logger.info("从解析意图阶段继续执行工作流")
+                
+                # 确保查询不为None
+                if query is None:
+                    error_msg = "恢复处理时查询文本为None，无法执行工作流"
+                    self.logger.error(error_msg)
+                    return {
+                        'status': 'error',
+                        'message': error_msg,
+                        'results': None
+                    }
+                
                 results = await self._execute_workflow(query)
                 return {
                     'status': 'resumed',
@@ -1322,22 +1470,56 @@ class DataMindAlchemy:
             elif self._current_step == "build_plan":
                 # 如果是在构建计划阶段中断
                 self.logger.info("从构建计划阶段继续执行工作流")
-                # 需要先解析意图
-                parsed_intent = await self.components['intent_parser'].parse_query(query)
-                # 然后从构建计划开始执行
-                parsed_plan = self.components['planner'].build_search_plan(parsed_intent)
-                # 执行搜索计划
-                search_results = await self.components['executor'].execute_plan(parsed_plan)
-                # 生成制品
-                # ... 这里可以添加更多的恢复逻辑 ...
                 
-                # 简化处理：直接重新执行工作流
-                results = await self._execute_workflow(query)
-                return {
-                    'status': 'resumed',
-                    'message': f'从{self._current_step}阶段恢复处理',
-                    'results': results
-                }
+                # 确保查询不为None
+                if query is None:
+                    error_msg = "恢复处理时查询文本为None，无法执行工作流"
+                    self.logger.error(error_msg)
+                    return {
+                        'status': 'error',
+                        'message': error_msg,
+                        'results': None
+                    }
+                
+                # 检查组件是否已初始化
+                if not hasattr(self, 'components') or not self.components:
+                    self.logger.warning("组件未初始化，尝试重新初始化")
+                    db_path = self.current_work_dir / "data" / "unified_storage.duckdb"
+                    if db_path.exists():
+                        self.components = self._init_components(str(db_path))
+                        self.logger.info("已重新初始化组件")
+                    else:
+                        self.logger.error("无法重新初始化组件，数据库文件不存在")
+                        return await self.process(query, input_dirs, context)
+                
+                # 根据中断的步骤决定如何继续
+                if self._current_step == "build_plan":
+                    # 如果是在构建计划阶段中断
+                    self.logger.info("从构建计划阶段继续执行工作流")
+                    
+                    # 检查是否有工作流结果文件
+                    workflow_results_file = self.current_work_dir / "workflow_results.json"
+                    if workflow_results_file.exists():
+                        try:
+                            with open(workflow_results_file, 'r', encoding='utf-8') as f:
+                                workflow_results = json.load(f)
+                            self.logger.info("已从工作流结果文件恢复处理结果")
+                            return {
+                                'status': 'resumed',
+                                'message': '从构建计划阶段恢复处理，已找到工作流结果文件',
+                                'results': workflow_results
+                            }
+                        except Exception as e:
+                            self.logger.error(f"加载工作流结果文件失败: {str(e)}")
+                    
+                    # 如果没有工作流结果文件，重新执行工作流
+                    self.logger.info("未找到工作流结果文件，重新执行工作流")
+                    results = await self._execute_workflow(query)
+                    return {
+                        'status': 'resumed',
+                        'message': f'从{self._current_step}阶段恢复处理',
+                        'results': results
+                    }
             
             elif self._current_step == "execute_workflow":
                 # 如果是在执行工作流阶段中断
@@ -1360,6 +1542,17 @@ class DataMindAlchemy:
                 
                 # 如果没有工作流结果文件，重新执行工作流
                 self.logger.info("未找到工作流结果文件，重新执行工作流")
+                
+                # 确保查询不为None
+                if query is None:
+                    error_msg = "恢复处理时查询文本为None，无法执行工作流"
+                    self.logger.error(error_msg)
+                    return {
+                        'status': 'error',
+                        'message': error_msg,
+                        'results': None
+                    }
+                
                 results = await self._execute_workflow(query)
                 return {
                     'status': 'resumed',
@@ -1387,6 +1580,17 @@ class DataMindAlchemy:
             
             # 如果没有结果文件，重新执行工作流
             self.logger.info("未找到结果文件，重新执行工作流")
+            
+            # 确保查询不为None
+            if query is None:
+                error_msg = "恢复处理时查询文本为None，无法执行工作流"
+                self.logger.error(error_msg)
+                return {
+                    'status': 'error',
+                    'message': error_msg,
+                    'results': None
+                }
+            
             results = await self._execute_workflow(query)
             return {
                 'status': 'resumed',
