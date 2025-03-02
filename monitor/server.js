@@ -1794,6 +1794,58 @@ app.post('/api/stop-task', async (req, res) => {
     }
 });
 
+// 添加保存下一轮迭代配置API
+app.post('/api/save-next-iteration-config', async (req, res) => {
+    try {
+        const { alchemy_id, config } = req.body;
+        
+        if (!alchemy_id) {
+            return res.status(400).json({ 
+                success: false, 
+                error: '缺少任务ID参数' 
+            });
+        }
+        
+        if (!config || typeof config !== 'object') {
+            return res.status(400).json({ 
+                success: false, 
+                error: '配置数据无效' 
+            });
+        }
+        
+        // 构建任务目录路径
+        const workDir = path.join(__dirname, '..');
+        const alchemyDir = path.join(workDir, 'work_dir', 'data_alchemy');
+        const runsDir = path.join(alchemyDir, 'alchemy_runs');
+        const taskDir = path.join(runsDir, `alchemy_${alchemy_id}`);
+        
+        // 检查任务目录是否存在
+        if (!fs.existsSync(taskDir)) {
+            return res.status(404).json({ 
+                success: false, 
+                error: `任务 ${alchemy_id} 不存在` 
+            });
+        }
+        
+        // 保存配置文件
+        const configPath = path.join(taskDir, 'next_iteration_config.json');
+        await fsPromises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+        
+        console.log(`已保存任务 ${alchemy_id} 的下一轮迭代配置`);
+        
+        res.json({
+            success: true,
+            message: `已保存任务 ${alchemy_id} 的下一轮迭代配置`
+        });
+    } catch (error) {
+        console.error('保存下一轮迭代配置失败:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: `保存配置失败: ${error.message}` 
+        });
+    }
+});
+
 // 启动服务器
 const PORT = config.port || 3000;
 http.listen(PORT, () => {
