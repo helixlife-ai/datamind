@@ -165,6 +165,27 @@ async def datamind_alchemy_process(
         if alchemy_manager is None:
             alchemy_manager = AlchemyManager(work_dir=work_dir.parent, logger=logger)
         
+        # 在继续模式下，尝试获取原任务的查询文本和输入目录
+        if alchemy_id and (should_resume or query is None):
+            # 获取任务恢复信息
+            resume_info = alchemy_manager.get_task_resume_info(alchemy_id)
+            if resume_info:
+                logger.info(f"找到任务 {alchemy_id} 的恢复信息")
+                
+                # 在继续模式下，始终使用原任务的查询文本
+                if resume_info.get("query"):
+                    if query and query != resume_info["query"]:
+                        logger.warning(f"继续任务模式下忽略新提供的查询文本，将使用原任务的查询文本")
+                    query = resume_info["query"]
+                    logger.info(f"使用原任务的查询文本: {query}")
+                
+                # 在继续模式下，始终使用原任务的输入目录
+                if resume_info.get("input_dirs"):
+                    if input_dirs and input_dirs != resume_info["input_dirs"]:
+                        logger.warning(f"继续任务模式下忽略新提供的输入目录，将使用原任务的输入目录")
+                    input_dirs = resume_info["input_dirs"]
+                    logger.info(f"使用原任务的输入目录: {input_dirs}")
+        
         # 创建DataMindAlchemy实例
         alchemy = DataMindAlchemy(
             work_dir=work_dir, 
@@ -282,8 +303,8 @@ async def async_main():
         should_resume = args.resume
         should_cancel = args.cancel  # 新增：是否需要取消任务
         
-        # 处理输入目录参数
-        if args.input_dirs:
+        # 处理输入目录参数 - 仅在新建模式下处理
+        if args.input_dirs and mode != "continue":
             try:
                 # 解析JSON格式的输入目录列表
                 custom_input_dirs = json.loads(args.input_dirs)
@@ -299,16 +320,16 @@ async def async_main():
             logger.info(f"从配置文件加载: {config_path}")
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                # 修改：只有当命令行参数未提供时，才使用配置文件中的值
-                if args.query is None:
-                    query = config.get('query', query)
-                if not args.mode and config.get('mode'):
-                    mode = config.get('mode')
-                # 只有当命令行没有指定输入目录时，才使用配置文件中的值
-                if not args.input_dirs and config.get('input_dirs'):
-                    input_dirs = config.get('input_dirs')
-                    logger.info(f"从配置中读取input_dirs: {input_dirs}")
-                # 在continue模式下读取alchemy_id和resume标志
+                # 修改：只有在新建模式下，才使用配置文件中的查询和输入目录
+                if mode == "new":
+                    if args.query is None:
+                        query = config.get('query', query)
+                    # 只有当命令行没有指定输入目录时，才使用配置文件中的值
+                    if not args.input_dirs and config.get('input_dirs'):
+                        input_dirs = config.get('input_dirs')
+                        logger.info(f"从配置中读取input_dirs: {input_dirs}")
+                
+                # 在continue模式下只读取alchemy_id和resume标志
                 if mode == "continue":
                     if args.id is None and config.get('alchemy_id'):
                         alchemy_id = config.get('alchemy_id')
@@ -353,25 +374,22 @@ async def async_main():
                     latest_task = resumable_tasks[0]
                     alchemy_id = latest_task.get('id')
                     
-                    # 使用恢复信息中的查询和输入目录(如果有)
-                    resume_info = latest_task.get('resume_info', {})
-                    if not query and "query" in resume_info:
-                        query = resume_info["query"]
-                    if not args.input_dirs and "input_dirs" in resume_info:
-                        input_dirs = resume_info["input_dirs"]
-                        
-                    logger.info(f"已选择最近的可恢复任务: ID={alchemy_id}, 查询={query}")
+                    # 在继续模式下，不再从这里设置查询和输入目录，而是在datamind_alchemy_process中获取
+                    logger.info(f"已选择最近的可恢复任务: ID={alchemy_id}")
                 else:
                     logger.warning("未找到可恢复的任务")
         
         # 根据模式执行不同的处理
         if mode == "continue":
             logger.info(f"运行模式: 继续炼丹流程 (alchemy_id: {alchemy_id}, resume: {should_resume})")
-            logger.info(f"使用输入目录: {input_dirs}")
+            
+            # 在继续模式下，不显示输入目录信息，因为将使用原任务的输入目录
+            logger.info(f"将使用原任务的查询文本和输入目录")
+            
             await datamind_alchemy_process(
                 alchemy_id=alchemy_id,
-                query=query,
-                input_dirs=input_dirs,
+                query=None,  # 传入None，表示使用原任务的查询文本
+                input_dirs=None,  # 传入None，表示使用原任务的输入目录
                 work_dir=work_dir / "data_alchemy",  
                 logger=logger,
                 should_resume=should_resume,

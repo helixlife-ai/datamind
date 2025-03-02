@@ -1148,7 +1148,31 @@ class DataMindAlchemy:
         Returns:
             Dict: 处理结果
         """
-        # 如果没有提供query和input_dirs，尝试从next_iteration_config.json加载
+        # 如果没有提供query和input_dirs，尝试从resume_info.json加载
+        resume_info = None
+        resume_info_path = self.alchemy_dir / "resume_info.json"
+        
+        if resume_info_path.exists():
+            try:
+                with open(resume_info_path, 'r', encoding='utf-8') as f:
+                    resume_info = json.load(f)
+                self.logger.info(f"已从恢复信息文件加载数据: {resume_info_path}")
+            except Exception as e:
+                self.logger.error(f"加载恢复信息文件失败: {str(e)}")
+        
+        # 在恢复模式下，优先使用原任务的查询文本和输入目录
+        if resume_info:
+            # 如果没有提供查询文本，使用恢复信息中的查询文本
+            if query is None and "query" in resume_info:
+                query = resume_info["query"]
+                self.logger.info(f"使用原任务的查询文本: {query}")
+            
+            # 如果没有提供输入目录，使用恢复信息中的输入目录
+            if input_dirs is None and "input_dirs" in resume_info:
+                input_dirs = resume_info["input_dirs"]
+                self.logger.info(f"使用原任务的输入目录: {input_dirs}")
+        
+        # 如果仍然没有找到查询文本和输入目录，尝试从next_iteration_config.json加载
         if query is None or input_dirs is None:
             next_config_path = self.alchemy_dir / "next_iteration_config.json"
             if next_config_path.exists():

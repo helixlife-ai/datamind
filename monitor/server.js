@@ -1437,10 +1437,10 @@ app.post('/api/execute-task', async (req, res) => {
     
     try {
         // 验证必填参数
-        if (!query) {
+        if (mode === "new" && !query) {
             return res.status(400).json({
                 success: false,
-                error: '查询文本不能为空'
+                error: '新建任务模式下查询文本不能为空'
             });
         }
         
@@ -1455,10 +1455,15 @@ app.post('/api/execute-task', async (req, res) => {
         // 构建命令参数
         const args = [
             'examples/example_usage.py',
-            `--mode=${mode}`,
-            `--query=${query}`
+            `--mode=${mode}`
         ];
         
+        // 只在新建模式下添加查询参数
+        if (mode === 'new' && query) {
+            args.push(`--query=${query}`);
+        }
+        
+        // 在continue模式下添加任务ID和恢复标志
         if (mode === 'continue' && alchemy_id) {
             args.push(`--id=${alchemy_id}`);
             
@@ -1467,8 +1472,8 @@ app.post('/api/execute-task', async (req, res) => {
             }
         }
         
-        // 添加输入目录参数
-        if (input_dirs && Array.isArray(input_dirs) && input_dirs.length > 0) {
+        // 只在新建模式下添加输入目录参数
+        if (mode === 'new' && input_dirs && Array.isArray(input_dirs) && input_dirs.length > 0) {
             // 将输入目录列表转换为JSON字符串并添加到命令行参数
             args.push(`--input-dirs=${JSON.stringify(input_dirs)}`);
             console.log(`添加输入目录参数: ${input_dirs.length} 个目录`);

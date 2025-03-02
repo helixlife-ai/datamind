@@ -431,12 +431,14 @@
                                 </select>
                             </div>
                             
-                            <div class="mb-3">
+                            <!-- 查询文本区域 - 仅在新建任务模式下显示 -->
+                            <div class="mb-3" id="queryGroup">
                                 <label for="query" class="form-label">查询文本</label>
                                 <textarea class="form-control" id="query" rows="3" placeholder="请输入查询文本..."></textarea>
                             </div>
                             
-                            <div class="mb-3">
+                            <!-- 输入目录区域 - 仅在新建任务模式下显示 -->
+                            <div class="mb-3" id="inputDirGroup">
                                 <label class="form-label">输入目录</label>
                                 <div class="input-group mb-2">
                                     <input type="text" class="form-control" id="inputDirPath" placeholder="输入目录路径...">
@@ -453,7 +455,8 @@
                                 <div class="form-text text-muted">添加包含源数据的目录路径</div>
                             </div>
                             
-                            <div class="mb-3" id="alchemyIdGroup">
+                            <!-- 任务ID选择区域 - 仅在继续任务模式下显示 -->
+                            <div class="mb-3" id="alchemyIdGroup" style="display: none;">
                                 <label for="alchemyId" class="form-label">任务ID</label>
                                 <div class="input-group">
                                     <select class="form-select" id="alchemyId">
@@ -468,6 +471,9 @@
                                     <label class="form-check-label" for="resumeCheckbox">
                                         从中断点恢复
                                     </label>
+                                </div>
+                                <div class="alert alert-info mt-2" id="continueTaskInfo">
+                                    <i class="bi bi-info-circle"></i> 继续任务模式下将使用原任务的查询文本和输入目录
                                 </div>
                             </div>
                             
@@ -598,17 +604,37 @@
         // 模式切换逻辑
         modeSelect.addEventListener('change', () => {
             if (modeSelect.value === 'continue') {
+                // 显示任务ID选择区域，隐藏查询文本和输入目录区域
                 alchemyIdGroup.style.display = 'block';
+                document.getElementById('queryGroup').style.display = 'none';
+                document.getElementById('inputDirGroup').style.display = 'none';
+                
                 // 当切换到继续模式时，重新加载任务列表
                 loadResumableTasks();
+                
+                // 添加提示信息
+                appendToTerminal('已切换到继续任务模式，将使用原任务的查询文本和输入目录\n');
             } else {
+                // 隐藏任务ID选择区域，显示查询文本和输入目录区域
                 alchemyIdGroup.style.display = 'none';
+                document.getElementById('queryGroup').style.display = 'block';
+                document.getElementById('inputDirGroup').style.display = 'block';
+                
+                // 清空查询文本和输入目录
+                document.getElementById('query').value = '';
+                clearInputDirs();
             }
         });
 
-        // 初始化时隐藏任务ID输入框
-        if (modeSelect.value !== 'continue') {
+        // 初始化时根据当前模式设置表单显示状态
+        if (modeSelect.value === 'continue') {
+            alchemyIdGroup.style.display = 'block';
+            document.getElementById('queryGroup').style.display = 'none';
+            document.getElementById('inputDirGroup').style.display = 'none';
+        } else {
             alchemyIdGroup.style.display = 'none';
+            document.getElementById('queryGroup').style.display = 'block';
+            document.getElementById('inputDirGroup').style.display = 'block';
         }
 
         // 加载可恢复任务列表
@@ -752,14 +778,15 @@
                         
                         console.log(`点击恢复任务按钮: ID=${id}, 查询=${query}`);
                         
+                        // 切换到继续任务模式
                         document.getElementById('mode').value = 'continue';
                         document.getElementById('alchemyId').value = id;
-                        document.getElementById('query').value = query;
                         document.getElementById('resumeCheckbox').checked = true;
-                        alchemyIdGroup.style.display = 'block';
                         
-                        // 加载该任务的输入目录
-                        loadTaskInputDirs(id);
+                        // 更新UI显示
+                        alchemyIdGroup.style.display = 'block';
+                        document.getElementById('queryGroup').style.display = 'none';
+                        document.getElementById('inputDirGroup').style.display = 'none';
                         
                         // 自动提交表单，开始恢复任务
                         setTimeout(() => {
@@ -802,8 +829,8 @@
             const resume = document.getElementById('resumeCheckbox').checked;
             
             // 验证必填字段
-            if (!query.trim()) {
-                appendToTerminal(`[错误] 查询文本不能为空\n`);
+            if (mode === 'new' && !query.trim()) {
+                appendToTerminal(`[错误] 新建任务模式下查询文本不能为空\n`);
                 return;
             }
             
@@ -817,22 +844,26 @@
             outputTerminal.innerHTML = '';
             
             // 添加初始消息
-            appendToTerminal(`开始${mode === 'new' ? '新建' : '继续'}任务...\n查询: ${query}\n`);
-            if (mode === 'continue') {
+            appendToTerminal(`开始${mode === 'new' ? '新建' : '继续'}任务...\n`);
+            
+            if (mode === 'new') {
+                appendToTerminal(`查询: ${query}\n`);
+                
+                // 显示输入目录信息
+                if (inputDirs.length > 0) {
+                    appendToTerminal(`输入目录:\n`);
+                    inputDirs.forEach(dir => {
+                        appendToTerminal(`- ${dir}\n`);
+                    });
+                } else {
+                    appendToTerminal(`未指定输入目录，将使用默认数据\n`);
+                }
+            } else {
                 appendToTerminal(`任务ID: ${alchemyId}\n`);
                 if (resume) {
                     appendToTerminal(`模式: 从中断点恢复\n`);
                 }
-            }
-            
-            // 显示输入目录信息
-            if (inputDirs.length > 0) {
-                appendToTerminal(`输入目录:\n`);
-                inputDirs.forEach(dir => {
-                    appendToTerminal(`- ${dir}\n`);
-                });
-            } else {
-                appendToTerminal(`未指定输入目录，将使用默认数据\n`);
+                appendToTerminal(`将使用原任务的查询文本和输入目录\n`);
             }
             
             try {
@@ -840,18 +871,25 @@
                 startTaskBtn.style.display = 'none';
                 stopTaskBtn.style.display = 'block';
                 
+                // 准备请求数据
+                const requestData = {
+                    mode,
+                    alchemy_id: alchemyId,
+                    resume
+                };
+                
+                // 只在新建任务模式下添加查询和输入目录
+                if (mode === 'new') {
+                    requestData.query = query;
+                    requestData.input_dirs = inputDirs;
+                }
+                
                 const response = await fetch('/api/execute-task', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        mode,
-                        query,
-                        alchemy_id: alchemyId,
-                        resume,
-                        input_dirs: inputDirs // 添加输入目录
-                    })
+                    body: JSON.stringify(requestData)
                 });
                 
                 const data = await response.json();
@@ -1392,13 +1430,16 @@
                             // 清空当前列表
                             clearInputDirs();
                             
-                            // 添加配置中的目录
-                            config.input_dirs.forEach(dir => {
-                                addInputDir(dir);
-                            });
-                            
-                            if (config.input_dirs.length > 0) {
-                                appendToTerminal(`已从配置加载 ${config.input_dirs.length} 个输入目录\n`);
+                            // 只在新建任务模式下添加配置中的目录
+                            if (modeSelect.value === 'new') {
+                                // 添加配置中的目录
+                                config.input_dirs.forEach(dir => {
+                                    addInputDir(dir);
+                                });
+                                
+                                if (config.input_dirs.length > 0) {
+                                    appendToTerminal(`已从配置加载 ${config.input_dirs.length} 个输入目录\n`);
+                                }
                             }
                         }
                     }
@@ -1431,12 +1472,21 @@
                             dirs = taskInfo.next_iteration_config.input_dirs;
                         }
                         
-                        // 添加找到的目录
+                        // 添加找到的目录，但在继续任务模式下只显示不允许编辑
                         if (dirs.length > 0) {
                             dirs.forEach(dir => {
                                 addInputDir(dir);
                             });
-                            appendToTerminal(`已加载任务 ${taskId} 的 ${dirs.length} 个输入目录\n`);
+                            
+                            if (modeSelect.value === 'continue') {
+                                // 禁用所有删除按钮
+                                document.querySelectorAll('#inputDirsList .btn-outline-danger').forEach(btn => {
+                                    btn.disabled = true;
+                                });
+                                appendToTerminal(`已加载任务 ${taskId} 的 ${dirs.length} 个输入目录（只读模式）\n`);
+                            } else {
+                                appendToTerminal(`已加载任务 ${taskId} 的 ${dirs.length} 个输入目录\n`);
+                            }
                         } else {
                             appendToTerminal(`任务 ${taskId} 没有指定输入目录\n`);
                         }
