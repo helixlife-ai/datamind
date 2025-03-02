@@ -436,6 +436,23 @@
                                 <textarea class="form-control" id="query" rows="3" placeholder="请输入查询文本..."></textarea>
                             </div>
                             
+                            <div class="mb-3">
+                                <label class="form-label">输入目录</label>
+                                <div class="input-group mb-2">
+                                    <input type="text" class="form-control" id="inputDirPath" placeholder="输入目录路径...">
+                                    <button class="btn btn-outline-secondary" type="button" id="browseBtn" title="浏览文件夹">
+                                        <i class="bi bi-folder2-open"></i> 浏览
+                                    </button>
+                                    <button class="btn btn-outline-primary" type="button" id="addInputDirBtn">
+                                        <i class="bi bi-plus-lg"></i> 添加
+                                    </button>
+                                </div>
+                                <div id="inputDirsList" class="list-group mb-2">
+                                    <!-- 这里将显示已添加的目录 -->
+                                </div>
+                                <div class="form-text text-muted">添加包含源数据的目录路径</div>
+                            </div>
+                            
                             <div class="mb-3" id="alchemyIdGroup">
                                 <label for="alchemyId" class="form-label">任务ID</label>
                                 <div class="input-group">
@@ -511,6 +528,35 @@
                 </div>
             </div>
         </div>
+        
+        <!-- 文件夹浏览模态框 -->
+        <div class="modal fade" id="folderBrowserModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">选择文件夹</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">当前路径</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="currentFolderPath" readonly>
+                                <button class="btn btn-outline-primary" type="button" id="selectCurrentFolder">
+                                    选择此文件夹
+                                </button>
+                            </div>
+                        </div>
+                        <div class="list-group" id="folderList">
+                            <!-- 文件夹列表将在这里显示 -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -532,6 +578,9 @@
 
         // 当前任务ID
         let currentAlchemyId = null;
+        
+        // 输入目录列表
+        let inputDirs = [];
 
         // 更新按钮显示状态的函数
         function updateButtonsVisibility() {
@@ -660,6 +709,12 @@
                         document.getElementById('query').value = query;
                         console.log(`已自动填充查询文本: ${query}`);
                     }
+                    
+                    // 加载选中任务的输入目录
+                    const taskId = selectedOption.value;
+                    if (taskId) {
+                        loadTaskInputDirs(taskId);
+                    }
                 });
                 
                 // 构建可恢复任务列表HTML
@@ -702,6 +757,9 @@
                         document.getElementById('query').value = query;
                         document.getElementById('resumeCheckbox').checked = true;
                         alchemyIdGroup.style.display = 'block';
+                        
+                        // 加载该任务的输入目录
+                        loadTaskInputDirs(id);
                         
                         // 自动提交表单，开始恢复任务
                         setTimeout(() => {
@@ -767,6 +825,16 @@
                 }
             }
             
+            // 显示输入目录信息
+            if (inputDirs.length > 0) {
+                appendToTerminal(`输入目录:\n`);
+                inputDirs.forEach(dir => {
+                    appendToTerminal(`- ${dir}\n`);
+                });
+            } else {
+                appendToTerminal(`未指定输入目录，将使用默认数据\n`);
+            }
+            
             try {
                 // 在发送请求前先禁用开始按钮，显示停止按钮
                 startTaskBtn.style.display = 'none';
@@ -781,7 +849,8 @@
                         mode,
                         query,
                         alchemy_id: alchemyId,
-                        resume
+                        resume,
+                        input_dirs: inputDirs // 添加输入目录
                     })
                 });
                 
@@ -1096,7 +1165,306 @@
                 cardFooter.appendChild(refreshBtn);
                 resumableTasksCard.appendChild(cardFooter);
             }
+            
+            // 初始化输入目录相关功能
+            initInputDirsFeature();
         });
+        
+        // 初始化输入目录相关功能
+        function initInputDirsFeature() {
+            const inputDirPath = document.getElementById('inputDirPath');
+            const addInputDirBtn = document.getElementById('addInputDirBtn');
+            const browseBtn = document.getElementById('browseBtn');
+            const inputDirsList = document.getElementById('inputDirsList');
+            
+            // 添加输入目录
+            addInputDirBtn.addEventListener('click', () => {
+                const path = inputDirPath.value.trim();
+                if (path) {
+                    addInputDir(path);
+                    inputDirPath.value = '';
+                }
+            });
+            
+            // 输入框回车添加
+            inputDirPath.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addInputDirBtn.click();
+                }
+            });
+            
+            // 浏览按钮点击事件
+            browseBtn.addEventListener('click', async () => {
+                try {
+                    const response = await fetch('/api/browse-folders');
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            if (data.path) {
+                                // 直接返回了选择的路径
+                                inputDirPath.value = data.path;
+                                // 自动添加选择的路径
+                                addInputDirBtn.click();
+                                
+                                // 确保关闭任何可能打开的模态框
+                                const modal = bootstrap.Modal.getInstance(document.getElementById('folderBrowserModal'));
+                                if (modal) {
+                                    modal.hide();
+                                }
+                                
+                                // 移除可能残留的模态框背景
+                                const modalBackdrops = document.querySelectorAll('.modal-backdrop');
+                                modalBackdrops.forEach(backdrop => {
+                                    backdrop.remove();
+                                });
+                                document.body.classList.remove('modal-open');
+                                document.body.style.overflow = '';
+                                document.body.style.paddingRight = '';
+                            } else if (data.is_backup_method) {
+                                // 使用备用方法，显示文件夹浏览对话框
+                                showFolderBrowser(data);
+                            } else {
+                                appendToTerminal(`[警告] 浏览文件夹返回了未知格式的数据\n`);
+                            }
+                        } else {
+                            appendToTerminal(`[警告] 浏览文件夹失败: ${data.error || data.message || '未选择文件夹'}\n`);
+                        }
+                    } else {
+                        appendToTerminal(`[错误] 浏览文件夹请求失败: ${response.statusText}\n`);
+                    }
+                } catch (error) {
+                    appendToTerminal(`[错误] 浏览文件夹出错: ${error.message}\n`);
+                }
+            });
+            
+            // 显示文件夹浏览对话框
+            function showFolderBrowser(data) {
+                const currentFolderPath = document.getElementById('currentFolderPath');
+                const folderList = document.getElementById('folderList');
+                const selectCurrentFolder = document.getElementById('selectCurrentFolder');
+                
+                // 设置当前路径
+                currentFolderPath.value = data.current_path;
+                
+                // 清空文件夹列表
+                folderList.innerHTML = '';
+                
+                // 添加文件夹到列表
+                data.directories.forEach(dir => {
+                    const item = document.createElement('button');
+                    item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+                    
+                    const nameSpan = document.createElement('span');
+                    if (dir.isParent) {
+                        nameSpan.innerHTML = `<i class="bi bi-arrow-up-circle"></i> ${dir.name}`;
+                    } else {
+                        nameSpan.innerHTML = `<i class="bi bi-folder"></i> ${dir.name}`;
+                    }
+                    
+                    item.appendChild(nameSpan);
+                    
+                    // 点击文件夹导航到该文件夹
+                    item.addEventListener('click', async () => {
+                        try {
+                            const response = await fetch(`/api/browse-folders?path=${encodeURIComponent(dir.path)}`);
+                            if (response.ok) {
+                                const newData = await response.json();
+                                if (newData.success) {
+                                    showFolderBrowser(newData);
+                                } else {
+                                    appendToTerminal(`[警告] 浏览文件夹失败: ${newData.error || '未知错误'}\n`);
+                                }
+                            } else {
+                                appendToTerminal(`[错误] 浏览文件夹请求失败: ${response.statusText}\n`);
+                            }
+                        } catch (error) {
+                            appendToTerminal(`[错误] 浏览文件夹出错: ${error.message}\n`);
+                        }
+                    });
+                    
+                    folderList.appendChild(item);
+                });
+                
+                // 选择当前文件夹按钮点击事件
+                selectCurrentFolder.onclick = async () => {
+                    try {
+                        const response = await fetch(`/api/browse-folders?path=${encodeURIComponent(currentFolderPath.value)}&select=true`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.success && data.path) {
+                                // 关闭模态框
+                                const modal = bootstrap.Modal.getInstance(document.getElementById('folderBrowserModal'));
+                                modal.hide();
+                                
+                                // 设置选择的路径
+                                inputDirPath.value = data.path;
+                                // 自动添加选择的路径
+                                addInputDirBtn.click();
+                            } else {
+                                appendToTerminal(`[警告] 选择文件夹失败: ${data.error || '未知错误'}\n`);
+                            }
+                        } else {
+                            appendToTerminal(`[错误] 选择文件夹请求失败: ${response.statusText}\n`);
+                        }
+                    } catch (error) {
+                        appendToTerminal(`[错误] 选择文件夹出错: ${error.message}\n`);
+                    }
+                };
+                
+                // 显示模态框
+                const modal = new bootstrap.Modal(document.getElementById('folderBrowserModal'));
+                modal.show();
+                
+                // 确保模态框关闭时清理背景
+                document.getElementById('folderBrowserModal').addEventListener('hidden.bs.modal', function () {
+                    // 移除可能残留的模态框背景
+                    const modalBackdrops = document.querySelectorAll('.modal-backdrop');
+                    modalBackdrops.forEach(backdrop => {
+                        backdrop.remove();
+                    });
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                });
+            }
+            
+            // 添加输入目录到列表
+            function addInputDir(path) {
+                // 检查是否已存在
+                if (inputDirs.includes(path)) {
+                    appendToTerminal(`[警告] 目录已存在: ${path}\n`);
+                    return;
+                }
+                
+                // 添加到数组
+                inputDirs.push(path);
+                
+                // 创建列表项
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                
+                const pathText = document.createElement('span');
+                pathText.className = 'text-truncate';
+                pathText.style.maxWidth = '80%';
+                pathText.title = path;
+                pathText.textContent = path;
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn btn-sm btn-outline-danger';
+                removeBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                removeBtn.title = '删除此目录';
+                removeBtn.addEventListener('click', () => {
+                    // 从数组中移除
+                    const index = inputDirs.indexOf(path);
+                    if (index !== -1) {
+                        inputDirs.splice(index, 1);
+                    }
+                    
+                    // 从UI中移除
+                    item.remove();
+                    
+                    appendToTerminal(`已移除输入目录: ${path}\n`);
+                });
+                
+                item.appendChild(pathText);
+                item.appendChild(removeBtn);
+                inputDirsList.appendChild(item);
+                
+                appendToTerminal(`已添加输入目录: ${path}\n`);
+            }
+            
+            // 清空输入目录列表
+            function clearInputDirs() {
+                inputDirs = [];
+                inputDirsList.innerHTML = '';
+            }
+            
+            // 从配置文件加载输入目录
+            async function loadInputDirsFromConfig() {
+                try {
+                    const response = await fetch('/api/get-config');
+                    if (response.ok) {
+                        const config = await response.json();
+                        if (config.input_dirs && Array.isArray(config.input_dirs)) {
+                            // 清空当前列表
+                            clearInputDirs();
+                            
+                            // 添加配置中的目录
+                            config.input_dirs.forEach(dir => {
+                                addInputDir(dir);
+                            });
+                            
+                            if (config.input_dirs.length > 0) {
+                                appendToTerminal(`已从配置加载 ${config.input_dirs.length} 个输入目录\n`);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('加载配置失败:', error);
+                }
+            }
+            
+            // 加载指定任务的输入目录
+            window.loadTaskInputDirs = async function(taskId) {
+                if (!taskId) return;
+                
+                try {
+                    const response = await fetch(`/api/task-info?id=${encodeURIComponent(taskId)}`);
+                    if (response.ok) {
+                        const taskInfo = await response.json();
+                        
+                        // 清空当前列表
+                        clearInputDirs();
+                        
+                        // 检查是否有输入目录信息
+                        let dirs = [];
+                        
+                        // 首先尝试从resume_info中获取
+                        if (taskInfo.resume_info && taskInfo.resume_info.input_dirs) {
+                            dirs = taskInfo.resume_info.input_dirs;
+                        }
+                        // 然后尝试从next_iteration_config中获取
+                        else if (taskInfo.next_iteration_config && taskInfo.next_iteration_config.input_dirs) {
+                            dirs = taskInfo.next_iteration_config.input_dirs;
+                        }
+                        
+                        // 添加找到的目录
+                        if (dirs.length > 0) {
+                            dirs.forEach(dir => {
+                                addInputDir(dir);
+                            });
+                            appendToTerminal(`已加载任务 ${taskId} 的 ${dirs.length} 个输入目录\n`);
+                        } else {
+                            appendToTerminal(`任务 ${taskId} 没有指定输入目录\n`);
+                        }
+                    } else {
+                        appendToTerminal(`[警告] 获取任务信息失败: ${response.statusText}\n`);
+                    }
+                } catch (error) {
+                    console.error('加载任务输入目录失败:', error);
+                    appendToTerminal(`[错误] 加载任务输入目录失败: ${error.message}\n`);
+                }
+            };
+            
+            // 暴露清空方法到全局
+            window.clearInputDirs = clearInputDirs;
+            
+            // 暴露添加方法到全局
+            window.addInputDir = addInputDir;
+            
+            // 加载配置中的输入目录
+            loadInputDirsFromConfig();
+            
+            // 模式切换时清空输入目录
+            document.getElementById('mode').addEventListener('change', function() {
+                if (this.value === 'new') {
+                    clearInputDirs();
+                }
+            });
+        }
         
         // 处理页面可见性变化
         function handleVisibilityChange() {

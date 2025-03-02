@@ -705,6 +705,211 @@ app.get('/api/config', (req, res) => {
     });
 });
 
+// 添加获取配置文件API
+app.get('/api/get-config', (req, res) => {
+    try {
+        const configPath = path.join(__dirname, '..', 'work_dir', 'config.json');
+        if (fs.existsSync(configPath)) {
+            const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            res.json(configData);
+        } else {
+            res.json({ message: '配置文件不存在' });
+        }
+    } catch (error) {
+        console.error('读取配置文件失败:', error);
+        res.status(500).json({ error: `读取配置文件失败: ${error.message}` });
+    }
+});
+
+// 添加浏览文件夹API
+app.get('/api/browse-folders', (req, res) => {
+    try {
+        // 首先尝试使用Electron的对话框
+        let electronAvailable = false;
+        try {
+            // 检查是否在Electron环境中
+            const electron = require('electron');
+            electronAvailable = !!electron.dialog;
+        } catch (e) {
+            console.log('不在Electron环境中，将使用备用方法');
+            electronAvailable = false;
+        }
+        
+        if (electronAvailable) {
+            // 使用Electron对话框
+            const { dialog } = require('electron');
+            const BrowserWindow = require('electron').BrowserWindow;
+            const win = BrowserWindow.getFocusedWindow();
+            
+            dialog.showOpenDialog(win, {
+                properties: ['openDirectory'],
+                defaultPath: path.join(__dirname, '..', 'work_dir')
+            }).then(result => {
+                if (result.canceled || result.filePaths.length === 0) {
+                    return res.json({ success: false, message: '用户取消选择' });
+                }
+                
+                const selectedPath = result.filePaths[0];
+                res.json({ success: true, path: selectedPath });
+            }).catch(err => {
+                console.error('打开文件夹对话框失败:', err);
+                useBackupMethod();
+            });
+        } else {
+            // 使用备用方法
+            useBackupMethod();
+        }
+        
+        // 备用方法：返回work_dir目录下的文件夹列表
+        function useBackupMethod() {
+            try {
+                // 获取请求中的当前路径参数
+                const currentPath = req.query.path || path.join(__dirname, '..', 'work_dir');
+                
+                // 确保路径存在
+                if (!fs.existsSync(currentPath)) {
+                    return res.json({ 
+                        success: false, 
+                        error: `路径不存在: ${currentPath}` 
+                    });
+                }
+                
+                // 确保路径是目录
+                const stats = fs.statSync(currentPath);
+                if (!stats.isDirectory()) {
+                    return res.json({ 
+                        success: false, 
+                        error: `不是目录: ${currentPath}` 
+                    });
+                }
+                
+                // 读取目录内容
+                const items = fs.readdirSync(currentPath, { withFileTypes: true });
+                
+                // 过滤出目录
+                const dirs = items
+                    .filter(item => item.isDirectory())
+                    .map(item => {
+                        const fullPath = path.join(currentPath, item.name);
+                        return {
+                            name: item.name,
+                            path: fullPath,
+                            isParent: false
+                        };
+                    });
+                
+                // 添加父目录（如果不是根目录）
+                const parentDir = path.dirname(currentPath);
+                if (parentDir !== currentPath) {
+                    dirs.unshift({
+                        name: '..',
+                        path: parentDir,
+                        isParent: true
+                    });
+                }
+                
+                // 如果是直接选择路径的请求
+                if (req.query.select === 'true') {
+                    return res.json({ 
+                        success: true, 
+                        path: currentPath 
+                    });
+                }
+                
+                // 返回目录列表和当前路径
+                res.json({ 
+                    success: true, 
+                    current_path: currentPath,
+                    directories: dirs,
+                    is_backup_method: true
+                });
+            } catch (error) {
+                console.error('备用方法失败:', error);
+                res.status(500).json({ 
+                    success: false, 
+                    error: `浏览文件夹失败: ${error.message}` 
+                });
+            }
+        }
+    } catch (error) {
+        console.error('浏览文件夹失败:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: `浏览文件夹失败: ${error.message}` 
+        });
+    }
+});
+
+// 添加获取任务信息API
+app.get('/api/task-info', async (req, res) => {
+    try {
+        const taskId = req.query.id;
+        if (!taskId) {
+            return res.status(400).json({ error: '缺少任务ID参数' });
+        }
+        
+        console.log(`获取任务信息: ${taskId}`);
+        
+        // 构建任务目录路径
+        const workDir = path.join(__dirname, '..');
+        const alchemyDir = path.join(workDir, 'work_dir', 'data_alchemy');
+        const runsDir = path.join(alchemyDir, 'alchemy_runs');
+        const taskDir = path.join(runsDir, `alchemy_${taskId}`);
+        
+        // 检查任务目录是否存在
+        if (!fs.existsSync(taskDir)) {
+            return res.status(404).json({ error: `任务 ${taskId} 不存在` });
+        }
+        
+        // 读取恢复信息
+        const resumeInfoPath = path.join(taskDir, 'resume_info.json');
+        let resumeInfo = null;
+        if (fs.existsSync(resumeInfoPath)) {
+            try {
+                resumeInfo = JSON.parse(fs.readFileSync(resumeInfoPath, 'utf8'));
+            } catch (e) {
+                console.warn(`读取恢复信息失败: ${e.message}`);
+            }
+        }
+        
+        // 读取下一轮迭代配置
+        const nextConfigPath = path.join(taskDir, 'next_iteration_config.json');
+        let nextIterationConfig = null;
+        if (fs.existsSync(nextConfigPath)) {
+            try {
+                nextIterationConfig = JSON.parse(fs.readFileSync(nextConfigPath, 'utf8'));
+            } catch (e) {
+                console.warn(`读取下一轮迭代配置失败: ${e.message}`);
+            }
+        }
+        
+        // 读取状态信息
+        const statusPath = path.join(taskDir, 'status.json');
+        let statusInfo = null;
+        if (fs.existsSync(statusPath)) {
+            try {
+                statusInfo = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+            } catch (e) {
+                console.warn(`读取状态信息失败: ${e.message}`);
+            }
+        }
+        
+        // 构建任务信息对象
+        const taskInfo = {
+            id: taskId,
+            task_dir: taskDir,
+            resume_info: resumeInfo,
+            next_iteration_config: nextIterationConfig,
+            status: statusInfo
+        };
+        
+        res.json(taskInfo);
+    } catch (error) {
+        console.error('获取任务信息失败:', error);
+        res.status(500).json({ error: `获取任务信息失败: ${error.message}` });
+    }
+});
+
 // 修改文件读取API
 app.get('/api/file', (req, res) => {
     const dirPath = req.query.dir;
@@ -1228,7 +1433,7 @@ app.get('/api/direct-resumable-tasks', async (req, res) => {
 
 // 添加执行任务API
 app.post('/api/execute-task', async (req, res) => {
-    const { mode, query, alchemy_id, resume } = req.body;
+    const { mode, query, alchemy_id, resume, input_dirs } = req.body;
     
     try {
         // 验证必填参数
@@ -1260,6 +1465,13 @@ app.post('/api/execute-task', async (req, res) => {
             if (resume) {
                 args.push('--resume');
             }
+        }
+        
+        // 添加输入目录参数
+        if (input_dirs && Array.isArray(input_dirs) && input_dirs.length > 0) {
+            // 将输入目录列表转换为JSON字符串并添加到命令行参数
+            args.push(`--input-dirs=${JSON.stringify(input_dirs)}`);
+            console.log(`添加输入目录参数: ${input_dirs.length} 个目录`);
         }
         
         // 使用child_process执行命令
@@ -1296,7 +1508,8 @@ app.post('/api/execute-task', async (req, res) => {
             startTime: new Date(),
             mode: mode,
             query: query,
-            resume: resume
+            resume: resume,
+            input_dirs: input_dirs // 保存输入目录信息
         };
         activeProcesses.add(processInfo);
         

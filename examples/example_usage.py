@@ -25,6 +25,10 @@ async def on_process_started(data, logger):
     logger.info(f"=== 炼丹开始 [ID: {data['alchemy_id']}] ===")
     logger.info(f"当前迭代: {data['iteration']}")
     logger.info(f"处理查询: {data['query']}")
+    
+    # 添加输入目录信息
+    if 'input_dirs' in data and data['input_dirs']:
+        logger.info(f"使用输入目录: {', '.join(data['input_dirs'])}")
 
 async def on_intent_parsed(data, logger):
     """意图解析事件"""
@@ -258,6 +262,7 @@ async def async_main():
     parser.add_argument('--id', type=str, help='要继续的alchemy_id（仅在continue模式下有效）')
     parser.add_argument('--resume', action='store_true', help='是否尝试从中断点恢复（仅在continue模式下有效）')
     parser.add_argument('--cancel', action='store_true', help='取消指定ID的任务')
+    parser.add_argument('--input-dirs', type=str, help='输入目录列表（JSON格式字符串）')
     args = parser.parse_args()
     
     logger = setup_logging()
@@ -271,11 +276,22 @@ async def async_main():
 
         # 初始化默认参数
         query = args.query or "请生成一份关于AI发展的报告"
-        input_dirs = [str(test_data_dir)]
+        input_dirs = [str(test_data_dir)]  # 默认使用test_data目录
         mode = args.mode or "new"  # 默认为新建模式
         alchemy_id = args.id
         should_resume = args.resume
         should_cancel = args.cancel  # 新增：是否需要取消任务
+        
+        # 处理输入目录参数
+        if args.input_dirs:
+            try:
+                # 解析JSON格式的输入目录列表
+                custom_input_dirs = json.loads(args.input_dirs)
+                if isinstance(custom_input_dirs, list) and custom_input_dirs:
+                    input_dirs = custom_input_dirs
+                    logger.info(f"从命令行参数读取输入目录: {input_dirs}")
+            except json.JSONDecodeError as e:
+                logger.error(f"解析输入目录参数失败: {e}")
         
         # 首先尝试从配置文件读取
         config_path = Path(args.config)
@@ -288,7 +304,8 @@ async def async_main():
                     query = config.get('query', query)
                 if not args.mode and config.get('mode'):
                     mode = config.get('mode')
-                if args.id is None and config.get('input_dirs'):
+                # 只有当命令行没有指定输入目录时，才使用配置文件中的值
+                if not args.input_dirs and config.get('input_dirs'):
                     input_dirs = config.get('input_dirs')
                     logger.info(f"从配置中读取input_dirs: {input_dirs}")
                 # 在continue模式下读取alchemy_id和resume标志
@@ -340,7 +357,7 @@ async def async_main():
                     resume_info = latest_task.get('resume_info', {})
                     if not query and "query" in resume_info:
                         query = resume_info["query"]
-                    if not input_dirs and "input_dirs" in resume_info:
+                    if not args.input_dirs and "input_dirs" in resume_info:
                         input_dirs = resume_info["input_dirs"]
                         
                     logger.info(f"已选择最近的可恢复任务: ID={alchemy_id}, 查询={query}")
@@ -350,6 +367,7 @@ async def async_main():
         # 根据模式执行不同的处理
         if mode == "continue":
             logger.info(f"运行模式: 继续炼丹流程 (alchemy_id: {alchemy_id}, resume: {should_resume})")
+            logger.info(f"使用输入目录: {input_dirs}")
             await datamind_alchemy_process(
                 alchemy_id=alchemy_id,
                 query=query,
@@ -364,6 +382,7 @@ async def async_main():
             # 新建模式：执行标准数据炼丹流程
             logger.info("运行模式: 新建炼丹流程")
             logger.info(f"开始数据炼丹测试，查询: {query}")
+            logger.info(f"使用输入目录: {input_dirs}")
             await datamind_alchemy_process(
                 query=query,
                 input_dirs=input_dirs,
