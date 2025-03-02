@@ -950,7 +950,7 @@ app.post('/api/stop-task', async (req, res) => {
         console.log(`尝试强制停止任务: ${alchemy_id}`);
         // 查找包含特定任务ID的Python进程
         const findCmd = process.platform === 'win32' 
-            ? `tasklist /FI "IMAGENAME eq python.exe" /FO CSV` 
+            ? `wmic process where "name='python.exe'" get processid,commandline` 
             : `ps aux | grep "python.*${alchemy_id}" | grep -v grep`;
         
         exec(findCmd, (error, stdout, stderr) => {
@@ -965,65 +965,21 @@ app.post('/api/stop-task', async (req, res) => {
             // 解析进程ID
             let pids = [];
             if (process.platform === 'win32') {
-                // Windows下解析tasklist输出
-                const lines = stdout.split('\n').filter(line => line.includes('python.exe'));
+                // Windows下解析wmic输出
+                const lines = stdout.split('\n').filter(line => line.trim());
                 
-                // 如果有alchemy_id，先尝试查找包含该ID的进程
-                if (alchemy_id) {
-                    // 获取所有Python进程的PID
-                    const pythonPids = [];
-                    lines.forEach(line => {
-                        const match = line.match(/"python.exe","(\d+)",/);
-                        if (match && match[1]) {
-                            pythonPids.push(match[1]);
+                // 跳过标题行
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    // 只处理包含指定任务ID的进程
+                    if (line && line.includes(alchemy_id)) {
+                        // 提取PID（最后一列）
+                        const pid = line.trim().split(/\s+/).pop();
+                        if (pid && /^\d+$/.test(pid)) {
+                            pids.push(pid);
                         }
-                    });
-                    
-                    // 对于每个Python进程，检查其命令行是否包含alchemy_id
-                    if (pythonPids.length > 0) {
-                        // 使用wmic查询每个进程的命令行
-                        const wmicPromises = pythonPids.map(pid => {
-                            return new Promise((resolve) => {
-                                exec(`wmic process where "ProcessId=${pid}" get CommandLine`, (wmicError, wmicStdout) => {
-                                    if (!wmicError && wmicStdout.includes(alchemy_id)) {
-                                        resolve(pid);
-                                    } else {
-                                        resolve(null);
-                                    }
-                                });
-                            });
-                        });
-                        
-                        // 等待所有wmic查询完成
-                        Promise.all(wmicPromises).then(matchedPids => {
-                            pids = matchedPids.filter(pid => pid !== null);
-                            
-                            if (pids.length === 0) {
-                                // 如果没有找到匹配的进程，使用备用方法
-                                lines.forEach(line => {
-                                    const match = line.match(/"python.exe","(\d+)",/);
-                                    if (match && match[1]) {
-                                        pids.push(match[1]);
-                                    }
-                                });
-                            }
-                            
-                            // 继续处理找到的PID
-                            handleFoundPids(pids);
-                        });
-                        
-                        // 提前返回，等待异步处理完成
-                        return;
                     }
                 }
-                
-                // 如果没有alchemy_id或者上面的方法没有找到进程，使用简单方法
-                lines.forEach(line => {
-                    const match = line.match(/"python.exe","(\d+)",/);
-                    if (match && match[1]) {
-                        pids.push(match[1]);
-                    }
-                });
             } else {
                 // Linux/Mac下解析ps输出
                 const lines = stdout.split('\n');
@@ -1045,13 +1001,13 @@ app.post('/api/stop-task', async (req, res) => {
                 // 没有找到相关进程
                 io.emit('taskOutput', {
                     alchemy_id: alchemy_id,
-                    output: `\n[停止请求] 未找到相关任务进程\n`,
+                    output: `\n[停止请求] 未找到与任务ID ${alchemy_id} 相关的进程\n`,
                     encoding: 'utf8' // 明确指定编码
                 });
                 
                 return res.json({
                     success: true,
-                    message: '未找到相关任务进程'
+                    message: `未找到与任务ID ${alchemy_id} 相关的进程`
                 });
             }
             
@@ -1099,18 +1055,18 @@ app.post('/api/stop-task', async (req, res) => {
                     }
                 }
                 
-                res.json({
+                return res.json({
                     success: true,
-                    message: '已强制终止任务进程',
+                    message: `已终止与任务ID ${alchemy_id} 相关的进程`,
                     pids: pids
                 });
             });
         }
     } catch (error) {
         console.error('停止任务失败:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            error: error.message
+            error: '停止任务失败: ' + error.message
         });
     }
 });
@@ -1574,7 +1530,6 @@ function getTaskIdFromRunningProcess(pids) {
     }
     
     // 如果在活动进程集合中没有找到，尝试从命令行参数中提取
-    // 这需要在系统上执行额外的命令，可能会有一些延迟
     try {
         const { execSync } = require('child_process');
         
@@ -1589,8 +1544,20 @@ function getTaskIdFromRunningProcess(pids) {
                 cmdOutput = execSync(`ps -p ${pid} -o command=`, { encoding: 'utf8' });
             }
             
-            // 尝试从命令行中提取 --id= 参数
-            const match = cmdOutput.match(/--id=([a-zA-Z0-9_-]+)/);
+            // 首先尝试从命令行中提取 --id= 参数
+            let match = cmdOutput.match(/--id=([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                return match[1];
+            }
+            
+            // 然后尝试从命令行中提取 alchemy_id= 参数
+            match = cmdOutput.match(/alchemy_id=([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                return match[1];
+            }
+            
+            // 最后尝试从路径中提取 alchemy_{id} 格式的任务ID
+            match = cmdOutput.match(/alchemy_([a-zA-Z0-9_-]+)/);
             if (match && match[1]) {
                 return match[1];
             }
@@ -1628,11 +1595,12 @@ function findPythonProcesses(callback) {
     // 根据操作系统选择不同的命令
     let cmd;
     if (process.platform === 'win32') {
-        // Windows: 使用 tasklist 查找 python 进程，并过滤包含 example_usage.py 的进程
-        cmd = 'tasklist /FI "IMAGENAME eq python.exe" /FO CSV /NH';
+        // Windows: 使用 wmic 查找 python 进程，并过滤包含 datamind 相关关键词的进程
+        // 注意：这里不再使用简单的 tasklist，而是直接使用 wmic 获取命令行
+        cmd = 'wmic process where "name=\'python.exe\'" get processid,commandline';
     } else {
-        // Linux/Mac: 使用 ps 和 grep 查找 python 进程
-        cmd = 'ps aux | grep python | grep example_usage.py | grep -v grep';
+        // Linux/Mac: 使用 ps 和 grep 查找 python 进程，并过滤包含 datamind 相关关键词的进程
+        cmd = 'ps aux | grep python | grep -E "datamind|example_usage.py|alchemy_manager_cli.py" | grep -v grep';
     }
     
     exec(cmd, (error, stdout, stderr) => {
@@ -1645,7 +1613,7 @@ function findPythonProcesses(callback) {
         const pids = [];
         
         if (process.platform === 'win32') {
-            // 解析Windows tasklist输出
+            // 解析Windows wmic输出
             const lines = stdout.trim().split('\n');
             
             // 如果没有找到任何进程，直接调用回调
@@ -1653,37 +1621,29 @@ function findPythonProcesses(callback) {
                 return callback(pids);
             }
             
-            // 使用更简单的方法：直接检查命令行参数
-            exec('wmic process where "name=\'python.exe\'" get processid,commandline', (err, wmicOutput) => {
-                if (err) {
-                    console.error(`获取Python进程命令行失败: ${err.message}`);
-                    return callback(pids);
-                }
-                
-                const wmicLines = wmicOutput.trim().split('\n');
-                // 跳过标题行
-                for (let i = 1; i < wmicLines.length; i++) {
-                    const line = wmicLines[i].trim();
-                    if (line && line.includes('example_usage.py')) {
-                        // 提取PID（最后一列）
-                        const pid = line.trim().split(/\s+/).pop();
-                        if (pid && /^\d+$/.test(pid)) {
-                            pids.push(pid);
-                        }
+            // 跳过标题行
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                // 只处理包含项目相关关键词的进程
+                if (line && (line.includes('datamind') || 
+                             line.includes('example_usage.py') || 
+                             line.includes('alchemy_manager_cli.py'))) {
+                    // 提取PID（最后一列）
+                    const pid = line.trim().split(/\s+/).pop();
+                    if (pid && /^\d+$/.test(pid)) {
+                        pids.push(pid);
                     }
                 }
-                
-                callback(pids);
-            });
+            }
+            
+            callback(pids);
         } else {
             // 解析Linux/Mac ps输出
             const lines = stdout.trim().split('\n');
             for (const line of lines) {
-                if (line.trim()) {
-                    const parts = line.trim().split(/\s+/);
-                    if (parts.length >= 2) {
-                        pids.push(parts[1]); // 第二列是PID
-                    }
+                const parts = line.trim().split(/\s+/);
+                if (parts.length > 1) {
+                    pids.push(parts[1]);
                 }
             }
             callback(pids);
