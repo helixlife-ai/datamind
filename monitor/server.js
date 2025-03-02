@@ -1385,6 +1385,197 @@ app.post('/api/execute-task', async (req, res) => {
     }
 });
 
+// 添加停止任务API
+app.post('/api/stop-task', async (req, res) => {
+    const { alchemy_id, stop_type } = req.body;
+    
+    try {
+        // 验证必填参数
+        if (!alchemy_id) {
+            return res.status(400).json({
+                success: false,
+                error: '任务ID不能为空'
+            });
+        }
+        
+        console.log(`收到停止任务请求: ID=${alchemy_id}, 类型=${stop_type || 'force'}`);
+        
+        // 查找与该任务ID相关的进程
+        let taskProcess = null;
+        for (const process of activeProcesses) {
+            if (process.taskId === alchemy_id) {
+                taskProcess = process;
+                break;
+            }
+        }
+        
+        // 如果找到了进程，直接终止它
+        if (taskProcess) {
+            console.log(`找到任务进程 PID=${taskProcess.pid}, 准备终止`);
+            
+            // 根据操作系统选择不同的终止方法
+            if (process.platform === 'win32') {
+                // Windows: 使用taskkill终止进程树
+                try {
+                    require('child_process').execSync(`taskkill /pid ${taskProcess.pid} /T /F`, {
+                        stdio: 'ignore'
+                    });
+                    console.log(`已使用taskkill终止进程 ${taskProcess.pid}`);
+                } catch (e) {
+                    console.error(`使用taskkill终止进程失败: ${e.message}`);
+                }
+            } else {
+                // Unix: 发送SIGTERM信号
+                try {
+                    process.kill(taskProcess.pid, 'SIGTERM');
+                    console.log(`已发送SIGTERM信号到进程 ${taskProcess.pid}`);
+                    
+                    // 如果进程没有在1秒内退出，发送SIGKILL
+                    setTimeout(() => {
+                        try {
+                            process.kill(taskProcess.pid, 'SIGKILL');
+                            console.log(`已发送SIGKILL信号到进程 ${taskProcess.pid}`);
+                        } catch (e) {
+                            // 忽略错误，可能进程已经退出
+                        }
+                    }, 1000);
+                } catch (e) {
+                    console.error(`发送信号到进程失败: ${e.message}`);
+                }
+            }
+            
+            // 从活动进程集合中移除
+            activeProcesses.delete(taskProcess);
+            
+            // 发送任务状态更新
+            io.emit('taskStatus', {
+                alchemy_id: alchemy_id,
+                status: 'stopped',
+                message: '任务已强制终止'
+            });
+            
+            // 通过WebSocket发送完成消息
+            io.emit('taskOutput', {
+                alchemy_id: alchemy_id,
+                output: `\n[任务已强制终止]\n`,
+                encoding: 'utf8'
+            });
+            
+            // 刷新可恢复任务列表
+            io.emit('refreshResumableTasks');
+            
+            // 返回成功响应
+            return res.json({
+                success: true,
+                message: '任务已强制终止',
+                alchemy_id: alchemy_id,
+                method: 'direct_termination'
+            });
+        }
+        
+        // 如果没有找到进程，尝试使用cancel命令
+        console.log(`未找到任务进程，尝试使用cancel命令`);
+        
+        // 构建命令参数
+        const args = [
+            'examples/example_usage.py',
+            `--id=${alchemy_id}`,
+            `--cancel`
+        ];
+        
+        // 使用child_process执行命令
+        const { spawn } = require('child_process');
+        const workDir = path.join(__dirname, '..');
+        
+        // 确定 Python 解释器路径
+        const pythonPath = process.env.PYTHON_PATH || 'python';
+        
+        // 构建脚本的绝对路径
+        const scriptPath = path.join(workDir, 'examples', 'example_usage.py');
+        console.log(`工作目录: ${workDir}`);
+        console.log(`脚本路径: ${scriptPath}`);
+        console.log(`Python解释器路径: ${pythonPath}`);
+        
+        // 更新参数，使用绝对路径
+        args[0] = scriptPath;
+        
+        console.log(`执行停止命令: ${pythonPath} ${args.join(' ')}`);
+        
+        const pythonProcess = spawn(pythonPath, args, {
+            cwd: workDir,
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+        });
+        
+        // 设置输出处理
+        let output = '';
+        let errorOutput = '';
+        
+        pythonProcess.stdout.on('data', (data) => {
+            const text = data.toString('utf8');
+            output += text;
+            console.log(`[停止任务 ${alchemy_id}] ${text}`);
+            
+            // 通过WebSocket发送输出
+            io.emit('taskOutput', {
+                alchemy_id: alchemy_id,
+                output: `[停止请求] ${text}`,
+                encoding: 'utf8'
+            });
+        });
+        
+        pythonProcess.stderr.on('data', (data) => {
+            const text = data.toString('utf8');
+            errorOutput += text;
+            console.error(`[停止任务 ${alchemy_id} STDERR] ${text}`);
+            
+            // 通过WebSocket发送错误输出
+            io.emit('taskOutput', {
+                alchemy_id: alchemy_id,
+                output: `[停止请求错误] ${text}`,
+                encoding: 'utf8',
+                isError: true
+            });
+        });
+        
+        // 等待进程完成
+        pythonProcess.on('close', (code) => {
+            console.log(`[停止任务 ${alchemy_id}] 进程退出，代码: ${code}`);
+            
+            // 发送任务状态更新
+            io.emit('taskStatus', {
+                alchemy_id: alchemy_id,
+                status: 'stopped',
+                message: '任务已停止'
+            });
+            
+            // 通过WebSocket发送完成消息
+            io.emit('taskOutput', {
+                alchemy_id: alchemy_id,
+                output: `\n[停止请求完成] 退出代码: ${code}\n`,
+                encoding: 'utf8'
+            });
+            
+            // 刷新可恢复任务列表
+            io.emit('refreshResumableTasks');
+        });
+        
+        // 立即返回成功响应，不等待进程完成
+        res.json({
+            success: true,
+            message: '已发送停止请求',
+            alchemy_id: alchemy_id,
+            method: 'cancel_command'
+        });
+        
+    } catch (error) {
+        console.error('停止任务失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // 启动服务器
 const PORT = config.port || 3000;
 http.listen(PORT, () => {
