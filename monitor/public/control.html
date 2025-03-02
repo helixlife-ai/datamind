@@ -1093,10 +1093,8 @@
         function handleVisibilityChange() {
             if (document.visibilityState === 'visible') {
                 console.log('页面重新变为可见，检查任务状态');
-                // 页面重新变为可见时，检查任务状态
+                // 只检查运行中的任务，不刷新可恢复任务列表
                 checkRunningTasks();
-                // 重新加载可恢复任务列表
-                loadResumableTasks();
             }
         }
         

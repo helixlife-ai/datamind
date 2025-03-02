@@ -1120,11 +1120,6 @@ function handleTaskInterrupt(alchemy_id) {
                     output: `\n[提示] 您也可以在Web界面上点击"可恢复任务"列表中的"恢复此任务"按钮来恢复\n`,
                     encoding: 'utf8'
                 });
-                
-                // 刷新可恢复任务列表
-                setTimeout(() => {
-                    io.emit('refreshResumableTasks');
-                }, 1000);
             } else {
                 console.log(`恢复信息文件不存在: ${resumeInfoPath}`);
                 
@@ -1159,11 +1154,6 @@ function handleTaskInterrupt(alchemy_id) {
                     output: `\n[提示] 您也可以在Web界面上点击"可恢复任务"列表中的"恢复此任务"按钮来恢复\n`,
                     encoding: 'utf8'
                 });
-                
-                // 刷新可恢复任务列表
-                setTimeout(() => {
-                    io.emit('refreshResumableTasks');
-                }, 1000);
             }
             
             // 尝试执行Python脚本来保存检查点
@@ -1352,13 +1342,6 @@ app.get('/api/resumable-tasks', async (req, res) => {
                     original_count: tasks.length,
                     valid_count: validTasks.length
                 });
-                
-                // 如果有任务，通知客户端刷新任务列表
-                if (validTasks.length > 0) {
-                    setTimeout(() => {
-                        io.emit('refreshResumableTasks');
-                    }, 500);
-                }
             } catch (parseError) {
                 console.error('解析可恢复任务失败:', parseError);
                 console.error('原始输出:', stdout);
