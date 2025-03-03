@@ -428,9 +428,6 @@
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#configPanel" type="button" role="tab" aria-controls="configPanel" aria-selected="false">迭代配置</button>
                             </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="resumable-tab" data-bs-toggle="tab" data-bs-target="#resumablePanel" type="button" role="tab" aria-controls="resumablePanel" aria-selected="false">可恢复任务</button>
-                            </li>
                         </ul>
                     </div>
                     <div class="card-body">
@@ -548,19 +545,6 @@
                                     </div>
                                 </form>
                             </div>
-                            
-                            <!-- 可恢复任务面板 -->
-                            <div class="tab-pane fade" id="resumablePanel" role="tabpanel" aria-labelledby="resumable-tab">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h6 class="mb-0">可恢复任务列表</h6>
-                                    <button class="btn btn-sm btn-secondary" id="refreshResumableBtn">
-                                        <i class="bi bi-arrow-repeat"></i> 刷新列表
-                                    </button>
-                                </div>
-                                <div id="resumableTasks">
-                                    <p>加载中...</p>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -660,15 +644,27 @@
 
         // 更新按钮显示状态的函数
         function updateButtonsVisibility() {
+            console.log('更新按钮状态，当前任务ID:', currentAlchemyId);
+            
             if (currentAlchemyId) {
                 // 有任务在运行，显示停止按钮，隐藏开始按钮
                 stopTaskBtn.style.display = 'block';
                 startTaskBtn.style.display = 'none';
+                
+                // 确保停止按钮可用
+                stopTaskBtn.disabled = false;
+                stopTaskBtn.textContent = '停止任务';
             } else {
                 // 没有任务在运行，隐藏停止按钮，显示开始按钮
                 stopTaskBtn.style.display = 'none';
                 startTaskBtn.style.display = 'block';
+                
+                // 确保开始按钮可用
+                startTaskBtn.disabled = false;
             }
+            
+            // 添加日志
+            console.log('按钮状态已更新 - 开始按钮:', startTaskBtn.style.display, '停止按钮:', stopTaskBtn.style.display);
         }
 
         // 模式切换逻辑
@@ -678,9 +674,6 @@
                 alchemyIdGroup.style.display = 'block';
                 document.getElementById('queryGroup').style.display = 'none';
                 document.getElementById('inputDirGroup').style.display = 'none';
-                
-                // 当切换到继续模式时，重新加载任务列表
-                loadResumableTasks();
                 
                 // 添加提示信息
                 appendToTerminal('已切换到继续任务模式，将使用原任务的查询文本和输入目录\n');
@@ -710,7 +703,6 @@
         // 加载可恢复任务列表
         function loadResumableTasks() {
             // 显示加载状态
-            resumableTasks.innerHTML = '<p>正在加载可恢复任务...</p>';
             const alchemyIdSelect = document.getElementById('alchemyId');
             alchemyIdSelect.innerHTML = '<option value="">正在加载任务列表...</option>';
             
@@ -744,7 +736,6 @@
                         })
                         .catch(error => {
                             console.error('两种方式加载可恢复任务均失败:', error);
-                            resumableTasks.innerHTML = `<p class="text-danger">加载失败: ${error.message}</p>`;
                             alchemyIdSelect.innerHTML = '<option value="">加载失败</option>';
                             appendToTerminal(`[错误] 加载任务列表失败: ${error.message}\n请检查服务器日志或刷新页面重试。\n`);
                         });
@@ -813,70 +804,11 @@
                     }
                 });
                 
-                // 构建可恢复任务列表HTML
-                const taskList = tasks.map((task, index) => {
-                    // 安全地获取查询和时间戳
-                    const query = task.resume_info && task.resume_info.query 
-                        ? task.resume_info.query 
-                        : (task.latest_query || '未知');
-                    const timestamp = task.resume_info && task.resume_info.timestamp 
-                        ? task.resume_info.timestamp 
-                        : (task.updated_at || '未知');
-                    
-                    return `
-                    <div class="task-item mb-2 p-2 border rounded">
-                        <div><strong>ID:</strong> ${task.id}</div>
-                        <div><strong>查询:</strong> ${query}</div>
-                        <div><strong>时间:</strong> ${timestamp}</div>
-                        <button class="btn btn-sm btn-primary mt-1 resume-task-btn" 
-                                data-id="${task.id}" 
-                                data-query="${query}">
-                            恢复此任务
-                        </button>
-                    </div>
-                    `;
-                }).join('');
-                
-                resumableTasks.innerHTML = taskList;
-                console.log(`[${method}] 已更新可恢复任务列表UI`);
-                
-                // 添加恢复任务按钮事件
-                document.querySelectorAll('.resume-task-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const id = e.target.getAttribute('data-id');
-                        const query = e.target.getAttribute('data-query');
-                        
-                        console.log(`点击恢复任务按钮: ID=${id}, 查询=${query}`);
-                        
-                        // 切换到继续任务模式
-                        document.getElementById('mode').value = 'continue';
-                        document.getElementById('alchemyId').value = id;
-                        document.getElementById('resumeCheckbox').checked = true;
-                        
-                        // 更新UI显示
-                        alchemyIdGroup.style.display = 'block';
-                        document.getElementById('queryGroup').style.display = 'none';
-                        document.getElementById('inputDirGroup').style.display = 'none';
-                        
-                        // 自动提交表单，开始恢复任务
-                        setTimeout(() => {
-                            // 如果没有正在运行的任务，自动提交表单
-                            if (!currentAlchemyId) {
-                                appendToTerminal(`准备恢复任务 (ID: ${id})...\n`);
-                                taskForm.dispatchEvent(new Event('submit'));
-                            } else {
-                                appendToTerminal(`[警告] 已有任务正在运行 (ID: ${currentAlchemyId})，请先停止当前任务再恢复\n`);
-                            }
-                        }, 100);
-                    });
-                });
-                
                 // 显示加载方式
                 appendToTerminal(`[信息] 已通过${method}加载 ${tasks.length} 个可恢复任务\n`);
             } else {
                 // 更新任务ID下拉列表
                 alchemyIdSelect.innerHTML = '<option value="">没有可用的任务</option>';
-                resumableTasks.innerHTML = '<p>没有可恢复的任务</p>';
                 console.log(`[${method}] 没有找到可恢复的任务`);
                 appendToTerminal(`[信息] 没有找到可恢复的任务\n`);
             }
@@ -1017,6 +949,17 @@
                     // 不立即清除currentAlchemyId，等待服务器确认任务已停止
                     // 显示等待提示
                     appendToTerminal(`请等待任务停止确认...\n`);
+                    
+                    // 添加超时处理，如果10秒内没有收到服务器的停止确认，则手动恢复按钮状态
+                    setTimeout(() => {
+                        if (currentAlchemyId) {
+                            appendToTerminal(`[警告] 未收到任务停止确认，手动恢复状态...\n`);
+                            currentAlchemyId = null;
+                            updateButtonsVisibility();
+                            stopTaskBtn.disabled = false;
+                            stopTaskBtn.textContent = '停止任务';
+                        }
+                    }, 10000);
                 } else {
                     appendToTerminal(`停止请求失败: ${data.error}\n`);
                     // 恢复按钮状态
@@ -1191,35 +1134,12 @@
                     // 任务完成时清除当前任务ID
                     currentAlchemyId = null;
                     appendToTerminal('任务已完成，可以开始新任务\n');
-                    updateButtonsVisibility();
-                }
-            }
-            // 添加：如果当前没有任务ID但收到了输出，可能是刷新后需要重新连接
-            else if (!currentAlchemyId && data.alchemy_id) {
-                // 自动重新连接到正在运行的任务
-                currentAlchemyId = data.alchemy_id;
-                appendToTerminal(`[自动连接] 检测到正在运行的任务 (ID: ${currentAlchemyId})，已重新连接\n`);
-                appendToTerminal(data.output, data.isError);
-                updateButtonsVisibility();
-            }
-        });
-
-        // 监听任务输出
-        socket.on('taskOutput', (data) => {
-            // 即使当前没有任务ID，也显示恢复信息
-            if (data.output && (data.output.includes('[恢复信息]') || data.output.includes('[检查点保存]'))) {
-                appendToTerminal(data.output, data.isError);
-            }
-            // 正常的任务输出处理
-            else if (data.alchemy_id === currentAlchemyId) {
-                // 确保输出是UTF-8编码，并传递错误标志
-                appendToTerminal(data.output, data.isError);
-                
-                // 检查输出是否表示任务已完成
-                if (data.output.includes('任务完成') || data.output.includes('任务已结束') || data.output.includes('任务已完成')) {
-                    // 任务完成时清除当前任务ID
-                    currentAlchemyId = null;
-                    appendToTerminal('任务已完成，可以开始新任务\n');
+                    
+                    // 恢复按钮状态
+                    stopTaskBtn.disabled = false;
+                    stopTaskBtn.textContent = '停止任务';
+                    
+                    // 更新按钮显示状态
                     updateButtonsVisibility();
                 }
             }
@@ -1240,11 +1160,15 @@
                 if (data.alchemy_id === currentAlchemyId) {
                     currentAlchemyId = null;
                     appendToTerminal(`任务状态: ${data.status}\n`);
-                    updateButtonsVisibility();
                     
                     // 恢复停止按钮状态
                     stopTaskBtn.disabled = false;
                     stopTaskBtn.textContent = '停止任务';
+                    
+                    // 更新按钮显示状态
+                    updateButtonsVisibility();
+                    
+                    appendToTerminal('任务已结束，可以开始新任务\n');
                 }
             }
         });
@@ -1289,15 +1213,6 @@
             if (refreshTasksBtn) {
                 refreshTasksBtn.addEventListener('click', () => {
                     appendToTerminal('手动刷新任务列表...\n');
-                    loadResumableTasks();
-                });
-            }
-            
-            // 添加刷新可恢复任务列表按钮事件
-            const refreshResumableBtn = document.getElementById('refreshResumableBtn');
-            if (refreshResumableBtn) {
-                refreshResumableBtn.addEventListener('click', () => {
-                    appendToTerminal('手动刷新可恢复任务列表...\n');
                     loadResumableTasks();
                 });
             }
