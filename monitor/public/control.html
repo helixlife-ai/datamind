@@ -1194,6 +1194,43 @@
                     updateButtonsVisibility();
                 }
             }
+            // 添加：如果当前没有任务ID但收到了输出，可能是刷新后需要重新连接
+            else if (!currentAlchemyId && data.alchemy_id) {
+                // 自动重新连接到正在运行的任务
+                currentAlchemyId = data.alchemy_id;
+                appendToTerminal(`[自动连接] 检测到正在运行的任务 (ID: ${currentAlchemyId})，已重新连接\n`);
+                appendToTerminal(data.output, data.isError);
+                updateButtonsVisibility();
+            }
+        });
+
+        // 监听任务输出
+        socket.on('taskOutput', (data) => {
+            // 即使当前没有任务ID，也显示恢复信息
+            if (data.output && (data.output.includes('[恢复信息]') || data.output.includes('[检查点保存]'))) {
+                appendToTerminal(data.output, data.isError);
+            }
+            // 正常的任务输出处理
+            else if (data.alchemy_id === currentAlchemyId) {
+                // 确保输出是UTF-8编码，并传递错误标志
+                appendToTerminal(data.output, data.isError);
+                
+                // 检查输出是否表示任务已完成
+                if (data.output.includes('任务完成') || data.output.includes('任务已结束') || data.output.includes('任务已完成')) {
+                    // 任务完成时清除当前任务ID
+                    currentAlchemyId = null;
+                    appendToTerminal('任务已完成，可以开始新任务\n');
+                    updateButtonsVisibility();
+                }
+            }
+            // 添加：如果当前没有任务ID但收到了输出，可能是刷新后需要重新连接
+            else if (!currentAlchemyId && data.alchemy_id) {
+                // 自动重新连接到正在运行的任务
+                currentAlchemyId = data.alchemy_id;
+                appendToTerminal(`[自动连接] 检测到正在运行的任务 (ID: ${currentAlchemyId})，已重新连接\n`);
+                appendToTerminal(data.output, data.isError);
+                updateButtonsVisibility();
+            }
         });
 
         // 监听任务状态变化
@@ -1270,6 +1307,13 @@
             
             // 初始化迭代配置相关功能
             initNextIterationConfigFeature();
+
+            // 添加页面刷新后重新获取任务状态的事件监听
+            window.addEventListener('load', () => {
+                console.log('页面刷新完成，重新获取任务状态');
+                checkRunningTasks();
+                loadResumableTasks();
+            });
         });
         
         // 初始化输入目录相关功能
@@ -1503,19 +1547,47 @@
             // 通过WebSocket发送请求，检查是否有正在运行的Python进程
             socket.emit('checkRunningTasks');
             console.log('发送检查运行中任务请求');
+            
+            // 添加备用方法，通过HTTP请求获取任务状态
+            fetch('/api/running-tasks')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP错误: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('HTTP方式获取运行中任务状态:', data);
+                    if (data.running && data.taskId) {
+                        currentAlchemyId = data.taskId;
+                        appendToTerminal(`检测到正在运行的任务 (ID: ${currentAlchemyId})\n`);
+                        updateButtonsVisibility();
+                        
+                        // 如果有任务正在运行，尝试获取该任务的历史输出
+                        fetchTaskHistory(currentAlchemyId);
+                        
+                        // 通知服务器我们已经重新连接到这个任务
+                        socket.emit('reconnectToTask', { taskId: currentAlchemyId });
+                    }
+                })
+                .catch(error => {
+                    console.error('HTTP方式获取任务状态失败:', error);
+                    // 错误时不做特殊处理，依赖WebSocket方式
+                });
         }
         
-        // 监听运行中任务检查结果
-        socket.on('runningTasksResult', (data) => {
-            console.log('收到运行中任务检查结果:', data);
-            if (data.running) {
-                currentAlchemyId = data.taskId;
-                appendToTerminal(`检测到正在运行的任务 (ID: ${currentAlchemyId})\n`);
-                updateButtonsVisibility();
-                
-                // 如果有任务正在运行，尝试获取该任务的历史输出
-                fetchTaskHistory(currentAlchemyId);
-            }
+        // 监听socket连接事件
+        socket.on('connect', () => {
+            console.log('WebSocket已连接，检查运行中的任务');
+            // 连接成功后立即检查是否有运行中的任务
+            checkRunningTasks();
+        });
+        
+        // 监听socket重连事件
+        socket.on('reconnect', () => {
+            console.log('WebSocket已重新连接，检查运行中的任务');
+            // 重连后检查是否有运行中的任务
+            checkRunningTasks();
         });
         
         // 获取任务历史输出
@@ -1538,6 +1610,9 @@
                     
                     // 添加分隔线
                     appendToTerminal(`--- 新输出将显示在下方 ---\n`);
+                    
+                    // 滚动到底部
+                    outputTerminal.scrollTop = outputTerminal.scrollHeight;
                 }
             } catch (error) {
                 console.error('获取任务历史失败:', error);
