@@ -132,29 +132,10 @@ function setupApiClients() {
     const siliconflowApiKeys = parseApiKeys(process.env.SILICONFLOW_API_KEY);
     console.log(`解析后的SiliconFlow API密钥数量: ${siliconflowApiKeys.length}`);
 
-    // 如果没有从环境变量中获取到密钥，尝试使用硬编码的备用密钥（仅用于测试）
+    // 为SiliconFlow初始化API客户端
     if (siliconflowApiKeys.length === 0) {
-        console.log('未从环境变量获取到SiliconFlow API密钥，尝试使用.env文件中的值');
-        // 从.env文件中提取的值
-        const backupKeys = [
-            'sk-vetzamuciebbtsmwdllqxgvztzlfypvpcrhhgituizwppjzr',
-            'sk-vungowlfsnzutpdkzmwplimgiktpounmjqqvjojhwnntrlyb'
-        ];
-        console.log(`使用备用密钥，数量: ${backupKeys.length}`);
-        
-        backupKeys.forEach((key, index) => {
-            if (key) {
-                try {
-                    OPENAI_CLIENTS.siliconflow.push(new OpenAI({
-                        apiKey: key,
-                        baseURL: process.env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1'
-                    }));
-                    console.log(`成功添加备用SiliconFlow API客户端 #${index+1}`);
-                } catch (err) {
-                    console.error(`初始化备用SiliconFlow API客户端 #${index+1} 失败:`, err);
-                }
-            }
-        });
+        console.log('警告: 未从环境变量获取到SiliconFlow API密钥，无法初始化客户端');
+        console.log('请在.env文件中设置有效的SILICONFLOW_API_KEY');
     } else {
         siliconflowApiKeys.forEach((key, index) => {
             if (key) {
