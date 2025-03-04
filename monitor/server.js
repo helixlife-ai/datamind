@@ -11,9 +11,8 @@ const { setupConfig } = require('./modules/config');
 const { setupApiClients } = require('./modules/api');
 const { ChatSessionManager } = require('./modules/chat');
 const { setupFileWatcher, updateFileStructure, buildFileSystemStructure } = require('./modules/fileWatcher');
-const { setupProcessManager } = require('./modules/processManager');
+const { setupProcessManager, emitTaskOutput } = require('./modules/processManager');
 const { setupRoutes } = require('./modules/routes');
-const { emitTaskOutput } = require('./modules/taskOutput');
 
 // 读取环境变量
 dotenv.config();

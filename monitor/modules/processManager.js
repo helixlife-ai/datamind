@@ -2,6 +2,28 @@ const { exec, execSync } = require('child_process');
 const path = require('path');
 
 /**
+ * 发送任务输出
+ * @param {string} alchemy_id - 任务ID
+ * @param {string} output - 输出内容
+ * @param {boolean} isError - 是否为错误输出
+ * @param {Object} io - Socket.IO实例
+ */
+function emitTaskOutput(alchemy_id, output, isError = false, io) {
+    if (!alchemy_id || !output) return;
+    
+    // 发送给所有连接的客户端
+    io.emit('taskOutput', {
+        alchemy_id,
+        output,
+        isError,
+        timestamp: new Date().toISOString()
+    });
+    
+    // 同时打印到控制台
+    console.log(`[任务输出 ${alchemy_id}${isError ? ' - 错误' : ''}]: ${output.substring(0, 200)}${output.length > 200 ? '...' : ''}`);
+}
+
+/**
  * 进程管理器
  * @param {Object} io - Socket.IO实例
  * @param {Function} emitTaskOutput - 发送任务输出的函数
@@ -490,5 +512,6 @@ function setupProcessManager(io, emitTaskOutput) {
 }
 
 module.exports = {
-    setupProcessManager
+    setupProcessManager,
+    emitTaskOutput
 }; 
