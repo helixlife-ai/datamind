@@ -3,7 +3,7 @@ import logging
 from typing import Optional, Dict, Any, Union, Literal, AsyncGenerator
 from sentence_transformers import SentenceTransformer
 from openai import AsyncOpenAI
-from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL, DEFAULT_REASONING_MODEL, DEFAULT_LLM_API_BASE
+from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL,  DEFAULT_LLM_API_BASE, DEFAULT_REASONING_MODEL
 from ..utils.common import download_model
 import asyncio
 
@@ -140,33 +140,70 @@ class ModelManager:
     async def generate_llm_response(self, 
                                   messages: list,
                                   model_name: str = DEFAULT_LLM_MODEL,
-                                  **kwargs) -> Optional[Dict[str, Any]]:
-        """生成LLM响应，支持本地和API两种方式"""
-        config = self.model_configs.get(model_name)
-        if not config:
-            self.logger.error(f"未找到模型 {model_name} 的配置")
-            return None
+                                  **kwargs) -> Optional[Union[Dict[str, Any], AsyncGenerator]]:
+        """生成LLM响应，支持本地和API两种方式
+        
+        Args:
+            messages: 对话消息列表
+            model_name: 模型名称，默认使用DEFAULT_LLM_MODEL
+            **kwargs: 其他参数传递给API
             
+        Returns:
+            Optional[Union[Dict[str, Any], AsyncGenerator]]: 
+            - 如果stream=True，返回异步生成器
+            - 如果stream=False，返回完整的API响应
+            如果调用失败则返回None
+        """
         try:
+            config = self.model_configs.get(model_name)
+            if not config:
+                self.logger.error(f"未找到模型 {model_name} 的配置")
+                return None
+                
             if config.model_type == "api":
                 client = self._get_llm_client(model_name)
                 if not client:
                     return None
                     
-                response = await client.chat.completions.create(
-                    model=model_name,
-                    messages=messages,
-                    stream=False,
-                    **kwargs
-                )
+                self.logger.debug(f"发送请求到API，模型: {model_name}")
+                self.logger.debug(f"请求消息: {messages}")
+                self.logger.debug(f"额外参数: {kwargs}")
                 
-                return response
+                is_stream = kwargs.get('stream', False)
+                max_retries = 3 if not is_stream else 1  # 流式模式下不重试
+                retry_count = 0
                 
+                while retry_count < max_retries:
+                    try:
+                        response = await client.chat.completions.create(
+                            model=model_name,
+                            messages=messages,
+                            **kwargs
+                        )
+                        
+                        if not response:
+                            raise ValueError("API返回空响应")
+                            
+                        if is_stream:
+                            return response  # 返回流式响应
+                        else:
+                            self.logger.debug(f"API原始响应内容: {response}")
+                            return response
+                        
+                    except Exception as e:
+                        retry_count += 1
+                        if retry_count < max_retries:
+                            self.logger.warning(f"API调用失败，正在进行第{retry_count}次重试: {str(e)}")
+                            await asyncio.sleep(1)
+                        else:
+                            raise
+                    
             else:  # local
                 return await self._generate_local_llm_response(config, messages, **kwargs)
                 
         except Exception as e:
             self.logger.error(f"LLM调用失败: {str(e)}")
+            self.logger.exception("详细错误信息:")
             return None
             
     async def _generate_local_llm_response(self, 

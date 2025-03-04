@@ -4,7 +4,7 @@ import logging
 import asyncio
 from pathlib import Path
 import time
-from ..core.reasoning import ReasoningEngine
+from ..core.generation import GenerationEngine
 from ..config.settings import (
     DEFAULT_LLM_MODEL,
     DEFAULT_LLM_API_KEY,
@@ -61,21 +61,21 @@ class QueryCache:
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""
     
-    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningEngine] = None, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", generation_engine: Optional[GenerationEngine] = None, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
         """初始化解析器
         
         Args:
             work_dir: 工作目录
-            reasoning_engine: 推理引擎实例
+            generation_engine: 生成引擎实例
             api_key: API密钥，默认使用配置中的DEFAULT_LLM_API_KEY
             base_url: API基础URL，默认使用配置中的DEFAULT_LLM_API_BASE
             logger: 可选，日志记录器实例
         """
         self.logger = logger or logging.getLogger(__name__)
-        self.reasoning_engine = reasoning_engine
+        self.generation_engine = generation_engine
         
-        if not self.reasoning_engine:
-            self.logger.warning("未配置推理引擎")
+        if not self.generation_engine:
+            self.logger.warning("未配置生成引擎")
 
         self.model_manager = ModelManager(logger=self.logger)
         
@@ -92,6 +92,14 @@ class IntentParser:
             name=DEFAULT_EMBEDDING_MODEL,
             model_type="local"
         ))
+        
+        # 如果没有提供生成引擎，则创建一个
+        if not self.generation_engine:
+            self.generation_engine = GenerationEngine(
+                model_manager=self.model_manager,
+                model_name=DEFAULT_LLM_MODEL,
+                logger=self.logger
+            )
         
         self.cache = QueryCache()
         self.output_template = QUERY_TEMPLATE
@@ -159,18 +167,23 @@ class IntentParser:
         """异步提取结构化查询关键词"""
         for retry in range(max_retries):
             try:
-                response = await self.model_manager.generate_llm_response(
-                    messages=[
-                        {"role": "system", "content": KEYWORD_EXTRACT_PROMPT},
-                        {"role": "user", "content": query}
-                    ],
-                    #response_format={"type": "json_object"},
+                # 设置系统提示词
+                self.generation_engine.clear_history()
+                self.generation_engine.set_system_prompt(KEYWORD_EXTRACT_PROMPT)
+                
+                # 添加用户消息
+                self.generation_engine.add_message("user", query)
+                
+                # 获取响应
+                response_content = await self.generation_engine.get_response(
                     temperature=0.1,
                     max_tokens=256
                 )
                 
-                content = response.choices[0].message.content
-                result = json.loads(content)
+                if not response_content:
+                    raise ValueError("未能获取有效响应")
+                
+                result = json.loads(response_content)
                 
                 if not isinstance(result, dict) or "keywords" not in result:
                     raise ValueError("响应格式不正确")
@@ -187,18 +200,23 @@ class IntentParser:
         """异步提取向量查询参考文本"""
         for retry in range(max_retries):
             try:
-                response = await self.model_manager.generate_llm_response(
-                    messages=[
-                        {"role": "system", "content": REFERENCE_TEXT_EXTRACT_PROMPT},
-                        {"role": "user", "content": query}
-                    ],
-                    #response_format={"type": "json_object"},
+                # 设置系统提示词
+                self.generation_engine.clear_history()
+                self.generation_engine.set_system_prompt(REFERENCE_TEXT_EXTRACT_PROMPT)
+                
+                # 添加用户消息
+                self.generation_engine.add_message("user", query)
+                
+                # 获取响应
+                response_content = await self.generation_engine.get_response(
                     temperature=0.1,
                     max_tokens=256
                 )
                 
-                content = response.choices[0].message.content
-                result = json.loads(content)
+                if not response_content:
+                    raise ValueError("未能获取有效响应")
+                
+                result = json.loads(response_content)
                 
                 if not isinstance(result, dict) or "reference_texts" not in result:
                     raise ValueError("响应格式不正确")

@@ -13,8 +13,10 @@ from ..core.processor import DataProcessor, FileCache
 from ..core.parser import IntentParser
 from ..core.feedback_optimizer import FeedbackOptimizer
 from ..core.artifact import ArtifactGenerator
+from ..core.generation import GenerationEngine
 from ..config.settings import (
     DEFAULT_REASONING_MODEL,
+    DEFAULT_LLM_MODEL,
     DEFAULT_LLM_API_KEY,
     DEFAULT_LLM_API_BASE
 )
@@ -121,6 +123,12 @@ class DataMindAlchemy:
                 api_base=DEFAULT_LLM_API_BASE,
                 api_key=DEFAULT_LLM_API_KEY
             ))
+            self.model_manager.register_model(ModelConfig(
+                name=DEFAULT_LLM_MODEL,
+                model_type="api",
+                api_base=DEFAULT_LLM_API_BASE,
+                api_key=DEFAULT_LLM_API_KEY
+            ))
         
         # 初始化所有必要的目录结构
         self.alchemy_dir = self.work_dir / "alchemy_runs" / f"alchemy_{self.alchemy_id}"
@@ -178,6 +186,14 @@ class DataMindAlchemy:
             history_file=self.current_work_dir / "reasoning_history.json"  # 修改为当前迭代目录
         )
         
+        # 初始化生成引擎
+        generation_engine = GenerationEngine(
+            model_manager=self.model_manager,
+            model_name=DEFAULT_LLM_MODEL,
+            logger=self.logger,
+            history_file=self.current_work_dir / "generation_history.json"  # 使用当前迭代目录
+        )
+        
         # 其他组件初始化
         search_engine = SearchEngine(
             db_path=db_path,
@@ -185,6 +201,7 @@ class DataMindAlchemy:
         )
         
         intent_parser = IntentParser(
+            generation_engine=generation_engine,
             work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
             logger=self.logger
         )
@@ -221,6 +238,9 @@ class DataMindAlchemy:
                 "reasoning_engine": {
                     "history_file": str(self.current_work_dir / "reasoning_history.json")
                 },
+                "generation_engine": {
+                    "history_file": str(self.current_work_dir / "generation_history.json")
+                },
                 "search_engine": {
                     "db_path": db_path
                 },
@@ -249,6 +269,7 @@ class DataMindAlchemy:
         
         return {
             'reasoning_engine': reasoning_engine,
+            'generation_engine': generation_engine,
             'intent_parser': intent_parser,
             'planner': planner,
             'executor': executor,
