@@ -64,7 +64,7 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 // 初始化进程管理器
-const processManager = setupProcessManager(io, emitTaskOutput);
+const processManager = setupProcessManager(io);
 
 // 初始化文件监控
 let watchers = [];

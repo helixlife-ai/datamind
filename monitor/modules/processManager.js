@@ -26,10 +26,9 @@ function emitTaskOutput(alchemy_id, output, isError = false, io) {
 /**
  * 进程管理器
  * @param {Object} io - Socket.IO实例
- * @param {Function} emitTaskOutput - 发送任务输出的函数
  * @returns {Object} 进程管理器对象
  */
-function setupProcessManager(io, emitTaskOutput) {
+function setupProcessManager(io) {
     // 活动进程集合
     const activeProcesses = new Set();
     
@@ -119,6 +118,16 @@ function setupProcessManager(io, emitTaskOutput) {
         },
         
         /**
+         * 发送任务输出
+         * @param {string} alchemy_id - 任务ID
+         * @param {string} output - 输出内容
+         * @param {boolean} isError - 是否为错误输出
+         */
+        emitTaskOutput(alchemy_id, output, isError = false) {
+            emitTaskOutput(alchemy_id, output, isError, io);
+        },
+        
+        /**
          * 执行任务
          * @param {string} mode - 任务模式 (new/continue)
          * @param {string} query - 查询文本
@@ -140,39 +149,48 @@ function setupProcessManager(io, emitTaskOutput) {
                     
                     console.log(`开始执行任务: ${taskId}, 模式: ${mode}`);
                     
-                    // 构建命令参数
-                    let cmdArgs = [];
-                    if (mode === 'new') {
-                        cmdArgs = [
-                            'examples/alchemy_manager_cli.py',
-                            'start',
-                            `--query="${query}"`,
-                            `--id=${taskId}`
-                        ];
+                    // 构建命令参数 - 参考server_bak.js的实现
+                    const args = [
+                        'examples/example_usage.py',
+                        `--mode=${mode}`
+                    ];
+                    
+                    // 只在新建模式下添加查询参数
+                    if (mode === 'new' && query) {
+                        args.push(`--query=${query}`);
+                    }
+                    
+                    // 在continue模式下添加任务ID和恢复标志
+                    if (mode === 'continue' && alchemy_id) {
+                        args.push(`--id=${alchemy_id}`);
                         
-                        // 添加输入目录（如果有）
-                        if (input_dirs && input_dirs.length > 0) {
-                            cmdArgs.push(`--input_dirs=${input_dirs.join(',')}`);
-                        }
-                    } else if (mode === 'continue') {
-                        cmdArgs = [
-                            'examples/alchemy_manager_cli.py',
-                            resume ? 'resume' : 'continue',
-                            `--id=${taskId}`
-                        ];
-                        
-                        // 如果提供了新查询，添加到命令中
-                        if (query) {
-                            cmdArgs.push(`--query="${query}"`);
+                        if (resume) {
+                            args.push('--resume');
                         }
                     }
                     
+                    // 只在新建模式下添加输入目录参数
+                    if (mode === 'new' && input_dirs && Array.isArray(input_dirs) && input_dirs.length > 0) {
+                        // 将输入目录列表转换为JSON字符串并添加到命令行参数
+                        args.push(`--input-dirs=${JSON.stringify(input_dirs)}`);
+                        console.log(`添加输入目录参数: ${input_dirs.length} 个目录`);
+                    }
+                    
+                    // 构建脚本的绝对路径
+                    const scriptPath = path.join(path.join(__dirname, '..', '..'), 'examples', 'example_usage.py');
+                    console.log(`脚本路径: ${scriptPath}`);
+                    
+                    // 更新参数，使用绝对路径
+                    args[0] = scriptPath;
+                    
+                    console.log(`执行命令: ${pythonPath} ${args.join(' ')}`);
+                    
                     // 启动子进程
                     const { spawn } = require('child_process');
-                    const proc = spawn(pythonPath, cmdArgs, {
+                    const proc = spawn(pythonPath, args, {
                         cwd: path.join(__dirname, '..', '..'),
                         env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-                        detached: true // 子进程独立运行，即使父进程退出
+                        windowsHide: true // 在Windows上隐藏命令行窗口
                     });
                     
                     // 保存进程信息
@@ -182,13 +200,15 @@ function setupProcessManager(io, emitTaskOutput) {
                     // 处理标准输出
                     proc.stdout.on('data', (data) => {
                         const output = data.toString('utf8');
-                        emitTaskOutput(taskId, output, false, io);
+                        this.emitTaskOutput(taskId, output, false);
+                        this.addTaskHistory(taskId, output, false);
                     });
                     
                     // 处理标准错误
                     proc.stderr.on('data', (data) => {
                         const output = data.toString('utf8');
-                        emitTaskOutput(taskId, output, true, io);
+                        this.emitTaskOutput(taskId, output, true);
+                        this.addTaskHistory(taskId, output, true);
                     });
                     
                     // 进程结束事件处理
@@ -213,7 +233,7 @@ function setupProcessManager(io, emitTaskOutput) {
                     // 设置错误处理
                     proc.on('error', (err) => {
                         console.error(`任务进程错误:`, err);
-                        emitTaskOutput(taskId, `任务进程错误: ${err.message}`, true, io);
+                        this.emitTaskOutput(taskId, `任务进程错误: ${err.message}`, true);
                         
                         // 从活动进程集合中移除
                         this.removeProcess(proc);
@@ -274,7 +294,7 @@ function setupProcessManager(io, emitTaskOutput) {
                             this.removeProcess(proc);
                             
                             // 发送任务已停止的消息
-                            emitTaskOutput(alchemy_id, '任务已通过API请求停止', false, io);
+                            this.emitTaskOutput(alchemy_id, '任务已通过API请求停止', false);
                             
                             io.emit('taskOutput', {
                                 alchemy_id: alchemy_id,

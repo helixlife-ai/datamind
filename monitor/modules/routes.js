@@ -665,103 +665,10 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
                 });
             }
             
-            // 确定Python解释器路径
-            const pythonPath = process.env.PYTHON_PATH || 'python';
+            console.log(`开始执行任务: ${alchemy_id || '新任务'}, 模式: ${mode}`);
             
-            // 生成任务ID（如果是新任务）
-            const taskId = mode === 'new' ? 
-                `task_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 5)}` : 
-                alchemy_id;
-            
-            console.log(`开始执行任务: ${taskId}, 模式: ${mode}`);
-            
-            // 构建命令参数
-            let cmdArgs = [];
-            if (mode === 'new') {
-                cmdArgs = [
-                    'examples/alchemy_manager_cli.py',
-                    'start',
-                    `--query="${query}"`,
-                    `--id=${taskId}`
-                ];
-                
-                // 添加输入目录（如果有）
-                if (input_dirs && input_dirs.length > 0) {
-                    cmdArgs.push(`--input_dirs=${input_dirs.join(',')}`);
-                }
-            } else if (mode === 'continue') {
-                cmdArgs = [
-                    'examples/alchemy_manager_cli.py',
-                    resume ? 'resume' : 'continue',
-                    `--id=${taskId}`
-                ];
-                
-                // 如果提供了新查询，添加到命令中
-                if (query) {
-                    cmdArgs.push(`--query="${query}"`);
-                }
-            }
-            
-            // 启动子进程
-            const { spawn } = require('child_process');
-            const proc = spawn(pythonPath, cmdArgs, {
-                cwd: path.join(__dirname, '..', '..'),
-                env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-                detached: true // 子进程独立运行，即使父进程退出
-            });
-            
-            // 保存进程信息
-            proc.taskId = taskId;
-            processManager.addProcess(proc);
-            
-            // 处理标准输出
-            proc.stdout.on('data', (data) => {
-                const output = data.toString('utf8');
-                processManager.emitTaskOutput(taskId, output, false, io);
-                
-                // 添加到任务历史记录
-                processManager.addTaskHistory(taskId, output, false);
-            });
-            
-            // 处理标准错误
-            proc.stderr.on('data', (data) => {
-                const output = data.toString('utf8');
-                processManager.emitTaskOutput(taskId, output, true, io);
-                
-                // 添加到任务历史记录
-                processManager.addTaskHistory(taskId, output, true);
-            });
-            
-            // 进程结束事件处理
-            proc.on('close', (code) => {
-                const exitMsg = `任务进程退出，退出码: ${code}`;
-                console.log(exitMsg);
-                
-                processManager.emitTaskOutput(taskId, exitMsg, code !== 0, io);
-                
-                // 发送结束标记
-                io.emit('taskOutput', {
-                    alchemy_id: taskId,
-                    output: exitMsg,
-                    isError: code !== 0,
-                    end: true // 标记任务结束
-                });
-                
-                // 从活动进程集合中移除
-                processManager.removeProcess(proc);
-                
-                // 任务完成后清理历史记录
-                processManager.cleanupTaskHistory(taskId);
-            });
-            
-            // 设置错误处理
-            proc.on('error', (err) => {
-                console.error(`任务进程错误:`, err);
-                processManager.emitTaskOutput(taskId, `任务进程错误: ${err.message}`, true, io);
-                
-                // 从活动进程集合中移除
-                processManager.removeProcess(proc);
-            });
+            // 使用processManager的executeTask方法
+            const taskId = await processManager.executeTask(mode, query, alchemy_id, resume, input_dirs);
             
             res.json({
                 success: true,
@@ -792,105 +699,15 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
             
             console.log(`收到停止任务请求: ID=${alchemy_id}, 类型=${stop_type || 'force'}`);
             
-            // 在活动进程中查找任务
-            let found = false;
-            let method = 'unknown';
+            // 使用processManager的stopTask方法
+            const result = await processManager.stopTask(alchemy_id, stop_type);
             
-            for (const proc of processManager.getActiveProcesses()) {
-                if (proc.taskId === alchemy_id) {
-                    // 尝试终止进程
-                    try {
-                        if (process.platform === 'win32') {
-                            // 在Windows上使用taskkill终止进程树
-                            const { exec } = require('child_process');
-                            exec(`taskkill /pid ${proc.pid} /T /F`, (error) => {
-                                if (error) {
-                                    console.error(`终止任务进程失败: ${error.message}`);
-                                }
-                            });
-                            method = 'windows-taskkill';
-                        } else {
-                            // 在Unix系统上发送SIGTERM信号
-                            process.kill(proc.pid, 'SIGTERM');
-                            method = 'unix-signal';
-                        }
-                        
-                        found = true;
-                        console.log(`已发送终止信号到任务进程: ${alchemy_id}`);
-                        
-                        // 移除进程
-                        processManager.removeProcess(proc);
-                        
-                        // 发送任务已停止的消息
-                        processManager.emitTaskOutput(alchemy_id, '任务已通过API请求停止', false, io);
-                        
-                        // 发送结束标记
-                        io.emit('taskOutput', {
-                            alchemy_id: alchemy_id,
-                            output: '任务已通过API请求停止',
-                            isError: false,
-                            end: true // 标记任务结束
-                        });
-                        
-                        break;
-                    } catch (err) {
-                        console.error(`停止任务进程失败: ${err.message}`);
-                        return res.status(500).json({
-                            success: false,
-                            error: `停止任务进程失败: ${err.message}`
-                        });
-                    }
-                }
-            }
-            
-            // 如果没有找到活动进程，但任务ID有效，尝试在系统中查找
-            if (!found) {
-                // 尝试在Python进程中查找任务ID
-                processManager.findPythonProcesses((pids) => {
-                    if (pids.length > 0) {
-                        // 尝试从进程命令行中匹配任务ID
-                        const { exec } = require('child_process');
-                        for (const pid of pids) {
-                            let cmd;
-                            if (process.platform === 'win32') {
-                                cmd = `wmic process where "processid=${pid}" get commandline`;
-                            } else {
-                                cmd = `ps -p ${pid} -o command=`;
-                            }
-                            
-                            exec(cmd, (error, stdout) => {
-                                if (error) return;
-                                
-                                if (stdout.includes(alchemy_id)) {
-                                    console.log(`在系统进程中找到任务: ${alchemy_id}，PID: ${pid}`);
-                                    
-                                    // 终止进程
-                                    try {
-                                        if (process.platform === 'win32') {
-                                            exec(`taskkill /pid ${pid} /T /F`);
-                                            method = 'system-windows-taskkill';
-                                        } else {
-                                            exec(`kill -TERM ${pid}`);
-                                            method = 'system-unix-kill';
-                                        }
-                                        
-                                        console.log(`已发送终止信号到系统进程: ${pid}`);
-                                    } catch (err) {
-                                        console.error(`终止系统进程失败: ${err.message}`);
-                                    }
-                                }
-                            });
-                        }
-                    }
-                });
-            }
-            
-            // 返回成功响应
+            // 返回结果
             res.json({
                 success: true,
-                message: found ? '已发送终止信号到任务进程' : '任务进程未找到，但已尝试终止相关系统进程',
+                message: result.message,
                 alchemy_id: alchemy_id,
-                method: method
+                method: result.method
             });
         } catch (error) {
             console.error('停止任务失败:', error);
