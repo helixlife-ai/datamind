@@ -717,11 +717,7 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
             // 处理标准输出
             proc.stdout.on('data', (data) => {
                 const output = data.toString('utf8');
-                io.emit('taskOutput', {
-                    alchemy_id: taskId,
-                    output: output,
-                    isError: false
-                });
+                processManager.emitTaskOutput(taskId, output, false, io);
                 
                 // 添加到任务历史记录
                 processManager.addTaskHistory(taskId, output, false);
@@ -730,11 +726,7 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
             // 处理标准错误
             proc.stderr.on('data', (data) => {
                 const output = data.toString('utf8');
-                io.emit('taskOutput', {
-                    alchemy_id: taskId,
-                    output: output,
-                    isError: true
-                });
+                processManager.emitTaskOutput(taskId, output, true, io);
                 
                 // 添加到任务历史记录
                 processManager.addTaskHistory(taskId, output, true);
@@ -745,6 +737,9 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
                 const exitMsg = `任务进程退出，退出码: ${code}`;
                 console.log(exitMsg);
                 
+                processManager.emitTaskOutput(taskId, exitMsg, code !== 0, io);
+                
+                // 发送结束标记
                 io.emit('taskOutput', {
                     alchemy_id: taskId,
                     output: exitMsg,
@@ -762,11 +757,7 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
             // 设置错误处理
             proc.on('error', (err) => {
                 console.error(`任务进程错误:`, err);
-                io.emit('taskOutput', {
-                    alchemy_id: taskId,
-                    output: `任务进程错误: ${err.message}`,
-                    isError: true
-                });
+                processManager.emitTaskOutput(taskId, `任务进程错误: ${err.message}`, true, io);
                 
                 // 从活动进程集合中移除
                 processManager.removeProcess(proc);
@@ -831,6 +822,9 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
                         processManager.removeProcess(proc);
                         
                         // 发送任务已停止的消息
+                        processManager.emitTaskOutput(alchemy_id, '任务已通过API请求停止', false, io);
+                        
+                        // 发送结束标记
                         io.emit('taskOutput', {
                             alchemy_id: alchemy_id,
                             output: '任务已通过API请求停止',
