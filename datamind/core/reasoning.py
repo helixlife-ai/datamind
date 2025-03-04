@@ -206,14 +206,14 @@ class ReasoningEngine:
                         else:
                             content += delta.content
                             yield delta.content
+                    else:
+                        # 确保流结束时添加结束标签，但只添加一次
+                        if has_started_answer:
+                            yield "\n</answer>"
                         
                 except Exception as e:
                     self.logger.error(f"处理流式响应chunk时出错: {str(e)}")
                     continue
-
-            # 确保流结束时添加结束标签，但只添加一次
-            if has_started_answer:
-                yield "\n</answer>"
                 
             # 构建完整响应
             if reasoning_content:
