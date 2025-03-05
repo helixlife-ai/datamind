@@ -232,7 +232,7 @@ class ArtifactGenerator:
 请提出一个明确的优化问题，格式要求：
 1. 只输出问题本身，不要其他内容
 2. 问题应该具体且可操作
-3. 问题应该针对内容、结构或用户体验的改进
+3. 问题应该针对内容的完善和补充
 4. 使用疑问句式
 """
             # 添加用户消息
@@ -250,14 +250,21 @@ class ArtifactGenerator:
                     full_response += chunk
                     # 显示流式输出内容
                     self.logger.info(f"\r生成优化建议: {full_response}")
-                    
-                    # 如果发现完整的句子，更新建议
-                    if any(chunk.strip().endswith(end) for end in ['。', '？', '!']):
-                        suggestion = full_response.strip().strip('`').strip('"').strip()
             
-            if suggestion:
-                self.logger.info(f"最终优化建议: {suggestion}")
-                return suggestion
+            # 从full_response中提取<answer></answer>标签之间的内容
+            if "<answer>" in full_response and "</answer>" in full_response:
+                start_idx = full_response.find("<answer>") + len("<answer>")
+                end_idx = full_response.find("</answer>")
+                if start_idx < end_idx:
+                    suggestion = full_response[start_idx:end_idx].strip()
+                    self.logger.info(f"最终优化建议: {suggestion}")
+                    return suggestion
+            else:
+                # 如果没有找到标签，保留原有逻辑
+                suggestion = full_response.strip().strip('`').strip('"').strip()
+                if suggestion:
+                    self.logger.info(f"最终优化建议: {suggestion}")
+                    return suggestion
                 
             return None
             
