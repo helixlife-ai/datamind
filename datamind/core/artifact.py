@@ -4,14 +4,14 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 import traceback
-from ..core.reasoning import ReasoningEngine
+from .reasoningLLM import ReasoningLLMEngine
 import shutil
 import hashlib
 
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
     
-    def __init__(self, alchemy_dir: str = None, reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, alchemy_dir: str = None, reasoning_engine: Optional[ReasoningLLMEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化制品生成器
         
         Args:

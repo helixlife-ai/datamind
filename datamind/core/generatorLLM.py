@@ -12,17 +12,17 @@ class ChatMessage:
     timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-class ReasoningEngine:
-    """推理引擎管理类"""
+class GeneratorLLMEngine:
+    """生成引擎管理类"""
     
     def __init__(self, model_manager: ModelManager, model_name: Optional[str] = None, 
                  logger: Optional[logging.Logger] = None, history_file: Optional[str] = None):
         """
-        初始化推理引擎管理器
+        初始化生成引擎管理器
         
         Args:
             model_manager: ModelManager实例
-            model_name: 可选，指定使用的推理模型名称
+            model_name: 可选，指定使用的生成模型名称
             logger: 可选，日志记录器实例
             history_file: 可选，历史记录文件路径
         """
@@ -94,7 +94,7 @@ class ReasoningEngine:
                 self.logger.warning("没有对话消息")
                 return None
                 
-            response = await self.model_manager.generate_reasoned_response(
+            response = await self.model_manager.generate_llm_response(
                 messages=formatted_messages,
                 model_name=self.model_name,
                 temperature=temperature,
@@ -109,21 +109,14 @@ class ReasoningEngine:
                 # 获取响应内容
                 message = response.choices[0].message
                 response_content = message.content
-                reasoning_content = getattr(message, 'reasoning_content', None)
-                
-                # 组合推理内容和响应内容
-                final_content = response_content
-                if reasoning_content:
-                    final_content = f"<think>\n{reasoning_content}\n</think>\n\n<answer>\n{response_content}\n</answer>"
                 
                 # 添加到消息历史（现在会自动保存）
                 self.add_message(
                     "assistant", 
-                    final_content,
-                    reasoning=bool(reasoning_content)
+                    response_content
                 )
                 
-                return final_content
+                return response_content
                 
             except (AttributeError, IndexError) as e:
                 self.logger.error(f"解析响应失败: {str(e)}")
@@ -154,7 +147,7 @@ class ReasoningEngine:
                 self.logger.warning("没有对话消息")
                 return
                 
-            stream = await self.model_manager.generate_reasoned_response(
+            stream = await self.model_manager.generate_llm_response(
                 messages=formatted_messages,
                 model_name=self.model_name,
                 temperature=temperature,
@@ -167,10 +160,6 @@ class ReasoningEngine:
                 return
                 
             full_content = ""
-            reasoning_content = ""
-            content = ""
-            has_started_think = False
-            has_started_answer = False
             
             async for chunk in stream:
                 try:
@@ -179,54 +168,20 @@ class ReasoningEngine:
                         
                     delta = chunk.choices[0].delta
                     
-                    # 处理推理内容
-                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                        if not has_started_think:
-                            has_started_think = True
-                            reasoning_content = delta.reasoning_content
-                            # 只在首次输出<think>标签
-                            yield "<think>\n" + delta.reasoning_content
-                        else:
-                            reasoning_content += delta.reasoning_content
-                            # 只输出增量内容，不重复输出标签
-                            yield delta.reasoning_content
-                    
                     # 处理回答内容
                     if hasattr(delta, 'content') and delta.content:
-                        if not has_started_answer:
-                            has_started_answer = True
-                            content = delta.content
-                            # 只有在有推理内容时才添加分隔标签，且只添加一次
-                            if has_started_think:
-                                yield "\n</think>\n\n<answer>\n"
-                            else:
-                                # 如果没有推理内容，则添加<answer>标签
-                                yield "<answer>\n"
-                            yield delta.content
-                        else:
-                            content += delta.content
-                            yield delta.content
-                    else:
-                        # 确保流结束时添加结束标签，但只添加一次
-                        if has_started_answer:
-                            yield "\n</answer>"
+                        full_content += delta.content
+                        yield delta.content
                         
                 except Exception as e:
                     self.logger.error(f"处理流式响应chunk时出错: {str(e)}")
                     continue
                 
-            # 构建完整响应
-            if reasoning_content:
-                full_content = f"<think>\n{reasoning_content}\n</think>\n\n<answer>\n{content}\n</answer>"
-            else:
-                full_content = f"<answer>\n{content}\n</answer>"
-                
             # 将完整响应添加到消息历史（现在会自动保存）
             if full_content:
                 self.add_message(
                     "assistant",
-                    full_content,
-                    reasoning=bool(reasoning_content)
+                    full_content
                 )
                 
         except Exception as e:

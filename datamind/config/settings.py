@@ -29,21 +29,21 @@ def parse_api_keys(env_value: str) -> list:
 # LLM模型配置
 DEFAULT_LLM_API_KEY = parse_api_keys(os.getenv("SILICONFLOW_API_KEY", ""))
 DEFAULT_LLM_API_BASE = os.getenv("SILICONFLOW_BASE_URL") 
-DEFAULT_CHAT_MODEL = "Pro/deepseek-ai/DeepSeek-V3" 
+DEFAULT_GENERATOR_MODEL = "Pro/deepseek-ai/DeepSeek-V3" 
 DEFAULT_REASONING_MODEL = "Pro/deepseek-ai/DeepSeek-R1" 
 
 #硅基流动的免费版本
 #DEFAULT_LLM_MODEL = "deepseek-ai/DeepSeek-V3"    
 #DEFAULT_LLM_API_KEY = os.getenv("SILICONFLOW_API_KEY")  # 硅基流动的API KEY
 #DEFAULT_LLM_API_BASE = os.getenv("SILICONFLOW_BASE_URL") #硅基流动的API BASE
-#DEFAULT_CHAT_MODEL = "deepseek-ai/DeepSeek-V3" 
+#DEFAULT_GENERATOR_MODEL = "deepseek-ai/DeepSeek-V3" 
 #DEFAULT_REASONING_MODEL = "deepseek-ai/DeepSeek-R1" 
 
 #DeepSeek的免费版本
 #DEFAULT_LLM_MODEL = "deepseek-chat"    
 #DEFAULT_LLM_API_KEY = os.getenv("DEEPSEEK_API_KEY")  
 #DEFAULT_LLM_API_BASE = os.getenv("DEEPSEEK_BASE_URL") 
-#DEFAULT_CHAT_MODEL = "deepseek-chat" 
+#DEFAULT_GENERATOR_MODEL = "deepseek-chat" 
 #DEFAULT_REASONING_MODEL = "deepseek-reasoner" 
 
 # 支持的文件类型

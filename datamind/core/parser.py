@@ -4,9 +4,10 @@ import logging
 import asyncio
 from pathlib import Path
 import time
-from ..core.generation import GenerationEngine
+from .generatorLLM import GeneratorLLMEngine
 from ..config.settings import (
     DEFAULT_LLM_MODEL,
+    DEFAULT_GENERATOR_MODEL,
     DEFAULT_LLM_API_KEY,
     DEFAULT_LLM_API_BASE,
     DEFAULT_SIMILARITY_THRESHOLD,
@@ -14,7 +15,6 @@ from ..config.settings import (
     SEARCH_TOP_K,
     KEYWORD_EXTRACT_PROMPT,
     REFERENCE_TEXT_EXTRACT_PROMPT,
-    SUPPORTED_FILE_TYPES,
     DEFAULT_EMBEDDING_MODEL
 )
 from ..llms.model_manager import ModelManager, ModelConfig
@@ -61,7 +61,7 @@ class QueryCache:
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""
     
-    def __init__(self, work_dir: str = "work_dir", generation_engine: Optional[GenerationEngine] = None, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", generator_engine: Optional[GeneratorLLMEngine] = None, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
         """初始化解析器
         
         Args:
@@ -72,9 +72,9 @@ class IntentParser:
             logger: 可选，日志记录器实例
         """
         self.logger = logger or logging.getLogger(__name__)
-        self.generation_engine = generation_engine
+        self.generator_engine = generator_engine
         
-        if not self.generation_engine:
+        if not self.generator_engine:
             self.logger.warning("未配置生成引擎")
 
         self.model_manager = ModelManager(logger=self.logger)
@@ -94,8 +94,8 @@ class IntentParser:
         ))
         
         # 如果没有提供生成引擎，则创建一个
-        if not self.generation_engine:
-            self.generation_engine = GenerationEngine(
+        if not self.generator_engine:
+            self.generator_engine = GeneratorLLMEngine(
                 model_manager=self.model_manager,
                 model_name=DEFAULT_LLM_MODEL,
                 logger=self.logger
@@ -168,14 +168,14 @@ class IntentParser:
         for retry in range(max_retries):
             try:
                 # 设置系统提示词
-                self.generation_engine.clear_history()
-                self.generation_engine.set_system_prompt(KEYWORD_EXTRACT_PROMPT)
+                self.generator_engine.clear_history()
+                self.generator_engine.set_system_prompt(KEYWORD_EXTRACT_PROMPT)
                 
                 # 添加用户消息
-                self.generation_engine.add_message("user", query)
+                self.generator_engine.add_message("user", query)
                 
                 # 获取响应
-                response_content = await self.generation_engine.get_response(
+                response_content = await self.generator_engine.get_response(
                     temperature=0.1,
                     max_tokens=256
                 )
@@ -201,14 +201,14 @@ class IntentParser:
         for retry in range(max_retries):
             try:
                 # 设置系统提示词
-                self.generation_engine.clear_history()
-                self.generation_engine.set_system_prompt(REFERENCE_TEXT_EXTRACT_PROMPT)
+                self.generator_engine.clear_history()
+                self.generator_engine.set_system_prompt(REFERENCE_TEXT_EXTRACT_PROMPT)
                 
                 # 添加用户消息
-                self.generation_engine.add_message("user", query)
+                self.generator_engine.add_message("user", query)
                 
                 # 获取响应
-                response_content = await self.generation_engine.get_response(
+                response_content = await self.generator_engine.get_response(
                     temperature=0.1,
                     max_tokens=256
                 )

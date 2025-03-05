@@ -10,7 +10,7 @@ project_root = script_dir.parent
 sys.path.insert(0, str(project_root))
 
 from datamind import setup_logging
-from datamind.core.reasoning import ReasoningEngine
+from datamind.core.reasoningLLM import ReasoningLLMEngine
 from datamind.llms.model_manager import ModelManager, ModelConfig
 from datamind.config.settings import (
     DEFAULT_REASONING_MODEL,
@@ -90,7 +90,7 @@ async def demo_stream_reasoning():
             api_base=DEFAULT_LLM_API_BASE,
             api_key=DEFAULT_LLM_API_KEY
         ))
-        return ReasoningEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)
+        return ReasoningLLMEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)
 
     async def run_demo_examples(logger, engine):
         """运行演示示例"""

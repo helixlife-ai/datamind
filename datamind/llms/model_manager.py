@@ -3,7 +3,7 @@ import logging
 from typing import Optional, Dict, Any, Union, Literal, AsyncGenerator
 from sentence_transformers import SentenceTransformer
 from openai import AsyncOpenAI
-from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL,  DEFAULT_LLM_API_BASE, DEFAULT_REASONING_MODEL
+from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL, DEFAULT_GENERATOR_MODEL, DEFAULT_LLM_API_BASE, DEFAULT_REASONING_MODEL
 from ..utils.common import download_model
 import asyncio
 
@@ -139,7 +139,7 @@ class ModelManager:
     
     async def generate_llm_response(self, 
                                   messages: list,
-                                  model_name: str = DEFAULT_LLM_MODEL,
+                                  model_name: str = DEFAULT_GENERATOR_MODEL,
                                   **kwargs) -> Optional[Union[Dict[str, Any], AsyncGenerator]]:
         """生成LLM响应，支持本地和API两种方式
         

@@ -11,7 +11,7 @@ project_root = script_dir.parent
 sys.path.insert(0, str(project_root))
 
 from datamind import setup_logging
-from datamind.core.reasoning import ReasoningEngine
+from datamind.core.reasoningLLM import ReasoningLLMEngine
 from datamind.llms.model_manager import ModelManager, ModelConfig
 from datamind.config.settings import (
     DEFAULT_REASONING_MODEL,
@@ -38,7 +38,7 @@ async def demo_reasoning_engine():
         ))
         
         # 初始化推理引擎
-        engine = ReasoningEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)       
+        engine = ReasoningLLMEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)       
         
         # 创建输出目录
         output_dir = script_dir.parent / "work_dir" / "output" / "reasoning_demo"

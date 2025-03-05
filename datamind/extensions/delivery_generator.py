@@ -5,14 +5,14 @@ from typing import Dict, List, Optional
 import pandas as pd
 from datetime import datetime
 import re
-from ..core.reasoning import ReasoningEngine
+from ..core.reasoningLLM import ReasoningLLMEngine
 from io import StringIO
 import traceback
 
 class DeliveryGenerator:
     """交付文件生成器"""
     
-    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningLLMEngine] = None, logger: Optional[logging.Logger] = None):
         """初始化交付文件生成器
         
         Args:

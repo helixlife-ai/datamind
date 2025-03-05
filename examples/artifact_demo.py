@@ -12,7 +12,7 @@ sys.path.insert(0, str(project_root))
 
 from datamind import setup_logging
 from datamind.core.artifact import ArtifactGenerator
-from datamind.core.reasoning import ReasoningEngine
+from datamind.core.reasoningLLM import ReasoningLLMEngine
 from datamind.llms.model_manager import ModelManager, ModelConfig
 from datamind.config.settings import (
     DEFAULT_REASONING_MODEL,
@@ -90,7 +90,7 @@ async def demo_artifact_generator():
             api_key=DEFAULT_LLM_API_KEY
         ))
         
-        reasoning_engine = ReasoningEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)
+        reasoning_engine = ReasoningLLMEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)
         
         # 创建工作目录
         work_dir = project_root / "work_dir"
