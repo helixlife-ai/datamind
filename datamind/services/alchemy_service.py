@@ -238,8 +238,8 @@ class DataMindAlchemy:
                 "reasoning_engine": {
                     "history_file": str(self.current_work_dir / "reasoning_history.json")
                 },
-                "generation_engine": {
-                    "history_file": str(self.current_work_dir / "generation_history.json")
+                "generator_engine": {
+                    "history_file": str(self.current_work_dir / "generator_history.json")
                 },
                 "search_engine": {
                     "db_path": db_path
@@ -738,6 +738,7 @@ class DataMindAlchemy:
                 'message': '查询文本为None，无法执行工作流',
                 'results': {
                     'query': None,
+                    'generator_history':None,
                     'reasoning_history': None,
                     'parsed_intent': None,
                     'search_plan': None,
@@ -752,6 +753,7 @@ class DataMindAlchemy:
             'message': '',
             'results': {
                 'query': query,
+                'generator_history': None,
                 'reasoning_history': None,
                 'parsed_intent': None,
                 'search_plan': None,
@@ -801,6 +803,9 @@ class DataMindAlchemy:
             # 检查是否请求取消
             await self._check_cancellation()
             
+            # 获取通用引擎实例
+            generator_engine= self.components['generator_engine']
+
             # 获取推理引擎实例
             reasoning_engine = self.components['reasoning_engine']
 
@@ -971,9 +976,13 @@ class DataMindAlchemy:
                         else:
                             self.logger.warning(f"优化建议处理失败: {optimization_result['message']}")
 
-            # 最后更新推理历史
-            chat_history = reasoning_engine.get_chat_history()
-            results['results']['reasoning_history'] = chat_history
+            # 更新生成历史
+            generator_history = generator_engine.get_chat_history()
+            results["results"]['generator_history'] = generator_history
+
+            # 更新推理历史
+            reasoning_history = reasoning_engine.get_chat_history()
+            results['results']['reasoning_history'] = reasoning_history
             
             # 保存工作流结果到文件，方便后续恢复
             try:

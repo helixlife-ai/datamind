@@ -235,6 +235,9 @@ class ArtifactGenerator:
 3. 问题应该针对内容的完善和补充
 4. 使用疑问句式
 """
+            # 在添加新消息前清除历史对话记录
+            self.reasoning_engine.clear_history()
+            
             # 添加用户消息
             self.reasoning_engine.add_message("user", prompt)
             
@@ -355,6 +358,9 @@ class ArtifactGenerator:
             with open(process_dir / "generation_prompt.md", "w", encoding="utf-8") as f:
                 f.write(prompt)
 
+            # 在添加新消息前清除历史对话记录
+            self.reasoning_engine.clear_history()
+            
             # 添加用户消息
             self.reasoning_engine.add_message("user", prompt)
             
@@ -612,6 +618,9 @@ class ArtifactGenerator:
 
 请生成合并后的HTML内容："""
 
+            # 在添加新消息前清除历史对话记录
+            self.reasoning_engine.clear_history()
+            
             # 添加用户消息
             self.reasoning_engine.add_message("user", prompt)
             
