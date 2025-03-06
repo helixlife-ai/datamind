@@ -61,45 +61,29 @@ class QueryCache:
 class IntentParser:
     """查询意图解析器，负责将自然语言转换为结构化查询条件"""
     
-    def __init__(self, work_dir: str = "work_dir", generator_engine: Optional[GeneratorLLMEngine] = None, api_key: str = DEFAULT_LLM_API_KEY, base_url: str = DEFAULT_LLM_API_BASE, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", model_manager = None, logger: Optional[logging.Logger] = None):
         """初始化解析器
         
         Args:
             work_dir: 工作目录
-            generation_engine: 生成引擎实例
-            api_key: API密钥，默认使用配置中的DEFAULT_LLM_API_KEY
-            base_url: API基础URL，默认使用配置中的DEFAULT_LLM_API_BASE
+            model_manager: 模型管理器实例，用于创建生成引擎
             logger: 可选，日志记录器实例
         """
         self.logger = logger or logging.getLogger(__name__)
-        self.generator_engine = generator_engine
         
-        if not self.generator_engine:
-            self.logger.warning("未配置生成引擎")
-
-        self.model_manager = ModelManager(logger=self.logger)
+        # 如果没有提供model_manager，则创建一个
+        if model_manager is None:
+            #报错
+            raise ValueError("未提供模型管理器实例，将无法解析查询")
+        else:
+            self.model_manager = model_manager
         
-        # 注册LLM模型配置
-        self.model_manager.register_model(ModelConfig(
-            name=DEFAULT_LLM_MODEL,
-            model_type="api",
-            api_key=api_key,
-            api_base=base_url
-        ))
-        
-        # 注册Embedding模型配置
-        self.model_manager.register_model(ModelConfig(
-            name=DEFAULT_EMBEDDING_MODEL,
-            model_type="local"
-        ))
-        
-        # 如果没有提供生成引擎，则创建一个
-        if not self.generator_engine:
-            self.generator_engine = GeneratorLLMEngine(
-                model_manager=self.model_manager,
-                model_name=DEFAULT_LLM_MODEL,
-                logger=self.logger
-            )
+        # 直接创建生成引擎实例，使用默认模型
+        self.generator_engine = GeneratorLLMEngine(
+            model_manager=self.model_manager,
+            model_name=DEFAULT_LLM_MODEL,
+            logger=self.logger
+        )
         
         self.cache = QueryCache()
         self.output_template = QUERY_TEMPLATE

@@ -6,24 +6,20 @@ import json
 from pathlib import Path
 import logging
 
-from .reasoningLLM import ReasoningLLMEngine
-
 logger = logging.getLogger(__name__)
 
 class FeedbackOptimizer:
     """反馈优化工作流管理器"""
     
-    def __init__(self, work_dir: str = "work_dir", reasoning_engine: Optional[ReasoningLLMEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, work_dir: str = "work_dir", logger: Optional[logging.Logger] = None):
         """初始化反馈优化工作流管理器
         
         Args:
             work_dir: 工作目录，现在是迭代目录 (alchemy_runs/alchemy_{id}/iterations/iterX)
-            reasoning_engine: 推理引擎实例
             logger: 可选，日志记录器实例
         """
         self.logger = logger or logging.getLogger(__name__)
         self.work_dir = Path(work_dir)
-        self.reasoning_engine = reasoning_engine
         
         # 从迭代目录计算各个重要路径，与alchemy_service.py保持一致
         self.iter_dir = self.work_dir  # 当前迭代目录
@@ -36,9 +32,6 @@ class FeedbackOptimizer:
         
         # 设置制品目录
         self.artifacts_dir = self.alchemy_dir / "artifacts"
-        
-        if not self.reasoning_engine:
-            self.logger.warning("未提供推理引擎实例，部分功能可能受限")
 
     async def get_latest_artifact_suggestion(self, alchemy_id: Optional[str] = None) -> Optional[str]:
         """获取最新制品的优化建议"""

@@ -4,19 +4,31 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 import traceback
-from .reasoningLLM import ReasoningLLMEngine
+from ..config.settings import (
+    DEFAULT_REASONING_MODEL,
+    DEFAULT_GENERATOR_MODEL,
+    DEFAULT_LLM_API_KEY,
+    DEFAULT_LLM_API_BASE,
+    DEFAULT_SIMILARITY_THRESHOLD,
+    QUERY_TEMPLATE,
+    SEARCH_TOP_K,
+    KEYWORD_EXTRACT_PROMPT,
+    REFERENCE_TEXT_EXTRACT_PROMPT,
+    DEFAULT_EMBEDDING_MODEL
+)
+from ..core.reasoningLLM import ReasoningLLMEngine
 import shutil
 import hashlib
 
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
     
-    def __init__(self, alchemy_dir: str = None, reasoning_engine: Optional[ReasoningLLMEngine] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, alchemy_dir: str = None, model_manager = None, logger: Optional[logging.Logger] = None):
         """初始化制品生成器
         
         Args:
             alchemy_dir: 炼丹目录
-            reasoning_engine: 推理引擎实例，用于生成内容
+            model_manager: 模型管理器实例，用于创建推理引擎
             logger: 可选，日志记录器实例
         """
         if alchemy_dir is None:
@@ -41,10 +53,19 @@ class ArtifactGenerator:
             dir_path.mkdir(parents=True, exist_ok=True)
         
         self.logger = logger or logging.getLogger(__name__)
-        self.reasoning_engine = reasoning_engine
         
-        if not self.reasoning_engine:
-            self.logger.warning("未提供推理引擎实例，将无法生成内容")
+        # 创建推理引擎实例
+        if model_manager is None:
+            raise ValueError("未提供模型管理器实例，将无法生成内容")
+        else:
+            self.model_manager=model_manager
+            self.reasoning_engine = ReasoningLLMEngine(
+                model_manager=self.model_manager,
+                model_name=DEFAULT_REASONING_MODEL,
+                logger=self.logger,
+                history_file=str(self.artifacts_dir / "reasoning_history.json")
+            )
+            self.logger.info(f"已创建推理引擎实例，使用默认推理模型")
     
     def _read_file_content(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
         """读取文件内容

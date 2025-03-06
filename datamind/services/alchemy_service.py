@@ -201,8 +201,8 @@ class DataMindAlchemy:
         )
         
         intent_parser = IntentParser(
-            generator_engine=generator_engine,
             work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
+            model_manager=self.model_manager,
             logger=self.logger
         )
         
@@ -220,13 +220,12 @@ class DataMindAlchemy:
         # artifact_generator使用alchemy_dir，因为它需要访问artifacts目录
         artifact_generator = ArtifactGenerator(
             alchemy_dir=str(self.alchemy_dir),
-            reasoning_engine=reasoning_engine,
+            model_manager=self.model_manager,
             logger=self.logger
         )
         
         feedback_optimizer = FeedbackOptimizer(
             work_dir=str(self.current_work_dir),  # 修改为当前迭代目录
-            reasoning_engine=reasoning_engine,
             logger=self.logger
         )
         
