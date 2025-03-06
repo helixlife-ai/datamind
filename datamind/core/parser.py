@@ -6,16 +6,12 @@ from pathlib import Path
 import time
 from .generatorLLM import GeneratorLLMEngine
 from ..config.settings import (
-    DEFAULT_LLM_MODEL,
     DEFAULT_GENERATOR_MODEL,
-    DEFAULT_LLM_API_KEY,
-    DEFAULT_LLM_API_BASE,
     DEFAULT_SIMILARITY_THRESHOLD,
     QUERY_TEMPLATE,
     SEARCH_TOP_K,
     KEYWORD_EXTRACT_PROMPT,
     REFERENCE_TEXT_EXTRACT_PROMPT,
-    DEFAULT_EMBEDDING_MODEL
 )
 from ..llms.model_manager import ModelManager, ModelConfig
 from dataclasses import dataclass
@@ -70,7 +66,11 @@ class IntentParser:
             logger: 可选，日志记录器实例
         """
         self.logger = logger or logging.getLogger(__name__)
-        
+        self.cache = QueryCache()
+        self.output_template = QUERY_TEMPLATE
+        self.work_dir = Path(work_dir)
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+
         # 如果没有提供model_manager，则创建一个
         if model_manager is None:
             #报错
@@ -81,14 +81,12 @@ class IntentParser:
         # 直接创建生成引擎实例，使用默认模型
         self.generator_engine = GeneratorLLMEngine(
             model_manager=self.model_manager,
-            model_name=DEFAULT_LLM_MODEL,
-            logger=self.logger
+            model_name=DEFAULT_GENERATOR_MODEL,
+            logger=self.logger,
+            history_file=str(self.work_dir / "generator_history.json")
         )
         
-        self.cache = QueryCache()
-        self.output_template = QUERY_TEMPLATE
-        self.work_dir = Path(work_dir)
-        self.work_dir.mkdir(parents=True, exist_ok=True)
+
         
     async def parse_query(self, query: str) -> Dict:
         """异步解析自然语言查询"""

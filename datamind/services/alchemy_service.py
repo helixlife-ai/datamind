@@ -4,8 +4,6 @@ import logging
 import shutil
 from pathlib import Path
 from typing import Dict, List, Callable, Any, Optional
-from ..core.reasoningLLM import ReasoningLLMEngine
-from ..llms.model_manager import ModelManager, ModelConfig
 from ..core.search import SearchEngine
 from ..core.planner import SearchPlanner
 from ..core.executor import SearchPlanExecutor
@@ -13,12 +11,12 @@ from ..core.processor import DataProcessor, FileCache
 from ..core.parser import IntentParser
 from ..core.feedback_optimizer import FeedbackOptimizer
 from ..core.artifact import ArtifactGenerator
-from ..core.generatorLLM import GeneratorLLMEngine
+from ..llms.model_manager import ModelManager, ModelConfig
 from ..config.settings import (
-    DEFAULT_REASONING_MODEL,
-    DEFAULT_GENERATOR_MODEL,
     DEFAULT_LLM_API_KEY,
-    DEFAULT_LLM_API_BASE
+    DEFAULT_LLM_API_BASE,
+    DEFAULT_REASONING_MODEL,
+    DEFAULT_GENERATOR_MODEL
 )
 from ..utils.stream_logger import StreamLineHandler
 from datetime import datetime
@@ -116,7 +114,7 @@ class DataMindAlchemy:
         self.model_manager = model_manager or ModelManager(logger=self.logger)
         
         # 注册默认推理模型配置
-        if not model_manager:  # 只有在没有传入model_manager时才注册
+        if self.model_manager:  # 只有在没有传入model_manager时才注册
             self.model_manager.register_model(ModelConfig(
                 name=DEFAULT_REASONING_MODEL,
                 model_type="api",
@@ -178,22 +176,6 @@ class DataMindAlchemy:
         
         现在使用当前迭代目录作为组件的工作目录
         """
-        # 首先初始化推理引擎
-        reasoning_engine = ReasoningLLMEngine(
-            model_manager=self.model_manager,
-            model_name=DEFAULT_REASONING_MODEL,
-            logger=self.logger,
-            history_file=self.current_work_dir / "reasoning_history.json"  # 修改为当前迭代目录
-        )
-        
-        # 初始化生成引擎
-        generator_engine = GeneratorLLMEngine(
-            model_manager=self.model_manager,
-            model_name=DEFAULT_GENERATOR_MODEL,
-            logger=self.logger,
-            history_file=self.current_work_dir / "generator_history.json"  # 使用当前迭代目录
-        )
-        
         # 其他组件初始化
         search_engine = SearchEngine(
             db_path=db_path,
@@ -234,12 +216,6 @@ class DataMindAlchemy:
             "iteration": self._get_next_iteration() - 1,  # 当前迭代号
             "work_dir": str(self.current_work_dir),
             "components": {
-                "reasoning_engine": {
-                    "history_file": str(self.current_work_dir / "reasoning_history.json")
-                },
-                "generator_engine": {
-                    "history_file": str(self.current_work_dir / "generator_history.json")
-                },
                 "search_engine": {
                     "db_path": db_path
                 },
@@ -267,8 +243,6 @@ class DataMindAlchemy:
             json.dump(components_config, f, ensure_ascii=False, indent=2)
         
         return {
-            'reasoning_engine': reasoning_engine,
-            'generator_engine': generator_engine,
             'intent_parser': intent_parser,
             'planner': planner,
             'executor': executor,
@@ -737,8 +711,6 @@ class DataMindAlchemy:
                 'message': '查询文本为None，无法执行工作流',
                 'results': {
                     'query': None,
-                    'generator_history':None,
-                    'reasoning_history': None,
                     'parsed_intent': None,
                     'search_plan': None,
                     'search_results': None,
@@ -752,8 +724,6 @@ class DataMindAlchemy:
             'message': '',
             'results': {
                 'query': query,
-                'generator_history': None,
-                'reasoning_history': None,
                 'parsed_intent': None,
                 'search_plan': None,
                 'search_results': None,
@@ -801,12 +771,6 @@ class DataMindAlchemy:
             
             # 检查是否请求取消
             await self._check_cancellation()
-            
-            # 获取通用引擎实例
-            generator_engine= self.components['generator_engine']
-
-            # 获取推理引擎实例
-            reasoning_engine = self.components['reasoning_engine']
 
             # 解析用户搜索意图
             parsed_intent = await self.components['intent_parser'].parse_query(query)
@@ -974,14 +938,6 @@ class DataMindAlchemy:
                                     json.dump(status_info, f, ensure_ascii=False, indent=2)
                         else:
                             self.logger.warning(f"优化建议处理失败: {optimization_result['message']}")
-
-            # 更新生成历史
-            generator_history = generator_engine.get_chat_history()
-            results["results"]['generator_history'] = generator_history
-
-            # 更新推理历史
-            reasoning_history = reasoning_engine.get_chat_history()
-            results['results']['reasoning_history'] = reasoning_history
             
             # 保存工作流结果到文件，方便后续恢复
             try:

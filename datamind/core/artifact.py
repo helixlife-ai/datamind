@@ -5,16 +5,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import traceback
 from ..config.settings import (
-    DEFAULT_REASONING_MODEL,
-    DEFAULT_GENERATOR_MODEL,
-    DEFAULT_LLM_API_KEY,
-    DEFAULT_LLM_API_BASE,
-    DEFAULT_SIMILARITY_THRESHOLD,
-    QUERY_TEMPLATE,
-    SEARCH_TOP_K,
-    KEYWORD_EXTRACT_PROMPT,
-    REFERENCE_TEXT_EXTRACT_PROMPT,
-    DEFAULT_EMBEDDING_MODEL
+    DEFAULT_REASONING_MODEL
 )
 from ..core.reasoningLLM import ReasoningLLMEngine
 import shutil

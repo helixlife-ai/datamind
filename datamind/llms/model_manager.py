@@ -3,7 +3,7 @@ import logging
 from typing import Optional, Dict, Any, Union, Literal, AsyncGenerator
 from sentence_transformers import SentenceTransformer
 from openai import AsyncOpenAI
-from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_LLM_MODEL, DEFAULT_GENERATOR_MODEL, DEFAULT_LLM_API_BASE, DEFAULT_REASONING_MODEL
+from ..config.settings import DEFAULT_EMBEDDING_MODEL, DEFAULT_GENERATOR_MODEL, DEFAULT_LLM_API_BASE, DEFAULT_REASONING_MODEL
 from ..utils.common import download_model
 import asyncio
 
