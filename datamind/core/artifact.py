@@ -5,9 +5,11 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import traceback
 from ..config.settings import (
-    DEFAULT_REASONING_MODEL
+    DEFAULT_REASONING_MODEL,
+    DEFAULT_GENERATOR_MODEL
 )
 from ..core.reasoningLLM import ReasoningLLMEngine
+from ..core.generatorLLM import GeneratorLLMEngine
 import shutil
 import hashlib
 
@@ -57,6 +59,14 @@ class ArtifactGenerator:
                 history_file=str(self.artifacts_dir / "reasoning_history.json")
             )
             self.logger.info(f"已创建推理引擎实例，使用默认推理模型")
+
+            self.generator_engine = GeneratorLLMEngine(
+                model_manager=self.model_manager,
+                model_name=DEFAULT_GENERATOR_MODEL,
+                logger=self.logger,
+                history_file=str(self.artifacts_dir / "generator_history.json")
+            )
+            self.logger.info(f"已创建生成引擎实例，使用默认生成模型")
     
     def _read_file_content(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
         """读取文件内容
@@ -290,17 +300,13 @@ class ArtifactGenerator:
     async def generate_artifact(self, 
                               context_files: List[str], 
                               output_name: str,
-                              query: str,
-                              is_primary: bool = True,
-                              metadata: Optional[Dict] = None) -> Optional[Path]:
+                              query: str) -> Optional[Path]:
         """生成HTML制品
         
         Args:
             context_files: 上下文文件路径列表
             output_name: 输出文件名
             query: 用户的查询内容
-            is_primary: 是否为主制品，默认为True
-            metadata: 可选的元数据字典
             
         Returns:
             Optional[Path]: 生成的HTML文件路径，如果生成失败返回None
@@ -349,12 +355,11 @@ class ArtifactGenerator:
             # 更新元数据结构
             metadata_info = {
                 "artifact_id": f"artifact_{self.alchemy_id}",
-                "type": "primary" if is_primary else f"iteration_{iteration}",
+                "type": f"iteration_{iteration}",
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
                 "output_name": output_name,
                 "source_files": source_files_info,
-                "custom_metadata": metadata or {},
                 "generation_config": {
                     "engine": self.reasoning_engine.__class__.__name__,
                     "model": getattr(self.reasoning_engine, 'model_name', 'unknown')

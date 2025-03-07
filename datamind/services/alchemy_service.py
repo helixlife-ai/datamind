@@ -826,13 +826,7 @@ class DataMindAlchemy:
                 search_artifact_path = await self.components['artifact_generator'].generate_artifact(
                     context_files=[search_results['saved_files']['final_results']],
                     output_name='artifact',
-                    query=query,
-                    metadata={
-                        'source_query': query,
-                        'total_results': search_results.get('stats', {}).get('total', 0),
-                        'structured_count': search_results.get('stats', {}).get('structured_count', 0),
-                        'vector_count': search_results.get('stats', {}).get('vector_count', 0)
-                    }
+                    query=query
                 )
                 if search_artifact_path:
                     results['results']['artifacts'].append(str(search_artifact_path))
