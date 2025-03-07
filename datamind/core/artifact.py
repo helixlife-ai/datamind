@@ -109,7 +109,7 @@ class ArtifactGenerator:
         for filename, content in context_files.items():
             prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
         
-        prompt += f"""请根据用户的问题，从以下文件中提炼出相关信息，生成一个HTML页面来解决用户的问题：
+        prompt += f"""请根据用户的问题，从上述文件中提炼出相关信息，生成一个HTML页面来解决用户的问题：
 
 [用户的问题]
 {query}
@@ -232,30 +232,65 @@ class ArtifactGenerator:
                              if v.name.startswith('iter')]
         return max(existing_iterations, default=0) + 1
 
-    async def _get_optimization_query(self, html_content: str, previous_query: str) -> Optional[str]:
+    async def _get_optimization_query(self, html_content: str) -> Optional[str]:
         """分析当前HTML内容并生成优化建议查询
         
         Args:
             html_content: 当前生成的HTML内容
-            previous_query: 上一轮的查询内容
             
         Returns:
             Optional[str]: 优化建议查询
         """
         try:
-            prompt = f"""请分析以下HTML内容和原始查询，提出一个具体的优化建议问题。这个问题将用于生成下一个优化版本。
+            # 从status.json中读取原始查询
+            original_query = ""
+            status_path = self.artifacts_dir / "status.json"
+            if status_path.exists():
+                try:
+                    with open(status_path, "r", encoding="utf-8") as f:
+                        status_info = json.load(f)
+                    original_query = status_info.get("original_query", "")
+                    self.logger.info(f"从status.json中读取到原始查询: {original_query}")
+                except Exception as e:
+                    self.logger.error(f"读取status.json时发生错误: {str(e)}")
+            
+            # 如果无法从status.json获取原始查询，尝试从最早的迭代记录中获取
+            if not original_query and status_path.exists():
+                try:
+                    with open(status_path, "r", encoding="utf-8") as f:
+                        status_info = json.load(f)
+                    if status_info.get("iterations") and len(status_info["iterations"]) > 0:
+                        # 获取第一次迭代的查询作为原始查询
+                        original_query = status_info["iterations"][0].get("query", "")
+                        self.logger.info(f"从第一次迭代记录中读取到原始查询: {original_query}")
+                except Exception as e:
+                    self.logger.error(f"从迭代记录中读取原始查询时发生错误: {str(e)}")
+            
+            if not original_query:
+                self.logger.warning("无法获取原始查询，将使用空字符串")
+
+            prompt = f"""请分析以下HTML内容和原始查询，提出一个进阶的查询语句，目的是让下一轮生成的HTML内容能够补充现有内容，更好地满足用户的原始需求。
 
 原始查询：
-{previous_query}
+{original_query}
 
 当前HTML内容：
 {html_content}
 
-请提出一个明确的优化问题，格式要求：
-1. 只输出问题本身，不要其他内容
-2. 问题应该具体且可操作
-3. 问题应该针对内容的完善和补充
-4. 使用疑问句式
+请思考：
+1. 当前HTML内容在哪些方面还不够完善？
+2. 用户的原始需求中有哪些方面尚未被满足？
+3. 如何通过补充内容来提升用户体验？
+4. 是否需要添加更多的交互元素、视觉效果或功能？
+5. 内容的组织结构是否可以进一步优化？
+
+基于以上分析，请生成一个进阶查询语句，该语句应该：
+1. 明确指出需要补充或改进的具体方面
+2. 保持与原始查询的连贯性和相关性
+3. 使用清晰、具体的指示性语言
+4. 以问题形式提出，引导下一轮生成更有针对性的内容
+
+请直接输出进阶查询语句，不要包含其他解释内容。
 """
             # 在添加新消息前清除历史对话记录
             self.reasoning_engine.clear_history()
@@ -450,7 +485,7 @@ class ArtifactGenerator:
             output_path.write_text(html_content, encoding="utf-8")
 
             # 获取优化建议
-            optimization_query = await self._get_optimization_query(html_content, query)
+            optimization_query = await self._get_optimization_query(html_content)
 
             # 更新artifact.html（作为最新版本的快照）
             artifact_path = self.artifacts_dir / "artifact.html"
@@ -509,6 +544,7 @@ class ArtifactGenerator:
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "latest_iteration": iteration,
+                "original_query": query,
                 "artifact": {
                     "path": str(artifact_path.relative_to(self.artifacts_base)),
                     "timestamp": datetime.now().isoformat()
@@ -520,6 +556,12 @@ class ArtifactGenerator:
             if status_path.exists():
                 with open(status_path, "r", encoding="utf-8") as f:
                     status_info = json.load(f)
+                # 如果是第一次迭代，保存原始查询
+                if iteration == 1:
+                    status_info["original_query"] = query
+                # 如果已有原始查询字段，保持不变
+                elif "original_query" not in status_info:
+                    status_info["original_query"] = query
             
             # 更新迭代信息，包含优化建议
             iteration_info = {
