@@ -298,13 +298,13 @@ class ArtifactGenerator:
             return None
 
     async def generate_artifact(self, 
-                              context_files: List[str], 
+                              search_results_files: List[str], 
                               output_name: str,
                               query: str) -> Optional[Path]:
         """生成HTML制品
         
         Args:
-            context_files: 上下文文件路径列表
+            search_results_files: 搜索结果文件路径列表
             output_name: 输出文件名
             query: 用户的查询内容
             
@@ -323,25 +323,25 @@ class ArtifactGenerator:
             # 创建工作目录
             process_dir = work_base / "process"    # 生成过程
             output_dir = work_base / "output"      # 最终输出
-            source_dir = work_base / "source"      # 源文件副本
+            context_dir = work_base / "context"    # 上下文文件副本
             
-            for dir_path in [work_base, process_dir, output_dir, source_dir]:
+            for dir_path in [work_base, process_dir, output_dir, context_dir]:
                 dir_path.mkdir(parents=True, exist_ok=True)
 
-            # 复制源文件并记录信息
+            # 复制上下文文件并记录信息
             context_contents = {}
-            source_files_info = {}
+            context_files_info = {}
             
-            for file_path in context_files:
+            for file_path in search_results_files:
                 src_path = Path(file_path)
                 if src_path.exists():
-                    dst_path = source_dir / src_path.name
+                    dst_path = context_dir / src_path.name
                     shutil.copy2(src_path, dst_path)
                     
                     content = self._read_file_content(file_path)
                     if content:
                         context_contents[src_path.name] = content
-                        source_files_info[src_path.name] = {
+                        context_files_info[src_path.name] = {
                             "original_path": str(src_path.absolute()),
                             "copied_path": str(dst_path.relative_to(work_base)),
                             "size": src_path.stat().st_size,
@@ -359,7 +359,7 @@ class ArtifactGenerator:
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
                 "output_name": output_name,
-                "source_files": source_files_info,
+                "context_files": context_files_info,
                 "generation_config": {
                     "engine": self.reasoning_engine.__class__.__name__,
                     "model": getattr(self.reasoning_engine, 'model_name', 'unknown')

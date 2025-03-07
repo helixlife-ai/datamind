@@ -824,7 +824,7 @@ class DataMindAlchemy:
             # 为搜索结果生成artifact
             if search_results and search_results.get('saved_files', {}).get('final_results'):
                 search_artifact_path = await self.components['artifact_generator'].generate_artifact(
-                    context_files=[search_results['saved_files']['final_results']],
+                    search_results_files=[search_results['saved_files']['final_results']],
                     output_name='artifact',
                     query=query
                 )
