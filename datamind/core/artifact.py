@@ -12,6 +12,9 @@ from ..core.reasoningLLM import ReasoningLLMEngine
 from ..core.generatorLLM import GeneratorLLMEngine
 import shutil
 import hashlib
+import re
+from bs4 import BeautifulSoup
+from ..utils.stream_logger import StreamLineHandler
 
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
@@ -45,7 +48,8 @@ class ArtifactGenerator:
         for dir_path in [self.artifacts_base, self.artifacts_dir, self.iterations_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
         
-        self.logger = logger or logging.getLogger(__name__)
+        # 设置日志记录器
+        self._setup_logger(logger)
         
         # 创建推理引擎实例
         if model_manager is None:
@@ -67,6 +71,50 @@ class ArtifactGenerator:
                 history_file=str(self.artifacts_dir / "generator_history.json")
             )
             self.logger.info(f"已创建生成引擎实例，使用默认生成模型")
+    
+    def _setup_logger(self, external_logger: Optional[logging.Logger] = None):
+        """设置日志记录器
+        
+        Args:
+            external_logger: 外部提供的日志记录器，如果提供则使用该记录器
+        """
+        if external_logger:
+            self.logger = external_logger
+        else:
+            # 创建独立的日志记录器
+            self.logger = logging.getLogger(f"artifact_generator_{self.alchemy_id}")
+            self.logger.setLevel(logging.INFO)
+            
+            # 确保日志目录存在
+            logs_dir = self.alchemy_dir / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 添加文件处理器
+            log_file = logs_dir / "artifact_generator.log"
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            file_handler.setLevel(logging.INFO)
+            
+            # 添加控制台处理器
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.INFO)
+            
+            # 添加流式处理器
+            stream_log_file = logs_dir / "artifact_generator_stream.log"
+            stream_handler = StreamLineHandler(str(stream_log_file))
+            stream_handler.setLevel(logging.INFO)
+            
+            # 设置格式
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            console_handler.setFormatter(formatter)
+            stream_handler.setFormatter(formatter)
+            
+            # 添加处理器到记录器
+            self.logger.addHandler(file_handler)
+            self.logger.addHandler(console_handler)
+            self.logger.addHandler(stream_handler)
+            
+            self.logger.info(f"已创建制品生成器日志记录器，日志文件: {log_file}")
     
     def _read_file_content(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
         """读取文件内容
@@ -242,15 +290,19 @@ class ArtifactGenerator:
             Optional[str]: 优化建议查询
         """
         try:
-            # 从status.json中读取原始查询
+            # 从status.json中读取原始查询和组件信息
             original_query = ""
+            components = []
             status_path = self.artifacts_dir / "status.json"
+            
             if status_path.exists():
                 try:
                     with open(status_path, "r", encoding="utf-8") as f:
                         status_info = json.load(f)
                     original_query = status_info.get("original_query", "")
+                    components = status_info.get("components", [])
                     self.logger.info(f"从status.json中读取到原始查询: {original_query}")
+                    self.logger.info(f"从status.json中读取到{len(components)}个组件信息")
                 except Exception as e:
                     self.logger.error(f"读取status.json时发生错误: {str(e)}")
             
@@ -268,8 +320,29 @@ class ArtifactGenerator:
             
             if not original_query:
                 self.logger.warning("无法获取原始查询，将使用空字符串")
-
-            prompt = f"""请分析以下HTML内容和原始查询，提出一个进阶的查询语句，目的是让下一轮生成的HTML内容能够补充现有内容，更好地满足用户的原始需求。
+            
+            # 构建组件信息文本，确保组件是可序列化的基本类型
+            components_text = ""
+            for i, component in enumerate(components):
+                # 确保使用的是基本类型，不是自定义对象
+                if isinstance(component, dict):
+                    title = component.get('title', '未知')
+                    description = component.get('description', '无描述')
+                    comp_id = component.get('id', '未知')
+                    components_text += f"""
+组件 {i+1}:
+- 标题: {title}
+- 描述: {description}
+- ID: {comp_id}
+"""
+            
+            # 确定当前迭代次数
+            iteration = self._get_next_iteration() - 1
+            
+            # 根据迭代次数调整提示词
+            if iteration == 1:
+                # 构建类似于原来的提示词，但保持简单
+                prompt = f"""请分析以下HTML内容和原始查询，提出一个进阶的查询语句，目的是生成第一个组件。
 
 原始查询：
 {original_query}
@@ -278,20 +351,33 @@ class ArtifactGenerator:
 {html_content}
 
 请思考：
-1. 当前HTML内容在哪些方面还不够完善？
-2. 用户的原始需求中有哪些方面尚未被满足？
-3. 如何通过补充内容来提升用户体验？
-4. 是否需要添加更多的交互元素、视觉效果或功能？
-5. 内容的组织结构是否可以进一步优化？
-
-基于以上分析，请生成一个进阶查询语句，该语句应该：
-1. 明确指出需要补充或改进的具体方面
-2. 保持与原始查询的连贯性和相关性
-3. 使用清晰、具体的指示性语言
-4. 以问题形式提出，引导下一轮生成更有针对性的内容
+1. 用户的原始需求中最重要的方面是什么？
+2. 第一个组件应该解决什么具体问题？
+3. 该组件需要包含哪些关键信息或功能？
 
 请直接输出进阶查询语句，不要包含其他解释内容。
 """
+            else:
+                # 后续迭代的提示词，但确保只返回字符串
+                prompt = f"""请分析以下HTML内容、已有组件信息和原始查询，提出一个进阶的查询语句，目的是生成下一个组件。
+
+原始查询：
+{original_query}
+
+已有组件信息：
+{components_text}
+
+当前HTML内容：
+{html_content}
+
+请思考：
+1. 用户的原始需求中哪些方面尚未被现有组件满足？
+2. 下一个组件应该解决什么具体问题？
+3. 该组件如何与现有组件形成互补？
+
+请直接输出进阶查询语句，不要包含其他解释内容。
+"""
+            
             # 在添加新消息前清除历史对话记录
             self.reasoning_engine.clear_history()
             
@@ -309,7 +395,7 @@ class ArtifactGenerator:
                 if chunk:
                     full_response += chunk
                     # 显示流式输出内容
-                    self.logger.info(f"\r生成优化建议: {full_response}")
+                    self.logger.info(f"生成优化建议: {full_response}")
             
             # 从full_response中提取<answer></answer>标签之间的内容
             if "<answer>" in full_response and "</answer>" in full_response:
@@ -352,271 +438,43 @@ class ArtifactGenerator:
 
             # 确定生成目录
             iteration = self._get_next_iteration()
-            work_base = self.iterations_dir / f"iter{iteration}"
-            artifact_name = f"artifact_iter{iteration}"
             
-            # 创建工作目录
-            process_dir = work_base / "process"    # 生成过程
-            output_dir = work_base / "output"      # 最终输出
-            context_dir = work_base / "context"    # 上下文文件副本
-            
-            for dir_path in [work_base, process_dir, output_dir, context_dir]:
-                dir_path.mkdir(parents=True, exist_ok=True)
-
-            # 复制上下文文件并记录信息
-            context_contents = {}
-            context_files_info = {}
-            
-            for file_path in search_results_files:
-                src_path = Path(file_path)
-                if src_path.exists():
-                    dst_path = context_dir / src_path.name
-                    shutil.copy2(src_path, dst_path)
-                    
-                    content = self._read_file_content(file_path)
-                    if content:
-                        context_contents[src_path.name] = content
-                        context_files_info[src_path.name] = {
-                            "original_path": str(src_path.absolute()),
-                            "copied_path": str(dst_path.relative_to(work_base)),
-                            "size": src_path.stat().st_size,
-                            "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
-                            "content_hash": hashlib.md5(content.encode()).hexdigest()
-                        }
-
-            if not context_contents:
-                raise ValueError("未能成功读取任何上下文文件内容")
-
-            # 更新元数据结构
-            metadata_info = {
-                "artifact_id": f"artifact_{self.alchemy_id}",
-                "type": f"iteration_{iteration}",
-                "timestamp": datetime.now().isoformat(),
-                "query": query,
-                "output_name": output_name,
-                "context_files": context_files_info,
-                "generation_config": {
-                    "engine": self.reasoning_engine.__class__.__name__,
-                    "model": getattr(self.reasoning_engine, 'model_name', 'unknown')
-                }
-            }
-
-            # 保存元数据
-            with open(work_base / "metadata.json", "w", encoding="utf-8") as f:
-                json.dump(metadata_info, f, ensure_ascii=False, indent=2)
-
-            # 构建提示词并保存
-            prompt = self._build_html_prompt(context_contents, query)
-            with open(process_dir / "generation_prompt.md", "w", encoding="utf-8") as f:
-                f.write(prompt)
-
-            # 在添加新消息前清除历史对话记录
-            self.reasoning_engine.clear_history()
-            
-            # 添加用户消息
-            self.reasoning_engine.add_message("user", prompt)
-            
-            # 收集生成的内容
-            full_response = ""
-            process_path = process_dir / "generation_process.txt"
-            temp_html_path = process_dir / "temp_content.html"
-            current_html_content = []  # 使用列表存储HTML片段
-            
-            # 用于跟踪HTML内容的状态
-            html_started = False
-            in_html_block = False
-            
-            async for chunk in self.reasoning_engine.get_stream_response(
-                temperature=0.7,
-                metadata={'stage': 'html_generation'}
-            ):
-                if chunk:
-                    full_response += chunk
-                    
-                    # 保存生成过程
-                    with process_path.open("a", encoding="utf-8") as f:
-                        f.write(chunk)
-                    
-                    # 显示流式输出内容
-                    self.logger.info(f"\r生成内容: {full_response}")
-                    
-                    # 尝试实时提取和更新HTML内容
-                    if not html_started:
-                        if '<!DOCTYPE html>' in chunk:
-                            html_started = True
-                            start_idx = chunk.find('<!DOCTYPE html>')
-                            current_html_content.append(chunk[start_idx:])
-                        elif '```html' in chunk:
-                            html_started = True
-                            in_html_block = True
-                            start_idx = chunk.find('```html') + 7
-                            if start_idx < len(chunk):
-                                current_html_content.append(chunk[start_idx:])
-                    else:
-                        if in_html_block and '```' in chunk:
-                            # 结束代码块
-                            end_idx = chunk.find('```')
-                            if end_idx >= 0:
-                                current_html_content.append(chunk[:end_idx])
-                                in_html_block = False
-                        else:
-                            current_html_content.append(chunk)
-                    
-                    # 实时更新临时HTML文件
-                    if current_html_content:
-                        combined_content = ''.join(current_html_content)
-                        temp_html_path.write_text(combined_content.strip(), encoding="utf-8")
-                                
-            if not full_response:
-                raise ValueError("生成内容为空")
-            
-            # 提取最终的HTML内容
-            html_content = self._extract_html_content(full_response)
-            
-            if not html_content:
-                self.logger.warning("无法从响应中提取有效的HTML内容，将生成错误页面")
-                html_content = self._generate_error_html(
-                    "无法从AI响应中提取有效的HTML内容",
-                    query
-                )
-            
-            # 保存迭代版本HTML文件
-            output_path = output_dir / f"{artifact_name}.html"
-            output_path.write_text(html_content, encoding="utf-8")
-
-            # 获取优化建议
-            optimization_query = await self._get_optimization_query(html_content)
-
-            # 更新artifact.html（作为最新版本的快照）
-            artifact_path = self.artifacts_dir / "artifact.html"
-            
-            # 如果artifact.html已存在，进行版本管理和内容合并
-            if artifact_path.exists():
-                # 保存当前版本
-                current_version = self._get_next_artifact_version()
-                artifact_versions_dir = self.artifacts_dir / "artifact_versions"
-                version_path = artifact_versions_dir / f"artifact_v{current_version}.html"
+            # 根据迭代次数决定生成框架HTML还是组件HTML
+            if iteration == 1:
+                # 第一次迭代：生成框架HTML
+                return await self._generate_scaffold_html(search_results_files, output_name, query, iteration)
+            else:
+                # 后续迭代：生成组件HTML并更新框架
+                return await self._generate_component_html(search_results_files, output_name, query, iteration)
                 
-                # 备份当前版本
-                shutil.copy2(artifact_path, version_path)
-                
-                # 读取当前artifact.html内容
-                current_artifact_content = artifact_path.read_text(encoding="utf-8")
-                
-                # 合并内容
-                merged_content = await self._merge_html_contents(current_artifact_content, html_content, query)
-                if merged_content:
-                    html_content = merged_content
-                else:
-                    self.logger.warning("内容合并失败，将使用新生成的内容")
-                
-                # 更新版本记录
-                versions_info_path = artifact_versions_dir / "versions_info.json"
-                versions_info = {
-                    "latest_version": current_version,
-                    "versions": []
-                }
-                
-                if versions_info_path.exists():
-                    with open(versions_info_path, "r", encoding="utf-8") as f:
-                        versions_info = json.load(f)
-                
-                version_info = {
-                    "version": current_version,
-                    "timestamp": datetime.now().isoformat(),
-                    "query": query,
-                    "path": str(version_path.relative_to(self.artifacts_base))
-                }
-                
-                versions_info["versions"].append(version_info)
-                versions_info["latest_version"] = current_version
-                
-                with open(versions_info_path, "w", encoding="utf-8") as f:
-                    json.dump(versions_info, f, ensure_ascii=False, indent=2)
-            
-            # 写入新的artifact.html
-            artifact_path.write_text(html_content, encoding="utf-8")
-            self.logger.info(f"已更新主制品: {artifact_path}")
-
-            # 更新状态信息
-            status_info = {
-                "artifact_id": f"artifact_{self.alchemy_id}",
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-                "latest_iteration": iteration,
-                "original_query": query,
-                "artifact": {
-                    "path": str(artifact_path.relative_to(self.artifacts_base)),
-                    "timestamp": datetime.now().isoformat()
-                },
-                "iterations": []
-            }
-            
-            status_path = self.artifacts_dir / "status.json"
-            if status_path.exists():
-                with open(status_path, "r", encoding="utf-8") as f:
-                    status_info = json.load(f)
-                # 如果是第一次迭代，保存原始查询
-                if iteration == 1:
-                    status_info["original_query"] = query
-                # 如果已有原始查询字段，保持不变
-                elif "original_query" not in status_info:
-                    status_info["original_query"] = query
-            
-            # 更新迭代信息，包含优化建议
-            iteration_info = {
-                "iteration": iteration,
-                "timestamp": datetime.now().isoformat(),
-                "path": str(work_base.relative_to(self.artifacts_base)),
-                "query": query,
-                "optimization_suggestion": optimization_query
-            }
-            
-            status_info["iterations"].append(iteration_info)
-            status_info["latest_iteration"] = iteration
-            status_info["updated_at"] = datetime.now().isoformat()
-            
-            with open(status_path, "w", encoding="utf-8") as f:
-                json.dump(status_info, f, ensure_ascii=False, indent=2)
-
-            # 保存本轮生成的完整信息
-            generation_info = {
-                "iteration": iteration,
-                "timestamp": datetime.now().isoformat(),
-                "input_query": query,
-                "output_file": str(output_path.relative_to(self.artifacts_base)),
-                "optimization_suggestion": optimization_query,
-                "generation_stats": {
-                    "html_size": len(html_content)
-                }
-            }
-            
-            with open(output_dir / "generation_info.json", "w", encoding="utf-8") as f:
-                json.dump(generation_info, f, ensure_ascii=False, indent=2)
-
-            return output_path
-
         except Exception as e:
             self.logger.error(f"生成HTML制品时发生错误: {str(e)}")
             
             # 错误处理和记录
-            if 'work_base' in locals():
-                error_info = {
-                    "timestamp": datetime.now().isoformat(),
-                    "status": "error",
-                    "error": str(e),
-                    "query": query,
-                    "traceback": traceback.format_exc()
-                }
-                
-                with open(process_dir / "generation_error.json", "w", encoding="utf-8") as f:
-                    json.dump(error_info, f, ensure_ascii=False, indent=2)
-                
-                error_html = self._generate_error_html(str(e), query)
-                error_path = output_dir / f"{output_name}_error.html"
-                error_path.write_text(error_html, encoding="utf-8")
+            work_base = self.iterations_dir / f"iter{iteration}" if 'iteration' in locals() else self.iterations_dir / "error"
+            process_dir = work_base / "process"
+            output_dir = work_base / "output"
             
-            return None 
+            # 确保目录存在
+            for dir_path in [work_base, process_dir, output_dir]:
+                dir_path.mkdir(parents=True, exist_ok=True)
+                
+            error_info = {
+                "timestamp": datetime.now().isoformat(),
+                "status": "error",
+                "error": str(e),
+                "query": query,
+                "traceback": traceback.format_exc()
+            }
+            
+            with open(process_dir / "generation_error.json", "w", encoding="utf-8") as f:
+                json.dump(error_info, f, ensure_ascii=False, indent=2)
+            
+            error_html = self._generate_error_html(str(e), query)
+            error_path = output_dir / f"{output_name}_error.html"
+            error_path.write_text(error_html, encoding="utf-8")
+            
+            return None
 
     def _get_next_artifact_version(self) -> int:
         """获取artifact.html的下一个版本号"""
@@ -704,3 +562,953 @@ class ArtifactGenerator:
         except Exception as e:
             self.logger.error(f"合并HTML内容时发生错误: {str(e)}")
             return None 
+
+    async def _generate_scaffold_html(self, 
+                                search_results_files: List[str], 
+                                output_name: str,
+                                query: str,
+                                iteration: int) -> Optional[Path]:
+        """生成框架HTML（第一次迭代）
+        
+        Args:
+            search_results_files: 搜索结果文件路径列表
+            output_name: 输出文件名
+            query: 用户的查询内容
+            iteration: 迭代次数
+            
+        Returns:
+            Optional[Path]: 生成的HTML文件路径，如果生成失败返回None
+        """
+        try:
+            # 确定生成目录
+            work_base = self.iterations_dir / f"iter{iteration}"
+            artifact_name = f"artifact_iter{iteration}"
+            
+            # 创建工作目录
+            process_dir = work_base / "process"    # 生成过程
+            output_dir = work_base / "output"      # 最终输出
+            context_dir = work_base / "context"    # 上下文文件副本
+            
+            for dir_path in [work_base, process_dir, output_dir, context_dir]:
+                dir_path.mkdir(parents=True, exist_ok=True)
+
+            # 复制上下文文件并记录信息
+            context_contents = {}
+            context_files_info = {}
+            
+            for file_path in search_results_files:
+                src_path = Path(file_path)
+                if src_path.exists():
+                    dst_path = context_dir / src_path.name
+                    shutil.copy2(src_path, dst_path)
+                    
+                    content = self._read_file_content(file_path)
+                    if content:
+                        context_contents[src_path.name] = content
+                        context_files_info[src_path.name] = {
+                            "original_path": str(src_path.absolute()),
+                            "copied_path": str(dst_path.relative_to(work_base)),
+                            "size": src_path.stat().st_size,
+                            "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
+                            "content_hash": hashlib.md5(content.encode()).hexdigest()
+                        }
+
+            if not context_contents:
+                raise ValueError("未能成功读取任何上下文文件内容")
+
+            # 更新元数据结构
+            metadata_info = {
+                "artifact_id": f"artifact_{self.alchemy_id}",
+                "type": "scaffold",
+                "timestamp": datetime.now().isoformat(),
+                "query": query,
+                "output_name": output_name,
+                "context_files": context_files_info,
+                "generation_config": {
+                    "engine": self.reasoning_engine.__class__.__name__,
+                    "model": getattr(self.reasoning_engine, 'model_name', 'unknown')
+                }
+            }
+
+            # 保存元数据
+            with open(work_base / "metadata.json", "w", encoding="utf-8") as f:
+                json.dump(metadata_info, f, ensure_ascii=False, indent=2)
+
+            # 构建框架HTML提示词
+            scaffold_prompt = self._build_scaffold_html_prompt(context_contents, query)
+            with open(process_dir / "scaffold_prompt.md", "w", encoding="utf-8") as f:
+                f.write(scaffold_prompt)
+
+            # 在添加新消息前清除历史对话记录
+            self.reasoning_engine.clear_history()
+            
+            # 添加用户消息
+            self.reasoning_engine.add_message("user", scaffold_prompt)
+            
+            # 收集生成的内容
+            full_response = ""
+            process_path = process_dir / "generation_process.txt"
+            temp_html_path = process_dir / "temp_content.html"
+            current_html_content = []  # 使用列表存储HTML片段
+            
+            # 用于跟踪HTML内容的状态
+            html_started = False
+            in_html_block = False
+            
+            async for chunk in self.reasoning_engine.get_stream_response(
+                temperature=0.7,
+                metadata={'stage': 'scaffold_generation'}
+            ):
+                if chunk:
+                    full_response += chunk
+                    
+                    # 保存生成过程
+                    with process_path.open("a", encoding="utf-8") as f:
+                        f.write(chunk)
+                    
+                    # 显示流式输出内容
+                    self.logger.info(f"\r生成框架内容: {full_response}")
+                    
+                    # 尝试实时提取和更新HTML内容
+                    if not html_started:
+                        if '<!DOCTYPE html>' in chunk:
+                            html_started = True
+                            start_idx = chunk.find('<!DOCTYPE html>')
+                            current_html_content.append(chunk[start_idx:])
+                        elif '```html' in chunk:
+                            html_started = True
+                            in_html_block = True
+                            start_idx = chunk.find('```html') + 7
+                            if start_idx < len(chunk):
+                                current_html_content.append(chunk[start_idx:])
+                    else:
+                        if in_html_block and '```' in chunk:
+                            # 结束代码块
+                            end_idx = chunk.find('```')
+                            if end_idx >= 0:
+                                current_html_content.append(chunk[:end_idx])
+                                in_html_block = False
+                        else:
+                            current_html_content.append(chunk)
+                    
+                    # 实时更新临时HTML文件
+                    if current_html_content:
+                        combined_content = ''.join(current_html_content)
+                        temp_html_path.write_text(combined_content.strip(), encoding="utf-8")
+                                
+            if not full_response:
+                raise ValueError("生成内容为空")
+            
+            # 提取最终的HTML内容
+            scaffold_html = self._extract_html_content(full_response)
+            
+            if not scaffold_html:
+                self.logger.warning("无法从响应中提取有效的HTML内容，将生成错误页面")
+                scaffold_html = self._generate_error_html(
+                    "无法从AI响应中提取有效的HTML内容",
+                    query
+                )
+            
+            # 保存迭代版本HTML文件
+            output_path = output_dir / f"{artifact_name}.html"
+            output_path.write_text(scaffold_html, encoding="utf-8")
+
+            # 创建组件目录
+            components_dir = self.artifacts_dir / "components"
+            components_dir.mkdir(exist_ok=True)
+
+            # 保存框架HTML
+            scaffold_path = self.artifacts_dir / "scaffold.html"
+            scaffold_path.write_text(scaffold_html, encoding="utf-8")
+            
+            # 同时更新artifact.html（作为最新版本的快照）
+            artifact_path = self.artifacts_dir / "artifact.html"
+            
+            # 如果artifact.html已存在，进行版本管理和内容合并
+            if artifact_path.exists():
+                # 保存当前版本
+                current_version = self._get_next_artifact_version()
+                artifact_versions_dir = self.artifacts_dir / "artifact_versions"
+                artifact_versions_dir.mkdir(exist_ok=True)
+                version_path = artifact_versions_dir / f"artifact_v{current_version}.html"
+                
+                # 备份当前版本
+                shutil.copy2(artifact_path, version_path)
+                
+                # 更新版本记录
+                versions_info_path = artifact_versions_dir / "versions_info.json"
+                versions_info = {
+                    "latest_version": current_version,
+                    "versions": []
+                }
+                
+                if versions_info_path.exists():
+                    with open(versions_info_path, "r", encoding="utf-8") as f:
+                        versions_info = json.load(f)
+                
+                version_info = {
+                    "version": current_version,
+                    "timestamp": datetime.now().isoformat(),
+                    "query": query,
+                    "path": str(version_path.relative_to(self.artifacts_base))
+                }
+                
+                versions_info["versions"].append(version_info)
+                versions_info["latest_version"] = current_version
+                
+                with open(versions_info_path, "w", encoding="utf-8") as f:
+                    json.dump(versions_info, f, ensure_ascii=False, indent=2)
+            
+            # 写入新的artifact.html
+            artifact_path.write_text(scaffold_html, encoding="utf-8")
+            self.logger.info(f"已更新主制品: {artifact_path}")
+            
+            # 先获取优化建议
+            optimization_query = await self._get_optimization_query(scaffold_html)
+
+            # 然后更新迭代信息
+            iteration_info = {
+                "iteration": iteration,
+                "timestamp": datetime.now().isoformat(),
+                "path": str(work_base.relative_to(self.artifacts_base)),
+                "query": query,
+                "type": "scaffold",
+                "output": str(output_path.relative_to(self.artifacts_base)),
+                "optimization_suggestion": optimization_query
+            }
+            
+            status_info = {
+                "artifact_id": f"artifact_{self.alchemy_id}",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "latest_iteration": iteration,
+                "original_query": query,
+                # 添加artifact字段，与旧版本兼容
+                "artifact": {
+                    "path": "artifact.html",
+                    "timestamp": datetime.now().isoformat()
+                },
+                "scaffold": {
+                    "path": "scaffold.html",
+                    "timestamp": datetime.now().isoformat()
+                },
+                "components": [],
+                "iterations": []
+            }
+            
+            status_info["iterations"].append(iteration_info)
+            
+            status_path = self.artifacts_dir / "status.json"
+            with open(status_path, "w", encoding="utf-8") as f:
+                json.dump(status_info, f, ensure_ascii=False, indent=2)
+
+            # 保存本轮生成的完整信息
+            generation_info = {
+                "iteration": iteration,
+                "timestamp": datetime.now().isoformat(),
+                "input_query": query,
+                "output_file": str(output_path.relative_to(self.artifacts_base)),
+                "optimization_suggestion": optimization_query,
+                "generation_stats": {
+                    "html_size": len(scaffold_html)
+                }
+            }
+            
+            with open(output_dir / "generation_info.json", "w", encoding="utf-8") as f:
+                json.dump(generation_info, f, ensure_ascii=False, indent=2)
+
+            return output_path
+
+        except Exception as e:
+            self.logger.error(f"生成框架HTML时发生错误: {str(e)}")
+            traceback.print_exc()
+            return None 
+
+    def _build_scaffold_html_prompt(self, context_files: Dict[str, str], query: str) -> str:
+        """构建框架HTML生成的提示词
+        
+        Args:
+            context_files: 文件内容字典，key为文件名，value为文件内容
+            query: 用户的查询内容
+            
+        Returns:
+            str: 生成提示词
+        """
+        prompt = f"""[文件]
+"""
+        for filename, content in context_files.items():
+            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
+        
+        prompt += f"""请根据用户的问题，从上述文件中提炼出相关信息，生成一个框架型HTML页面。这个框架将作为后续组件的容器。
+
+[用户的问题]
+{query}
+
+要求：
+1. 生成一个结构良好的框架型HTML页面，包含以下元素：
+   a. 页面标题和基本信息
+   b. 导航区域，用于后续添加组件链接
+   c. 主内容区域，包含多个组件挂载点（使用id标识的div容器）
+   d. 组件目录或索引区域
+   e. 页脚信息
+
+2. 框架页面应该包含：
+   a. 响应式布局，适应不同设备
+   b. 清晰的视觉层次结构
+   c. 统一的样式主题
+   d. 基本的交互功能（如导航折叠/展开）
+   e. 组件加载机制（可以是简单的链接或iframe嵌入）
+
+3. 预留组件挂载点：
+   a. 至少预留5个主要组件区域，每个区域有明确的id和标题
+   b. 每个组件区域应有占位内容，表明将来会添加什么类型的内容
+   c. 组件区域应有明确的视觉边界
+
+4. 实现基本功能：
+   a. 导航可以跳转到各个组件区域
+   b. 提供返回顶部功能
+   c. 可以显示/隐藏组件区域
+
+5. 确保代码质量：
+   a. 使用语义化HTML5标签
+   b. CSS样式应清晰组织
+   c. 必要的JavaScript功能
+   d. 代码应有适当的注释
+
+请生成完整的HTML代码，包括所有必要的CSS和JavaScript。这个框架将作为后续组件的容器，因此应该具有良好的扩展性。
+"""
+        return prompt 
+
+    async def _generate_component_html(self, 
+                                 search_results_files: List[str], 
+                                 output_name: str,
+                                 query: str,
+                                 iteration: int) -> Optional[Path]:
+        """生成组件HTML（后续迭代）
+        
+        Args:
+            search_results_files: 搜索结果文件路径列表
+            output_name: 输出文件名
+            query: 用户的查询内容
+            iteration: 迭代次数
+            
+        Returns:
+            Optional[Path]: 生成的HTML文件路径，如果生成失败返回None
+        """
+        try:
+            # 确定生成目录
+            work_base = self.iterations_dir / f"iter{iteration}"
+            artifact_name = f"artifact_iter{iteration}"
+            
+            # 创建工作目录
+            process_dir = work_base / "process"    # 生成过程
+            output_dir = work_base / "output"      # 最终输出
+            context_dir = work_base / "context"    # 上下文文件副本
+            
+            for dir_path in [work_base, process_dir, output_dir, context_dir]:
+                dir_path.mkdir(parents=True, exist_ok=True)
+
+            # 复制上下文文件并记录信息
+            context_contents = {}
+            context_files_info = {}
+            
+            for file_path in search_results_files:
+                src_path = Path(file_path)
+                if src_path.exists():
+                    dst_path = context_dir / src_path.name
+                    shutil.copy2(src_path, dst_path)
+                    
+                    content = self._read_file_content(file_path)
+                    if content:
+                        context_contents[src_path.name] = content
+                        context_files_info[src_path.name] = {
+                            "original_path": str(src_path.absolute()),
+                            "copied_path": str(dst_path.relative_to(work_base)),
+                            "size": src_path.stat().st_size,
+                            "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
+                            "content_hash": hashlib.md5(content.encode()).hexdigest()
+                        }
+
+            if not context_contents:
+                raise ValueError("未能成功读取任何上下文文件内容")
+
+            # 检查框架HTML是否存在
+            scaffold_path = self.artifacts_dir / "scaffold.html"
+            if not scaffold_path.exists():
+                raise ValueError("框架HTML不存在，无法生成组件")
+            
+            # 读取框架HTML内容
+            scaffold_html = scaffold_path.read_text(encoding="utf-8")
+            
+            # 读取状态信息，获取已有组件信息
+            status_path = self.artifacts_dir / "status.json"
+            if not status_path.exists():
+                raise ValueError("状态信息文件不存在，无法获取组件信息")
+            
+            with open(status_path, "r", encoding="utf-8") as f:
+                status_info = json.load(f)
+            
+            # 确保original_query字段存在
+            if "original_query" not in status_info or not status_info["original_query"]:
+                # 如果不存在或为空，使用当前查询替代
+                status_info["original_query"] = query
+                self.logger.info(f"在status.json中添加缺失的original_query字段: {query}")
+            
+            # 获取组件ID
+            component_id = f"component_{iteration}"
+            
+            # 更新元数据结构
+            metadata_info = {
+                "artifact_id": f"artifact_{self.alchemy_id}",
+                "type": f"component_{iteration}",
+                "timestamp": datetime.now().isoformat(),
+                "query": query,
+                "output_name": output_name,
+                "context_files": context_files_info,
+                "generation_config": {
+                    "engine": self.reasoning_engine.__class__.__name__,
+                    "model": getattr(self.reasoning_engine, 'model_name', 'unknown')
+                }
+            }
+
+            # 保存元数据
+            with open(work_base / "metadata.json", "w", encoding="utf-8") as f:
+                json.dump(metadata_info, f, ensure_ascii=False, indent=2)
+
+            # 构建组件HTML提示词
+            component_prompt = self._build_component_html_prompt(
+                context_contents, 
+                query, 
+                scaffold_html,
+                status_info.get("components", []),
+                component_id
+            )
+            
+            with open(process_dir / "component_prompt.md", "w", encoding="utf-8") as f:
+                f.write(component_prompt)
+
+            # 在添加新消息前清除历史对话记录
+            self.reasoning_engine.clear_history()
+            
+            # 添加用户消息
+            self.reasoning_engine.add_message("user", component_prompt)
+            
+            # 收集生成的内容
+            full_response = ""
+            process_path = process_dir / "generation_process.txt"
+            temp_html_path = process_dir / "temp_content.html"
+            current_html_content = []  # 使用列表存储HTML片段
+            
+            # 用于跟踪HTML内容的状态
+            html_started = False
+            in_html_block = False
+            
+            async for chunk in self.reasoning_engine.get_stream_response(
+                temperature=0.7,
+                metadata={'stage': 'component_generation'}
+            ):
+                if chunk:
+                    full_response += chunk
+                    
+                    # 保存生成过程
+                    with process_path.open("a", encoding="utf-8") as f:
+                        f.write(chunk)
+                    
+                    # 显示流式输出内容
+                    self.logger.info(f"\r生成组件内容: {full_response}")
+                    
+                    # 尝试实时提取和更新HTML内容
+                    if not html_started:
+                        if '<!DOCTYPE html>' in chunk:
+                            html_started = True
+                            start_idx = chunk.find('<!DOCTYPE html>')
+                            current_html_content.append(chunk[start_idx:])
+                        elif '```html' in chunk:
+                            html_started = True
+                            in_html_block = True
+                            start_idx = chunk.find('```html') + 7
+                            if start_idx < len(chunk):
+                                current_html_content.append(chunk[start_idx:])
+                    else:
+                        if in_html_block and '```' in chunk:
+                            # 结束代码块
+                            end_idx = chunk.find('```')
+                            if end_idx >= 0:
+                                current_html_content.append(chunk[:end_idx])
+                                in_html_block = False
+                        else:
+                            current_html_content.append(chunk)
+                    
+                    # 实时更新临时HTML文件
+                    if current_html_content:
+                        combined_content = ''.join(current_html_content)
+                        temp_html_path.write_text(combined_content.strip(), encoding="utf-8")
+                                
+            if not full_response:
+                raise ValueError("生成内容为空")
+            
+            # 提取最终的HTML内容和组件信息
+            component_result = self._extract_component_info(full_response)
+            
+            if not component_result or not component_result.get("html"):
+                self.logger.warning("无法从响应中提取有效的组件HTML内容，将生成错误页面")
+                component_html = self._generate_error_html(
+                    "无法从AI响应中提取有效的组件HTML内容",
+                    query
+                )
+                component_info = {
+                    "id": component_id,
+                    "title": f"组件 {iteration}",
+                    "description": "生成失败",
+                    "mount_point": f"component_{iteration}"
+                }
+            else:
+                component_html = component_result["html"]
+                component_info = {
+                    "id": component_id,
+                    "title": component_result.get("title", f"组件 {iteration}"),
+                    "description": component_result.get("description", ""),
+                    "mount_point": component_result.get("mount_point", f"component_{iteration}")
+                }
+            
+            # 保存组件HTML文件
+            components_dir = self.artifacts_dir / "components"
+            components_dir.mkdir(exist_ok=True)
+            
+            component_path = components_dir / f"{component_id}.html"
+            component_path.write_text(component_html, encoding="utf-8")
+            
+            # 保存迭代版本HTML文件
+            output_path = output_dir / f"{artifact_name}.html"
+            output_path.write_text(component_html, encoding="utf-8")
+            
+            # 更新框架HTML，添加新组件的链接
+            updated_scaffold = self._update_scaffold_with_component(
+                scaffold_html,
+                str(component_path.relative_to(self.artifacts_dir)),
+                component_info
+            )
+            
+            # 保存更新后的框架HTML
+            scaffold_path.write_text(updated_scaffold, encoding="utf-8")
+            
+            # 更新artifact.html（作为最新版本的快照）
+            artifact_path = self.artifacts_dir / "artifact.html"
+            
+            # 如果artifact.html已存在，进行版本管理和内容合并
+            if artifact_path.exists():
+                # 保存当前版本
+                current_version = self._get_next_artifact_version()
+                artifact_versions_dir = self.artifacts_dir / "artifact_versions"
+                artifact_versions_dir.mkdir(exist_ok=True)
+                version_path = artifact_versions_dir / f"artifact_v{current_version}.html"
+                
+                # 备份当前版本
+                shutil.copy2(artifact_path, version_path)
+                
+                # 更新版本记录
+                versions_info_path = artifact_versions_dir / "versions_info.json"
+                versions_info = {
+                    "latest_version": current_version,
+                    "versions": []
+                }
+                
+                if versions_info_path.exists():
+                    with open(versions_info_path, "r", encoding="utf-8") as f:
+                        versions_info = json.load(f)
+                
+                version_info = {
+                    "version": current_version,
+                    "timestamp": datetime.now().isoformat(),
+                    "query": query,
+                    "path": str(version_path.relative_to(self.artifacts_base))
+                }
+                
+                versions_info["versions"].append(version_info)
+                versions_info["latest_version"] = current_version
+                
+                with open(versions_info_path, "w", encoding="utf-8") as f:
+                    json.dump(versions_info, f, ensure_ascii=False, indent=2)
+            
+            # 写入新的artifact.html
+            artifact_path.write_text(updated_scaffold, encoding="utf-8")
+            self.logger.info(f"已更新主制品: {artifact_path}")
+            
+            # 更新状态信息
+            component_info["path"] = f"components/{component_id}.html"
+            component_info["created_at"] = datetime.now().isoformat()
+            component_info["query"] = query
+            
+            status_info["components"].append(component_info)
+            status_info["updated_at"] = datetime.now().isoformat()
+            status_info["latest_iteration"] = iteration
+            
+            # 先获取优化建议，用于指导下一个组件的生成
+            optimization_query = await self._get_optimization_query(updated_scaffold)
+            
+            # 然后更新迭代信息
+            iteration_info = {
+                "iteration": iteration,
+                "timestamp": datetime.now().isoformat(),
+                "path": str(work_base.relative_to(self.artifacts_base)),
+                "query": query,
+                "type": "component",
+                "component_id": component_id,
+                "output": str(output_path.relative_to(self.artifacts_base)),
+                "optimization_suggestion": optimization_query
+            }
+            
+            status_info["iterations"].append(iteration_info)
+            
+            with open(status_path, "w", encoding="utf-8") as f:
+                json.dump(status_info, f, ensure_ascii=False, indent=2)
+
+            # 获取优化建议，用于指导下一个组件的生成
+            optimization_query = await self._get_optimization_query(updated_scaffold)
+            
+            # 保存本轮生成的完整信息
+            generation_info = {
+                "iteration": iteration,
+                "timestamp": datetime.now().isoformat(),
+                "input_query": query,
+                "output_file": str(output_path.relative_to(self.artifacts_base)),
+                "component_id": component_id,
+                "component_info": component_info,
+                "optimization_suggestion": optimization_query,
+                "generation_stats": {
+                    "html_size": len(component_html)
+                }
+            }
+            
+            with open(output_dir / "generation_info.json", "w", encoding="utf-8") as f:
+                json.dump(generation_info, f, ensure_ascii=False, indent=2)
+
+            return output_path
+
+        except Exception as e:
+            self.logger.error(f"生成组件HTML时发生错误: {str(e)}")
+            traceback.print_exc()
+            return None 
+
+    def _build_component_html_prompt(self, 
+                                context_files: Dict[str, str], 
+                                query: str, 
+                                scaffold_html: str,
+                                existing_components: List[Dict],
+                                component_id: str) -> str:
+        """构建组件HTML生成的提示词
+        
+        Args:
+            context_files: 文件内容字典，key为文件名，value为文件内容
+            query: 用户的查询内容
+            scaffold_html: 框架HTML内容
+            existing_components: 已有组件信息列表
+            component_id: 当前组件ID
+            
+        Returns:
+            str: 生成提示词
+        """
+        prompt = f"""[文件]
+"""
+        for filename, content in context_files.items():
+            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
+        
+        prompt += f"""[框架HTML]
+{scaffold_html}
+
+[已有组件]
+"""
+        
+        for component in existing_components:
+            prompt += f"""
+组件ID: {component.get('id')}
+标题: {component.get('title')}
+描述: {component.get('description')}
+挂载点: {component.get('mount_point')}
+"""
+        
+        prompt += f"""请根据用户的问题和上述信息，生成一个HTML组件，该组件将被挂载到框架HTML中。
+
+[用户的问题]
+{query}
+
+[当前组件ID]
+{component_id}
+
+要求：
+1. 生成一个独立的HTML组件，专注于解决用户问题的一个特定方面
+2. 组件应该是一个完整的HTML页面，包含所有必要的样式和脚本
+3. 组件应该与框架HTML的样式保持一致
+4. 组件应该提供以下信息（使用JSON格式包装在HTML注释中）：
+   a. 组件标题（title）：简短描述组件的主要内容
+   b. 组件描述（description）：详细说明组件的功能和内容
+   c. 挂载点（mount_point）：建议在框架HTML中的哪个位置挂载该组件
+
+JSON格式示例：
+<!--COMPONENT_INFO
+{{
+  "title": "组件标题",
+  "description": "组件详细描述",
+  "mount_point": "建议的挂载点ID"
+}}
+COMPONENT_INFO-->
+
+5. 确保组件内容：
+   a. 专注于解决用户问题的一个特定方面
+   b. 与已有组件不重复
+   c. 内容丰富、结构清晰
+   d. 如有必要，可以包含交互元素
+
+请生成完整的HTML组件代码，包括所有必要的CSS和JavaScript。
+"""
+        return prompt 
+
+    def _extract_component_info(self, full_response: str) -> Optional[Dict]:
+        """从响应中提取组件HTML内容和组件信息
+        
+        Args:
+            full_response: 完整的响应文本
+            
+        Returns:
+            Optional[Dict]: 包含HTML内容和组件信息的字典，如果提取失败返回None
+        """
+        try:
+            # 提取HTML内容
+            html_content = self._extract_html_content(full_response)
+            if not html_content:
+                return None
+            
+            # 提取组件信息
+            component_info = {}
+            
+            # 查找组件信息注释
+            info_pattern = r'<!--COMPONENT_INFO\s*(.*?)\s*COMPONENT_INFO-->'
+            info_match = re.search(info_pattern, html_content, re.DOTALL)
+            
+            if info_match:
+                try:
+                    # 尝试解析JSON
+                    info_json = info_match.group(1).strip()
+                    component_info = json.loads(info_json)
+                except Exception as e:
+                    self.logger.warning(f"解析组件信息JSON时发生错误: {str(e)}")
+            
+            # 如果没有找到组件信息或解析失败，尝试从HTML中提取基本信息
+            if not component_info:
+                # 尝试从title标签提取标题
+                title_match = re.search(r'<title>(.*?)</title>', html_content)
+                if title_match:
+                    component_info["title"] = title_match.group(1).strip()
+                
+                # 尝试从meta description提取描述
+                desc_match = re.search(r'<meta\s+name="description"\s+content="(.*?)"', html_content)
+                if desc_match:
+                    component_info["description"] = desc_match.group(1).strip()
+            
+            return {
+                "html": html_content,
+                "title": component_info.get("title", ""),
+                "description": component_info.get("description", ""),
+                "mount_point": component_info.get("mount_point", "")
+            }
+            
+        except Exception as e:
+            self.logger.error(f"提取组件信息时发生错误: {str(e)}")
+            return None 
+
+    def _update_scaffold_with_component(self, 
+                                 scaffold_html: str, 
+                                 component_path: str, 
+                                 component_info: Dict) -> str:
+        """更新框架HTML，添加新组件的链接
+        
+        Args:
+            scaffold_html: 框架HTML内容
+            component_path: 组件HTML文件的相对路径
+            component_info: 组件信息
+            
+        Returns:
+            str: 更新后的框架HTML内容
+        """
+        try:
+            # 解析HTML
+            soup = BeautifulSoup(scaffold_html, 'html.parser')
+            
+            # 1. 更新导航区域
+            nav_updated = False
+            
+            # 尝试找到导航区域
+            nav_elements = soup.find_all(['nav', 'ul', 'div'], class_=['nav', 'navigation', 'menu', 'sidebar'])
+            
+            for nav in nav_elements:
+                # 创建新的导航项
+                new_nav_item = soup.new_tag('li')
+                new_nav_link = soup.new_tag('a', href=f'#{component_info["id"]}')
+                new_nav_link.string = component_info["title"]
+                new_nav_item.append(new_nav_link)
+                
+                # 尝试找到合适的位置添加
+                ul = nav.find('ul')
+                if ul:
+                    ul.append(new_nav_item)
+                    nav_updated = True
+                    break
+            
+            # 如果没有找到合适的导航区域，尝试创建一个
+            if not nav_updated:
+                # 查找可能的挂载点
+                potential_nav_containers = soup.find_all(['header', 'div'], class_=['header', 'top', 'navbar'])
+                
+                if potential_nav_containers:
+                    container = potential_nav_containers[0]
+                    new_nav = soup.new_tag('nav', class_='navigation')
+                    new_ul = soup.new_tag('ul')
+                    new_nav_item = soup.new_tag('li')
+                    new_nav_link = soup.new_tag('a', href=f'#{component_info["id"]}')
+                    new_nav_link.string = component_info["title"]
+                    
+                    new_nav_item.append(new_nav_link)
+                    new_ul.append(new_nav_item)
+                    new_nav.append(new_ul)
+                    container.append(new_nav)
+                    nav_updated = True
+            
+            # 2. 更新组件区域
+            component_updated = False
+            
+            # 尝试找到指定的挂载点
+            if component_info.get("mount_point"):
+                mount_point = soup.find(id=component_info["mount_point"])
+                if mount_point:
+                    # 创建组件链接
+                    component_link = soup.new_tag('a', href=component_path, class_='component-link')
+                    component_link.string = f'查看 {component_info["title"]}'
+                    
+                    # 创建iframe（可选）
+                    component_iframe = soup.new_tag('iframe', 
+                                                  src=component_path, 
+                                                  class_='component-frame',
+                                                  frameborder="0",
+                                                  width="100%",
+                                                  height="500px")
+                    
+                    # 清空挂载点内容并添加新内容
+                    mount_point.clear()
+                    
+                    # 添加标题和描述
+                    component_title = soup.new_tag('h3')
+                    component_title.string = component_info["title"]
+                    mount_point.append(component_title)
+                    
+                    if component_info.get("description"):
+                        component_desc = soup.new_tag('p')
+                        component_desc.string = component_info["description"]
+                        mount_point.append(component_desc)
+                    
+                    # 添加iframe和链接
+                    mount_point.append(component_iframe)
+                    mount_point.append(component_link)
+                    
+                    component_updated = True
+            
+            # 如果没有找到指定的挂载点，尝试找到主内容区域
+            if not component_updated:
+                main_content = soup.find(['main', 'div'], class_=['main', 'content', 'container'])
+                
+                if main_content:
+                    # 创建新的组件容器
+                    component_container = soup.new_tag('div', id=component_info["id"], class_='component-container')
+                    
+                    # 添加标题和描述
+                    component_title = soup.new_tag('h3')
+                    component_title.string = component_info["title"]
+                    component_container.append(component_title)
+                    
+                    if component_info.get("description"):
+                        component_desc = soup.new_tag('p')
+                        component_desc.string = component_info["description"]
+                        component_container.append(component_desc)
+                    
+                    # 创建iframe
+                    component_iframe = soup.new_tag('iframe', 
+                                                  src=component_path, 
+                                                  class_='component-frame',
+                                                  frameborder="0",
+                                                  width="100%",
+                                                  height="500px")
+                    component_container.append(component_iframe)
+                    
+                    # 创建组件链接
+                    component_link = soup.new_tag('a', href=component_path, class_='component-link')
+                    component_link.string = f'在新窗口中查看 {component_info["title"]}'
+                    component_container.append(component_link)
+                    
+                    # 添加到主内容区域
+                    main_content.append(component_container)
+                    component_updated = True
+            
+            # 3. 更新组件索引/目录区域
+            index_updated = False
+            
+            # 尝试找到组件索引区域
+            index_area = soup.find(['div', 'section'], class_=['component-index', 'index', 'directory'])
+            
+            if index_area:
+                # 创建新的索引项
+                index_item = soup.new_tag('div', class_='index-item')
+                
+                index_title = soup.new_tag('h4')
+                index_link = soup.new_tag('a', href=f'#{component_info["id"]}')
+                index_link.string = component_info["title"]
+                index_title.append(index_link)
+                index_item.append(index_title)
+                
+                if component_info.get("description"):
+                    index_desc = soup.new_tag('p')
+                    index_desc.string = component_info["description"]
+                    index_item.append(index_desc)
+                
+                # 添加到索引区域
+                index_area.append(index_item)
+                index_updated = True
+            
+            # 如果没有找到索引区域，尝试在侧边栏或页脚创建一个
+            if not index_updated:
+                sidebar = soup.find(['aside', 'div'], class_=['sidebar', 'aside'])
+                
+                if sidebar:
+                    # 创建索引区域
+                    index_area = soup.new_tag('div', class_='component-index')
+                    
+                    index_header = soup.new_tag('h3')
+                    index_header.string = '组件索引'
+                    index_area.append(index_header)
+                    
+                    # 创建新的索引项
+                    index_item = soup.new_tag('div', class_='index-item')
+                    
+                    index_title = soup.new_tag('h4')
+                    index_link = soup.new_tag('a', href=f'#{component_info["id"]}')
+                    index_link.string = component_info["title"]
+                    index_title.append(index_link)
+                    index_item.append(index_title)
+                    
+                    if component_info.get("description"):
+                        index_desc = soup.new_tag('p')
+                        index_desc.string = component_info["description"]
+                        index_item.append(index_desc)
+                    
+                    # 添加到索引区域
+                    index_area.append(index_item)
+                    
+                    # 添加到侧边栏
+                    sidebar.append(index_area)
+                    index_updated = True
+            
+            # 返回更新后的HTML
+            return str(soup)
+            
+        except Exception as e:
+            self.logger.error(f"更新框架HTML时发生错误: {str(e)}")
+            # 如果更新失败，返回原始HTML
+            return scaffold_html
