@@ -19,49 +19,12 @@ from ..config.settings import (
     DEFAULT_GENERATOR_MODEL
 )
 from datetime import datetime
-from enum import Enum, auto
 import asyncio
 
-class AlchemyEventType(Enum):
-    """炼丹流程事件类型"""
-    PROCESS_STARTED = auto()
-    INTENT_PARSED = auto()
-    PLAN_BUILT = auto()
-    SEARCH_EXECUTED = auto()
-    ARTIFACT_GENERATED = auto()
-    OPTIMIZATION_SUGGESTED = auto()
-    PROCESS_COMPLETED = auto()
-    ERROR_OCCURRED = auto()
-    CANCELLATION_REQUESTED = auto()
-    PROCESS_CANCELLED = auto()
-    PROCESS_CHECKPOINT = auto()  # 处理过程中的检查点事件
-
-class EventBus:
-    """事件总线，用于事件发布和订阅"""
-    
-    def __init__(self):
-        self.subscribers = {}
-        
-    def subscribe(self, event_type: AlchemyEventType, callback: Callable):
-        """订阅事件"""
-        if event_type not in self.subscribers:
-            self.subscribers[event_type] = []
-        self.subscribers[event_type].append(callback)
-        
-    def unsubscribe(self, event_type: AlchemyEventType, callback: Callable):
-        """取消订阅事件"""
-        if event_type in self.subscribers and callback in self.subscribers[event_type]:
-            self.subscribers[event_type].remove(callback)
-            
-    async def publish(self, event_type: AlchemyEventType, data: Any = None):
-        """发布事件"""
-        if event_type in self.subscribers:
-            for callback in self.subscribers[event_type]:
-                if asyncio.iscoroutinefunction(callback):
-                    # 创建任务而不是等待，避免阻塞事件发布
-                    asyncio.create_task(callback(data))
-                else:
-                    callback(data)
+# 导入拆分出去的类
+from .events.event_types import AlchemyEventType
+from .events.event_bus import EventBus
+from .events.event_handler import AlchemyEventHandler
 
 class DataMindAlchemy:
     """数据炼丹工作流封装类"""
