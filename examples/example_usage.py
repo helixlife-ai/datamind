@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 import argparse
 from typing import Dict, List, Optional, Any, Tuple
+import time
 
 # 添加项目根目录到Python路径
 script_dir = Path(__file__).parent
@@ -21,10 +22,10 @@ from datamind.services import DataMindAlchemy, AlchemyEventHandler, AlchemyManag
 class ConfigManager:
     """配置管理类"""
     
-    def __init__(self, config_path: Path, logger: logging.Logger):
+    def __init__(self, config_path: Path, logger: logging.Logger = None):
         self.config_path = config_path
-        self.logger = logger
         self.config = {}
+        self.logger = logger or logging.getLogger(__name__)
         self._load_config()
     
     def _load_config(self) -> None:
@@ -34,31 +35,82 @@ class ConfigManager:
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     self.config = json.load(f)
+            except json.JSONDecodeError as e:
+                self.logger.error(f"配置文件JSON格式错误: {e}")
+                # 使用空配置继续
+                self.config = {}
             except Exception as e:
                 self.logger.error(f"加载配置文件失败: {e}")
+                # 使用空配置继续
+                self.config = {}
+        else:
+            self.logger.warning(f"配置文件不存在: {self.config_path}，将使用默认配置")
+            # 创建默认配置
+            self.config = {
+                "query": "请生成一份关于AI发展的报告",
+                "input_dirs": [],
+                "resume": False
+            }
+            # 尝试创建配置文件目录
+            try:
+                self.config_path.parent.mkdir(exist_ok=True, parents=True)
+                # 保存默认配置
+                with open(self.config_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.config, f, ensure_ascii=False, indent=2)
+                self.logger.info(f"已创建默认配置文件: {self.config_path}")
+            except Exception as e:
+                self.logger.error(f"创建默认配置文件失败: {e}")
     
     def get(self, key: str, default=None) -> Any:
         """获取配置项"""
-        return self.config.get(key, default)
+        value = self.config.get(key, default)
+        if value is None and default is not None:
+            self.logger.debug(f"配置项 '{key}' 不存在，使用默认值: {default}")
+            return default
+        return value
     
     def get_new_mode_config(self, cmd_query: Optional[str], cmd_input_dirs: Optional[List[str]]) -> Tuple[str, List[str]]:
         """获取新建模式的配置"""
-        query = cmd_query or self.get('query', "请生成一份关于AI发展的报告")
+        # 优先使用命令行参数
+        query = cmd_query
+        if query is None:
+            # 如果命令行没有指定，使用配置文件
+            query = self.get('query', "请生成一份关于AI发展的报告")
+            self.logger.info(f"使用配置文件中的查询: {query}")
         
         # 只有当命令行没有指定输入目录时，才使用配置文件中的值
         input_dirs = None
         if cmd_input_dirs:
             input_dirs = cmd_input_dirs
+            self.logger.info(f"使用命令行指定的输入目录: {input_dirs}")
         elif self.get('input_dirs'):
             input_dirs = self.get('input_dirs')
-            self.logger.info(f"从配置中读取input_dirs: {input_dirs}")
+            self.logger.info(f"使用配置文件中的输入目录: {input_dirs}")
+        else:
+            self.logger.info("未指定输入目录，将使用默认目录")
             
         return query, input_dirs
     
     def get_continue_mode_config(self, cmd_id: Optional[str], cmd_resume: bool) -> Tuple[Optional[str], bool]:
         """获取继续模式的配置"""
-        alchemy_id = cmd_id or self.get('alchemy_id')
-        should_resume = cmd_resume or self.get('resume', False)
+        # 优先使用命令行参数
+        alchemy_id = cmd_id
+        if alchemy_id is None:
+            # 如果命令行没有指定，使用配置文件
+            alchemy_id = self.get('alchemy_id')
+            if alchemy_id:
+                self.logger.info(f"使用配置文件中的alchemy_id: {alchemy_id}")
+            else:
+                self.logger.warning("未指定alchemy_id，将尝试查找最近的任务")
+        
+        # 优先使用命令行参数
+        should_resume = cmd_resume
+        if not should_resume:
+            # 如果命令行没有指定，使用配置文件
+            should_resume = self.get('resume', False)
+            if should_resume:
+                self.logger.info("使用配置文件中的resume设置: True")
+        
         return alchemy_id, should_resume
 
 
@@ -85,7 +137,7 @@ class ArgParser:
         """解析命令行参数"""
         return self.parser.parse_args()
     
-    def parse_input_dirs(self, input_dirs_str: str, logger: logging.Logger) -> Optional[List[str]]:
+    def parse_input_dirs(self, input_dirs_str: str) -> Optional[List[str]]:
         """解析输入目录参数"""
         if not input_dirs_str:
             return None
@@ -94,10 +146,10 @@ class ArgParser:
             # 解析JSON格式的输入目录列表
             custom_input_dirs = json.loads(input_dirs_str)
             if isinstance(custom_input_dirs, list) and custom_input_dirs:
-                logger.info(f"从命令行参数读取输入目录: {custom_input_dirs}")
+                print(f"从命令行参数读取输入目录: {custom_input_dirs}")
                 return custom_input_dirs
         except json.JSONDecodeError as e:
-            logger.error(f"解析输入目录参数失败: {e}")
+            print(f"解析输入目录参数失败: {e}")
         
         return None
 
@@ -111,6 +163,15 @@ class AlchemyClient:
         self.alchemy_work_dir = work_dir / "data_alchemy"
         self.test_data_dir = work_dir / "test_data"
         self.alchemy_manager = AlchemyManager(work_dir=work_dir, logger=logger)
+        self.model_manager = None  # 初始化model_manager为None
+        
+        # 尝试导入并初始化ModelManager
+        try:
+            from datamind.llms.model_manager import ModelManager
+            self.model_manager = ModelManager(logger=logger)  # 使用相同的logger
+            self.logger.info("已初始化ModelManager")
+        except ImportError:
+            self.logger.warning("无法导入ModelManager，将使用默认模型管理器")
     
     async def process_task(self, 
                            mode: str, 
@@ -162,7 +223,8 @@ class AlchemyClient:
             work_dir=self.alchemy_work_dir,  
             logger=self.logger,
             should_resume=should_resume,
-            alchemy_manager=self.alchemy_manager
+            alchemy_manager=self.alchemy_manager,
+            model_manager=self.model_manager if hasattr(self, 'model_manager') else None  # 添加model_manager参数
         )
     
     async def cancel_task(self, alchemy_id: str) -> None:
@@ -206,10 +268,15 @@ class AlchemyClient:
     async def handle_interrupt(self, alchemy_id: Optional[str], query: Optional[str], input_dirs: Optional[List[str]]) -> None:
         """处理键盘中断"""
         if not alchemy_id:
-            print("无法找到当前运行的任务ID，无法保存检查点")
-            print("您可以通过以下命令查看所有可恢复的任务:")
-            print(f"python examples/alchemy_manager_cli.py resumable")
-            return
+            self.logger.warning("无法找到当前运行的任务ID，尝试查找最近的任务")
+            # 尝试查找最近的任务
+            alchemy_id = self.find_resumable_task()
+            if not alchemy_id:
+                self.logger.error("无法找到可恢复的任务，无法保存检查点")
+                print("无法找到当前运行的任务ID，无法保存检查点")
+                print("您可以通过以下命令查看所有可恢复的任务:")
+                print(f"python examples/alchemy_manager_cli.py resumable")
+                return
         
         try:
             # 创建alchemy实例用于保存检查点
@@ -227,16 +294,19 @@ class AlchemyClient:
             if query or input_dirs:
                 # 确保恢复信息被保存到正确的位置
                 alchemy._save_resume_info(query, input_dirs)
+                self.logger.info(f"已保存查询和输入目录信息")
             
             # 处理中断，使用事件处理器
             await event_handler.handle_keyboard_interrupt(alchemy)
             
             # 更新恢复指令，现在包含多个可恢复任务的提示
+            self.logger.info(f"已保存检查点，可以使用以下命令恢复当前任务:")
             print(f"已保存检查点，可以使用以下命令恢复当前任务:")
             print(f"python examples/example_usage.py --mode=continue --id={alchemy_id} --resume")
             print("\n或者查看所有可恢复的任务:")
             print(f"python examples/alchemy_manager_cli.py resumable")
         except Exception as e:
+            self.logger.error(f"处理中断时发生错误: {str(e)}", exc_info=True)
             print(f"处理中断时发生错误: {str(e)}")
 
 
@@ -245,55 +315,78 @@ async def datamind_alchemy_process(
     query: str = None,
     input_dirs: list = None,
     work_dir: Path = None,
-    logger: logging.Logger = None,
+    logger: logging.Logger = None,  # 从调用者接收logger对象
     should_resume: bool = False,  # 是否尝试从中断点恢复
-    alchemy_manager = None  # 添加任务管理器参数
+    alchemy_manager = None,  # 添加任务管理器参数
+    model_manager = None  # 添加模型管理器参数
 ) -> None:
+
     """统一的数据炼丹处理函数 - 支持新建和继续/恢复"""
-    logger = logger or logging.getLogger(__name__)
-    
     try:
+        # 确保logger不为None
+        if logger is None:
+            # 创建默认logger
+            logger = logging.getLogger("datamind_alchemy")
+            logger.setLevel(logging.INFO)
+            
+            # 添加控制台处理器
+            if not logger.handlers:
+                console_handler = logging.StreamHandler()
+                console_handler.setLevel(logging.INFO)
+                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                console_handler.setFormatter(formatter)
+                logger.addHandler(console_handler)
+                
+            logger.warning("未提供logger，已创建默认logger")
+        
+        # 确保work_dir不为None
+        if work_dir is None:
+            work_dir = Path("work_dir") / "data_alchemy"
+            work_dir.mkdir(exist_ok=True, parents=True)
+            logger.warning(f"未提供work_dir，使用默认目录: {work_dir}")
+        
         # 如果没有传入任务管理器，创建一个新的
         if alchemy_manager is None:
-            alchemy_manager = AlchemyManager(work_dir=work_dir.parent, logger=logger)
+            alchemy_manager = AlchemyManager(work_dir=work_dir.parent, logger=logger)  # logger传递给AlchemyManager
         
         # 在继续模式下，尝试获取原任务的查询文本和输入目录
         if alchemy_id and (should_resume or query is None):
             # 获取任务恢复信息
             resume_info = alchemy_manager.get_task_resume_info(alchemy_id)
             if resume_info:
-                logger.info(f"找到任务 {alchemy_id} 的恢复信息")
+                logger.info(f"找到任务 {alchemy_id} 的恢复信息")  # 使用logger记录信息
                 
                 # 在继续模式下，始终使用原任务的查询文本
                 if resume_info.get("query"):
                     if query and query != resume_info["query"]:
-                        logger.warning(f"继续任务模式下忽略新提供的查询文本，将使用原任务的查询文本")
+                        logger.warning(f"继续任务模式下忽略新提供的查询文本，将使用原任务的查询文本")  # 使用logger记录警告
                     query = resume_info["query"]
-                    logger.info(f"使用原任务的查询文本: {query}")
+                    logger.info(f"使用原任务的查询文本: {query}")  # 使用logger记录信息
                 
                 # 在继续模式下，始终使用原任务的输入目录
                 if resume_info.get("input_dirs"):
                     if input_dirs and input_dirs != resume_info["input_dirs"]:
-                        logger.warning(f"继续任务模式下忽略新提供的输入目录，将使用原任务的输入目录")
+                        logger.warning(f"继续任务模式下忽略新提供的输入目录，将使用原任务的输入目录")  # 使用logger记录警告
                     input_dirs = resume_info["input_dirs"]
-                    logger.info(f"使用原任务的输入目录: {input_dirs}")
+                    logger.info(f"使用原任务的输入目录: {input_dirs}")  # 使用logger记录信息
         
         # 创建DataMindAlchemy实例
         alchemy = DataMindAlchemy(
             work_dir=work_dir, 
-            logger=logger,
+            logger=logger,  # logger传递给DataMindAlchemy实例
             alchemy_id=alchemy_id,
-            alchemy_manager=alchemy_manager  # 传入任务管理器
+            alchemy_manager=alchemy_manager,  # 传入任务管理器
+            model_manager=model_manager  # 传入模型管理器
         )
         
         # 创建事件处理器并注册事件
-        event_handler = AlchemyEventHandler(logger)
+        event_handler = AlchemyEventHandler(logger)  # logger传递给AlchemyEventHandler
         event_handler.register_events(alchemy)
         
         # 开始处理任务
         if should_resume and alchemy_id:
             # 尝试从中断点恢复
-            logger.info(f"尝试从中断点恢复处理 (alchemy_id: {alchemy_id})")
+            logger.info(f"尝试从中断点恢复处理 (alchemy_id: {alchemy_id})")  # 使用logger记录信息
             process_task = asyncio.create_task(alchemy.resume_process(
                 query=query,
                 input_dirs=input_dirs
@@ -301,9 +394,9 @@ async def datamind_alchemy_process(
         else:
             # 正常处理（新建或继续）
             if alchemy_id:
-                logger.info(f"继续已有炼丹流程的新迭代 (alchemy_id: {alchemy_id})")
+                logger.info(f"继续已有炼丹流程的新迭代 (alchemy_id: {alchemy_id})")  # 使用logger记录信息
             else:
-                logger.info(f"开始新的炼丹流程")
+                logger.info(f"开始新的炼丹流程")  # 使用logger记录信息
                 
             process_task = asyncio.create_task(alchemy.process(
                 query=query,
@@ -315,7 +408,7 @@ async def datamind_alchemy_process(
             result = await process_task
         except asyncio.CancelledError:
             # 如果任务被取消（可能是由于KeyboardInterrupt导致的）
-            logger.info("处理任务被取消")
+            logger.info("处理任务被取消")  # 使用logger记录信息
             result = {
                 'status': 'cancelled',
                 'message': '处理任务被取消',
@@ -326,7 +419,7 @@ async def datamind_alchemy_process(
         
         # 如果处理被取消，记录alchemy_id以便后续恢复
         if result.get('status') == 'cancelled':
-            logger.info(f"处理被取消，可以使用以下命令恢复: --mode=continue --id={result.get('checkpoint', {}).get('alchemy_id')} --resume")
+            logger.info(f"处理被取消，可以使用以下命令恢复: --mode=continue --id={result.get('checkpoint', {}).get('alchemy_id')} --resume")  # 使用logger记录信息
             # 可以保存恢复信息到文件，方便命令行恢复
             resume_info = {
                 "mode": "continue",
@@ -341,18 +434,22 @@ async def datamind_alchemy_process(
             resume_file = alchemy.alchemy_dir / "resume_info.json"
             
             # 记录路径信息，帮助诊断
-            logger.debug(f"保存恢复信息 - 任务ID: {alchemy.alchemy_id}")
-            logger.debug(f"保存恢复信息 - 任务目录: {alchemy.alchemy_dir}")
-            logger.debug(f"保存恢复信息 - 恢复文件: {resume_file}")
+            logger.debug(f"保存恢复信息 - 任务ID: {alchemy.alchemy_id}")  # 使用logger记录调试信息
+            logger.debug(f"保存恢复信息 - 任务目录: {alchemy.alchemy_dir}")  # 使用logger记录调试信息
+            logger.debug(f"保存恢复信息 - 恢复文件: {resume_file}")  # 使用logger记录调试信息
             
             with open(resume_file, "w", encoding="utf-8") as f:
                 json.dump(resume_info, f, ensure_ascii=False, indent=2)
-            logger.info(f"恢复信息已保存到: {resume_file}")
+            logger.info(f"恢复信息已保存到: {resume_file}")  # 使用logger记录信息
         
         return result
             
     except Exception as e:
-        logger.error("数据炼丹处理失败: %s", str(e), exc_info=True)
+        # 确保即使在异常情况下也能记录日志
+        if logger:
+            logger.error("数据炼丹处理失败: %s", str(e), exc_info=True)  # 使用logger记录错误
+        else:
+            print(f"错误: 数据炼丹处理失败: {str(e)}")
         raise
 
 
@@ -362,16 +459,26 @@ async def async_main():
     arg_parser = ArgParser()
     args = arg_parser.parse_args()
     
+    # 创建工作目录
+    script_dir = Path(__file__).parent
+    work_dir = script_dir.parent / "work_dir"
+    work_dir.mkdir(exist_ok=True, parents=True)
+    
+    # 创建日志目录
+    log_dir = work_dir / "logs"
+    log_dir.mkdir(exist_ok=True, parents=True)
+    
+    # 设置日志文件名（使用时间戳确保唯一性）
+    log_file = log_dir / f"datamind_{time.strftime('%Y%m%d_%H%M%S')}.log"
+    
+    # 初始化日志记录器
     logger = setup_logging()
+    logger.setLevel(logging.INFO)  # 设置全局日志级别       
     logger.info("开始运行数据炼丹程序")
     
-    try:        
-        # 创建工作目录
-        script_dir = Path(__file__).parent
-        work_dir = script_dir.parent / "work_dir"
-        
+    try:
         # 加载配置
-        config = ConfigManager(Path(args.config), logger)
+        config = ConfigManager(Path(args.config))
         
         # 创建炼丹客户端
         client = AlchemyClient(work_dir, logger)
@@ -383,7 +490,7 @@ async def async_main():
         # 解析输入目录参数(仅在新建模式下)
         input_dirs = None
         if args.input_dirs and mode != "continue":
-            input_dirs = arg_parser.parse_input_dirs(args.input_dirs, logger)
+            input_dirs = arg_parser.parse_input_dirs(args.input_dirs)
         
         # 如果指定了取消参数，取消指定任务
         if should_cancel and args.id:
@@ -443,14 +550,38 @@ def main():
         
         # 处理中断
         try:
-            logger = logging.getLogger(__name__)
+            # 创建或获取logger
+            try:
+                logger = setup_logging()
+                # 确保logger有处理器
+                if not logger.handlers:
+                    console_handler = logging.StreamHandler()
+                    console_handler.setLevel(logging.INFO)
+                    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                    console_handler.setFormatter(formatter)
+                    logger.addHandler(console_handler)
+            except Exception as log_error:
+                print(f"创建日志记录器失败: {str(log_error)}")
+                logger = logging.getLogger("emergency_logger")
+                console_handler = logging.StreamHandler()
+                logger.addHandler(console_handler)
+            
+            # 设置工作目录
             work_dir = Path(__file__).parent.parent / "work_dir"
+            work_dir.mkdir(exist_ok=True, parents=True)
             
             # 加载配置
-            config = ConfigManager(work_dir / "config.json", logger)
-            alchemy_id = config.get('alchemy_id')
-            query = config.get('query')
-            input_dirs = config.get('input_dirs')
+            try:
+                config_path = work_dir / "config.json"
+                config = ConfigManager(config_path)
+                alchemy_id = config.get('alchemy_id')
+                query = config.get('query')
+                input_dirs = config.get('input_dirs')
+            except Exception as config_error:
+                logger.error(f"加载配置失败: {str(config_error)}")
+                alchemy_id = None
+                query = None
+                input_dirs = None
             
             # 创建客户端并处理中断
             client = AlchemyClient(work_dir, logger)

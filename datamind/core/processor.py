@@ -27,7 +27,7 @@ class FileCache:
             max_age_days: 缓存最大保留天数
             logger: 可选，日志记录器实例
         """
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger
         self.cache_file = cache_file or Path(DEFAULT_DB_PATH).parent / 'file_cache.pkl'
         self.max_age = timedelta(days=max_age_days)
         self.cache: Dict[str, Dict] = {}
@@ -120,7 +120,7 @@ class DataProcessor:
         self.db_path = db_path
         self.db = duckdb.connect(db_path)
         self.init_storage()
-        self.parser = FileParser()
+        self.parser = FileParser(logger=self.logger)
         self.search_engine = SearchEngine(db_path, logger=self.logger)  # 传递logger给SearchEngine
         self.storage = StorageSystem(self.db, search_engine=self.search_engine, logger=self.logger)  # 传递logger给StorageSystem
         self.file_cache = FileCache(logger=self.logger)  # 传递logger给FileCache
@@ -326,9 +326,9 @@ class DataProcessor:
 class FileParser:
     """文件解析器"""
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-        self.model_manager = ModelManager()
+    def __init__(self, logger: logging.Logger = None):
+        self.logger = logger or logging.getLogger(__name__)
+        self.model_manager = ModelManager(logger=self.logger)
         
         # 注册Embedding模型配置
         self.model_manager.register_model(ModelConfig(

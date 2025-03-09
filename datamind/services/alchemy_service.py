@@ -36,6 +36,9 @@ class DataMindAlchemy:
             logger: 日志记录器实例，用于记录日志
             alchemy_id: 炼丹ID，默认为None时会自动生成
         """
+        # 初始化日志记录器
+        self.logger = logger
+        
         # 初始化事件总线
         self.event_bus = EventBus()
         
@@ -46,31 +49,6 @@ class DataMindAlchemy:
         self.work_dir.mkdir(exist_ok=True, parents=True)
         
         self.alchemy_id = alchemy_id or time.strftime("%Y%m%d_%H%M%S")
-        
-        # 初始化日志记录器
-        self.logger = logging.getLogger(f"datamind.alchemy.{self.alchemy_id}")
-        self.logger.setLevel(logging.INFO)
-        
-        # 创建日志处理器（如果没有）
-        if not self.logger.handlers:
-            # 创建日志目录
-            log_dir = self.work_dir / "logs"
-            log_dir.mkdir(exist_ok=True, parents=True)
-            
-            # 创建控制台处理器
-            console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.INFO)
-            console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            console_handler.setFormatter(console_formatter)
-            self.logger.addHandler(console_handler)
-            
-            # 创建文件日志处理器
-            log_file = log_dir / f"alchemy_{self.alchemy_id}.log"
-            file_handler = logging.FileHandler(str(log_file), encoding='utf-8')
-            file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-            self.logger.addHandler(file_handler)
-            
-            self.logger.info(f"已初始化日志记录器，日志文件: {log_file}")
         
         # 初始化模型管理器 - 确保传递日志记录器
         if model_manager is None:
@@ -431,6 +409,12 @@ class DataMindAlchemy:
                 logger=self.logger
             )
             
+            # 确保processor的model_manager有logger
+            if hasattr(processor, 'parser') and hasattr(processor.parser, 'model_manager'):
+                if not hasattr(processor.parser.model_manager, 'logger') or processor.parser.model_manager.logger is None:
+                    processor.parser.model_manager.logger = self.logger
+                    self.logger.debug("已为processor.parser.model_manager设置logger")
+
             if source_data.exists() and any(source_data.iterdir()):
                 await self._process_source_data(processor, source_data, db_path)
             
