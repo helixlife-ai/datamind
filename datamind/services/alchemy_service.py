@@ -3,7 +3,7 @@ import time
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, List, Callable, Any, Optional
+from typing import Dict, Callable, Any
 from ..core.search import SearchEngine
 from ..core.planner import SearchPlanner
 from ..core.executor import SearchPlanExecutor
@@ -19,12 +19,10 @@ from ..config.settings import (
     DEFAULT_GENERATOR_MODEL
 )
 from datetime import datetime
-import asyncio
 
-# 导入拆分出去的类
 from .events.event_types import AlchemyEventType
 from .events.event_bus import EventBus
-from .events.event_handler import AlchemyEventHandler
+
 
 class DataMindAlchemy:
     """数据炼丹工作流封装类"""
@@ -68,7 +66,7 @@ class DataMindAlchemy:
             
             # 创建文件日志处理器
             log_file = log_dir / f"alchemy_{self.alchemy_id}.log"
-            file_handler = logging.FileHandler(str(log_file))
+            file_handler = logging.FileHandler(str(log_file), encoding='utf-8')
             file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
             self.logger.addHandler(file_handler)
         
