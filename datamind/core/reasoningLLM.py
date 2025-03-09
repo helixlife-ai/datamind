@@ -27,7 +27,7 @@ class ReasoningLLMEngine:
             history_file: 可选，历史记录文件路径
         """
         # 使用提供的日志记录器或创建一个新的
-        self.logger = logger
+        self.logger = logger or logging.getLogger(__name__)
         
         self.model_manager = model_manager
         self.model_name = model_name

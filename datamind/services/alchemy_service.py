@@ -150,7 +150,6 @@ class DataMindAlchemy:
         # artifact_generator使用alchemy_dir，因为它需要访问artifacts目录
         artifact_generator = ArtifactGenerator(
             alchemy_dir=str(self.alchemy_dir),
-            model_manager=self.model_manager,
             logger=self.logger
         )
         

@@ -36,7 +36,7 @@ class ModelManager:
             logger: 可选，日志记录器实例
         """
         # 使用提供的日志记录器或创建一个新的
-        self.logger = logger        
+        self.logger = logger or logging.getLogger(__name__)
         self.embedding_models: Dict[str, SentenceTransformer] = {}
         self.llm_clients: Dict[str, Dict[str, AsyncOpenAI]] = {}  # 修改为嵌套字典
         self.model_configs: Dict[str, ModelConfig] = {}

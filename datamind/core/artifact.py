@@ -4,21 +4,24 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 import traceback
+from ..utils.stream_logger import StreamLineHandler
+from ..core.reasoningLLM import ReasoningLLMEngine
+from ..llms.model_manager import ModelManager, ModelConfig
 from ..config.settings import (
     DEFAULT_REASONING_MODEL,
-    DEFAULT_GENERATOR_MODEL
+    DEFAULT_LLM_API_KEY,
+    DEFAULT_LLM_API_BASE
 )
-from ..core.reasoningLLM import ReasoningLLMEngine
-from ..core.generatorLLM import GeneratorLLMEngine
 import shutil
 import hashlib
 import re
 from bs4 import BeautifulSoup
+import sys
 
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
     
-    def __init__(self, alchemy_dir: str = None, model_manager = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, alchemy_dir: str = None, logger: Optional[logging.Logger] = None):
         """初始化制品生成器
         
         Args:
@@ -51,27 +54,21 @@ class ArtifactGenerator:
         self.logger = logger
         
         # 创建推理引擎实例
-        if model_manager is None:
-            raise ValueError("未提供模型管理器实例，将无法生成内容")
-        else:
-            self.model_manager=model_manager
-            self.reasoning_engine = ReasoningLLMEngine(
-                model_manager=self.model_manager,
-                model_name=DEFAULT_REASONING_MODEL,
-                logger=self.logger,
-                history_file=str(self.artifacts_dir / "reasoning_history.json")
-            )
-            self.logger.info(f"已创建推理引擎实例，使用默认推理模型")
+        self.reasoning_engine = self._setup_reasoning_engine()
+        self.logger.info(f"已创建推理引擎实例，使用默认推理模型")    
 
-            self.generator_engine = GeneratorLLMEngine(
-                model_manager=self.model_manager,
-                model_name=DEFAULT_GENERATOR_MODEL,
-                logger=self.logger,
-                history_file=str(self.artifacts_dir / "generator_history.json")
-            )
-            self.logger.info(f"已创建生成引擎实例，使用默认生成模型")
-    
-    
+
+    def _setup_reasoning_engine(self):
+        """初始化推理引擎"""
+        model_manager = ModelManager()
+        model_manager.register_model(ModelConfig(
+            name=DEFAULT_REASONING_MODEL,
+            model_type="api",
+            api_base=DEFAULT_LLM_API_BASE,
+            api_key=DEFAULT_LLM_API_KEY
+        ))
+        return ReasoningLLMEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)
+
     def _read_file_content(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
         """读取文件内容
         
@@ -519,6 +516,7 @@ class ArtifactGenerator:
             self.logger.error(f"合并HTML内容时发生错误: {str(e)}")
             return None 
 
+
     async def _generate_scaffold_html(self, 
                                 search_results_files: List[str], 
                                 output_name: str,
@@ -610,7 +608,12 @@ class ArtifactGenerator:
             # 用于跟踪HTML内容的状态
             html_started = False
             in_html_block = False
-            
+
+            # 适用于Windows的控制台输出函数
+            def print_stream(text):
+                sys.stdout.write(text)
+                sys.stdout.flush()
+
             async for chunk in self.reasoning_engine.get_stream_response(
                 temperature=0.7,
                 metadata={'stage': 'scaffold_generation'}
@@ -623,7 +626,9 @@ class ArtifactGenerator:
                         f.write(chunk)
                     
                     # 显示流式输出内容
-                    self.logger.info(f"\r生成框架内容: {full_response}")
+                    #self.logger.info(f"\r生成框架内容: {full_response}")
+
+                    print_stream(chunk)
                     
                     # 尝试实时提取和更新HTML内容
                     if not html_started:
@@ -651,7 +656,9 @@ class ArtifactGenerator:
                     if current_html_content:
                         combined_content = ''.join(current_html_content)
                         temp_html_path.write_text(combined_content.strip(), encoding="utf-8")
-                                
+           
+            print_stream("\n")
+
             if not full_response:
                 raise ValueError("生成内容为空")
             
