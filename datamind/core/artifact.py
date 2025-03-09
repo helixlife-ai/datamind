@@ -717,14 +717,15 @@ class ArtifactGenerator:
             components_dir = self.artifacts_dir / "components"
             components_dir.mkdir(exist_ok=True)
 
-            # 保存框架HTML
+            # 保存框架HTML - 这是静态不变的框架，后续不会被修改
             scaffold_path = self.artifacts_dir / "scaffold.html"
             scaffold_path.write_text(scaffold_html, encoding="utf-8")
+            self.logger.info(f"已保存框架HTML: {scaffold_path}")
             
-            # 同时更新artifact.html（作为最新版本的快照）
+            # 同时创建artifact.html作为初始版本（后续会随组件添加而更新）
             artifact_path = self.artifacts_dir / "artifact.html"
             
-            # 如果artifact.html已存在，进行版本管理和内容合并
+            # 如果artifact.html已存在，进行版本管理
             if artifact_path.exists():
                 # 保存当前版本
                 current_version = self._get_next_artifact_version()
@@ -759,9 +760,9 @@ class ArtifactGenerator:
                 with open(versions_info_path, "w", encoding="utf-8") as f:
                     json.dump(versions_info, f, ensure_ascii=False, indent=2)
             
-            # 写入新的artifact.html
+            # 写入新的artifact.html（初始时与scaffold.html相同）
             artifact_path.write_text(scaffold_html, encoding="utf-8")
-            self.logger.info(f"已更新主制品: {artifact_path}")
+            self.logger.info(f"已初始化制品HTML: {artifact_path}")
             
             # 先获取优化建议
             optimization_query = await self._get_optimization_query(scaffold_html)
@@ -790,7 +791,8 @@ class ArtifactGenerator:
                 },
                 "scaffold": {
                     "path": "scaffold.html",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
+                    "is_static": True  # 明确标记scaffold是静态的
                 },
                 "components": [],
                 "iterations": []
@@ -937,8 +939,16 @@ class ArtifactGenerator:
             if not scaffold_path.exists():
                 raise ValueError("框架HTML不存在，无法生成组件")
             
-            # 读取框架HTML内容
+            # 读取框架HTML内容 (仅用于提供给组件生成提示词，不会修改)
             scaffold_html = scaffold_path.read_text(encoding="utf-8")
+            
+            # 读取当前artifact内容 (这个会被更新)
+            artifact_path = self.artifacts_dir / "artifact.html"
+            if not artifact_path.exists():
+                # 如果artifact.html不存在，则以scaffold为模板创建它
+                artifact_html = scaffold_html
+            else:
+                artifact_html = artifact_path.read_text(encoding="utf-8")
             
             # 读取状态信息，获取已有组件信息
             status_path = self.artifacts_dir / "status.json"
@@ -1082,20 +1092,16 @@ class ArtifactGenerator:
             output_path = output_dir / f"{artifact_name}.html"
             output_path.write_text(component_html, encoding="utf-8")
             
-            # 更新框架HTML，添加新组件的链接
-            updated_scaffold = self._update_scaffold_with_component(
-                scaffold_html,
+            # 更新artifact HTML，添加新组件的链接
+            # 注意：我们不再更新scaffold.html，只更新artifact.html
+            updated_artifact = self._update_artifact_with_component(
+                artifact_html,
                 str(component_path.relative_to(self.artifacts_dir)),
                 component_info
             )
             
-            # 保存更新后的框架HTML
-            scaffold_path.write_text(updated_scaffold, encoding="utf-8")
-            
-            # 更新artifact.html（作为最新版本的快照）
-            artifact_path = self.artifacts_dir / "artifact.html"
-            
-            # 如果artifact.html已存在，进行版本管理和内容合并
+            # 更新artifact.html（作为最新版本的完整制品）
+            # 如果artifact.html已存在，进行版本管理
             if artifact_path.exists():
                 # 保存当前版本
                 current_version = self._get_next_artifact_version()
@@ -1131,7 +1137,7 @@ class ArtifactGenerator:
                     json.dump(versions_info, f, ensure_ascii=False, indent=2)
             
             # 写入新的artifact.html
-            artifact_path.write_text(updated_scaffold, encoding="utf-8")
+            artifact_path.write_text(updated_artifact, encoding="utf-8")
             self.logger.info(f"已更新主制品: {artifact_path}")
             
             # 更新状态信息
@@ -1144,7 +1150,7 @@ class ArtifactGenerator:
             status_info["latest_iteration"] = iteration
             
             # 先获取优化建议，用于指导下一个组件的生成
-            optimization_query = await self._get_optimization_query(updated_scaffold)
+            optimization_query = await self._get_optimization_query(updated_artifact)
             
             # 然后更新迭代信息
             iteration_info = {
@@ -1163,9 +1169,6 @@ class ArtifactGenerator:
             with open(status_path, "w", encoding="utf-8") as f:
                 json.dump(status_info, f, ensure_ascii=False, indent=2)
 
-            # 获取优化建议，用于指导下一个组件的生成
-            optimization_query = await self._get_optimization_query(updated_scaffold)
-            
             # 保存本轮生成的完整信息
             generation_info = {
                 "iteration": iteration,
@@ -1316,23 +1319,24 @@ COMPONENT_INFO-->
             self.logger.error(f"提取组件信息时发生错误: {str(e)}")
             return None 
 
-    def _update_scaffold_with_component(self, 
-                                 scaffold_html: str, 
-                                 component_path: str, 
-                                 component_info: Dict) -> str:
-        """更新框架HTML，添加新组件的链接
+    def _update_artifact_with_component(self, 
+                              artifact_html: str, 
+                              component_path: str, 
+                              component_info: Dict) -> str:
+        """更新制品HTML，添加新组件的链接。与_update_scaffold_with_component相同，
+        但名称更加明确，表示这是针对artifact的更新而非scaffold
         
         Args:
-            scaffold_html: 框架HTML内容
+            artifact_html: 制品HTML内容
             component_path: 组件HTML文件的相对路径
             component_info: 组件信息
             
         Returns:
-            str: 更新后的框架HTML内容
+            str: 更新后的制品HTML内容
         """
         try:
             # 解析HTML
-            soup = BeautifulSoup(scaffold_html, 'html.parser')
+            soup = BeautifulSoup(artifact_html, 'html.parser')
             
             # 1. 更新导航区域
             nav_updated = False
@@ -1509,6 +1513,6 @@ COMPONENT_INFO-->
             return str(soup)
             
         except Exception as e:
-            self.logger.error(f"更新框架HTML时发生错误: {str(e)}")
+            self.logger.error(f"更新制品HTML时发生错误: {str(e)}")
             # 如果更新失败，返回原始HTML
-            return scaffold_html
+            return artifact_html
