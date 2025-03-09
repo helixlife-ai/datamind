@@ -14,7 +14,6 @@ import shutil
 import hashlib
 import re
 from bs4 import BeautifulSoup
-from ..utils.stream_logger import StreamLineHandler
 
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
@@ -49,7 +48,7 @@ class ArtifactGenerator:
             dir_path.mkdir(parents=True, exist_ok=True)
         
         # 设置日志记录器
-        self._setup_logger(logger)
+        self.logger = logger
         
         # 创建推理引擎实例
         if model_manager is None:
@@ -72,49 +71,6 @@ class ArtifactGenerator:
             )
             self.logger.info(f"已创建生成引擎实例，使用默认生成模型")
     
-    def _setup_logger(self, external_logger: Optional[logging.Logger] = None):
-        """设置日志记录器
-        
-        Args:
-            external_logger: 外部提供的日志记录器，如果提供则使用该记录器
-        """
-        if external_logger:
-            self.logger = external_logger
-        else:
-            # 创建独立的日志记录器
-            self.logger = logging.getLogger(f"artifact_generator_{self.alchemy_id}")
-            self.logger.setLevel(logging.INFO)
-            
-            # 确保日志目录存在
-            logs_dir = self.alchemy_dir / "logs"
-            logs_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 添加文件处理器
-            log_file = logs_dir / "artifact_generator.log"
-            file_handler = logging.FileHandler(log_file, encoding='utf-8')
-            file_handler.setLevel(logging.INFO)
-            
-            # 添加控制台处理器
-            console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.INFO)
-            
-            # 添加流式处理器
-            stream_log_file = logs_dir / "artifact_generator_stream.log"
-            stream_handler = StreamLineHandler(str(stream_log_file))
-            stream_handler.setLevel(logging.INFO)
-            
-            # 设置格式
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            file_handler.setFormatter(formatter)
-            console_handler.setFormatter(formatter)
-            stream_handler.setFormatter(formatter)
-            
-            # 添加处理器到记录器
-            self.logger.addHandler(file_handler)
-            self.logger.addHandler(console_handler)
-            self.logger.addHandler(stream_handler)
-            
-            self.logger.info(f"已创建制品生成器日志记录器，日志文件: {log_file}")
     
     def _read_file_content(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
         """读取文件内容

@@ -48,7 +48,7 @@ class DataMindAlchemy:
         self.alchemy_id = alchemy_id or time.strftime("%Y%m%d_%H%M%S")
         
         # 初始化日志记录器
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(f"datamind.alchemy.{self.alchemy_id}")
         self.logger.setLevel(logging.INFO)
         
         # 创建日志处理器（如果没有）
@@ -69,9 +69,19 @@ class DataMindAlchemy:
             file_handler = logging.FileHandler(str(log_file), encoding='utf-8')
             file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
             self.logger.addHandler(file_handler)
+            
+            self.logger.info(f"已初始化日志记录器，日志文件: {log_file}")
         
-        # 初始化模型管理器
-        self.model_manager = model_manager or ModelManager(logger=self.logger)
+        # 初始化模型管理器 - 确保传递日志记录器
+        if model_manager is None:
+            self.model_manager = ModelManager(logger=self.logger)
+            self.logger.info("已创建新的模型管理器实例")
+        else:
+            self.model_manager = model_manager
+            # 如果外部提供的model_manager没有logger，设置它
+            if not hasattr(self.model_manager, 'logger') or self.model_manager.logger is None:
+                self.model_manager.logger = self.logger
+                self.logger.info("已为外部提供的模型管理器设置日志记录器")
         
         # 注册默认推理模型配置
         if self.model_manager:  
