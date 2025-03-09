@@ -48,7 +48,7 @@ class DataMindAlchemy:
         self.alchemy_id = alchemy_id or time.strftime("%Y%m%d_%H%M%S")
         
         # 初始化日志记录器
-        self.logger = logger or logging.getLogger(f"datamind.alchemy.{self.alchemy_id}")
+        self.logger = logging.getLogger(f"datamind.alchemy.{self.alchemy_id}")
         self.logger.setLevel(logging.INFO)
         
         # 创建日志处理器（如果没有）
