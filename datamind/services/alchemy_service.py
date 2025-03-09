@@ -18,7 +18,6 @@ from ..config.settings import (
     DEFAULT_REASONING_MODEL,
     DEFAULT_GENERATOR_MODEL
 )
-from ..utils.stream_logger import StreamLineHandler
 from datetime import datetime
 from enum import Enum, auto
 import asyncio
@@ -91,30 +90,30 @@ class DataMindAlchemy:
         self.logger = logger or logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         
-        # 创建控制台处理器
-        if not any(isinstance(h, logging.StreamHandler) for h in self.logger.handlers):
+        # 创建日志处理器（如果没有）
+        if not self.logger.handlers:
+            # 创建日志目录
+            log_dir = self.work_dir / "logs"
+            log_dir.mkdir(exist_ok=True, parents=True)
+            
+            # 创建控制台处理器
             console_handler = logging.StreamHandler()
             console_handler.setLevel(logging.INFO)
             console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             console_handler.setFormatter(console_formatter)
             self.logger.addHandler(console_handler)
-        
-        # 创建日志目录
-        log_dir = self.work_dir / "logs"
-        log_dir.mkdir(exist_ok=True, parents=True)
-        
-        # 只使用流式日志处理器，它已经包含了文件写入功能
-        if not any(isinstance(h, StreamLineHandler) for h in self.logger.handlers):
+            
+            # 创建文件日志处理器
             log_file = log_dir / f"alchemy_{self.alchemy_id}.log"
-            stream_handler = StreamLineHandler(str(log_file))
-            stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-            self.logger.addHandler(stream_handler)
+            file_handler = logging.FileHandler(str(log_file))
+            file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            self.logger.addHandler(file_handler)
         
         # 初始化模型管理器
         self.model_manager = model_manager or ModelManager(logger=self.logger)
         
         # 注册默认推理模型配置
-        if self.model_manager:  # 只有在没有传入model_manager时才注册
+        if self.model_manager:  
             self.model_manager.register_model(ModelConfig(
                 name=DEFAULT_REASONING_MODEL,
                 model_type="api",
