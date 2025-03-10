@@ -314,6 +314,14 @@ class ArtifactGenerator:
             if not original_query:
                 self.logger.warning("无法获取原始查询，将使用空字符串")
             
+            # 获取下一个组件编号
+            try:
+                next_component_number = self._get_next_component_id()
+            except Exception as e:
+                # 如果获取失败，使用组件列表长度+1作为下一个编号
+                self.logger.warning(f"获取下一个组件编号失败: {str(e)}，将使用组件列表长度+1")
+                next_component_number = len(components) + 1
+            
             # 构建组件信息文本，确保组件是可序列化的基本类型
             components_text = ""
             for i, component in enumerate(components):
@@ -322,8 +330,10 @@ class ArtifactGenerator:
                     title = component.get('title', '未知')
                     description = component.get('description', '无描述')
                     comp_id = component.get('id', '未知')
+                    # 使用组件编号，如果没有则使用索引+1
+                    comp_num = component.get('component_number', i+1)  
                     components_text += f"""
-组件 {i+1}:
+组件 {comp_num}:
 - 标题: {title}
 - 描述: {description}
 - ID: {comp_id}
@@ -334,8 +344,8 @@ class ArtifactGenerator:
             
             # 根据迭代次数调整提示词
             if iteration == 1:
-                # 构建类似于原来的提示词，但保持简单
-                prompt = f"""请分析以下HTML框架和原始查询，提出一个进阶的查询语句，目的是生成在这个HTML框架中的第一个组件。
+                # 构建类似于原来的提示词，但保持简单并加入组件编号信息
+                prompt = f"""请分析以下HTML框架和原始查询，提出一个进阶的查询语句，目的是生成在这个HTML框架中的第一个组件(组件1)。
 
 原始查询：
 {original_query}
@@ -345,14 +355,14 @@ HTML框架：
 
 请思考：
 1. 用户的原始查询中最重要的方面是什么？
-2. 第一个组件应该解决什么具体问题？
+2. 作为组件1，应该解决什么具体问题？
 3. 该组件需要包含哪些关键信息或功能？
 
 请直接输出进阶查询语句，不要包含其他解释内容。
 """
             else:
-                # 后续迭代的提示词，但确保只返回字符串
-                prompt = f"""请分析以下HTML框架、已有组件信息和原始查询，提出一个进阶的查询语句，目的是生成在这个HTML框架中的下一个组件。
+                # 后续迭代的提示词，加入下一个组件编号信息
+                prompt = f"""请分析以下HTML框架、已有组件信息和原始查询，提出一个进阶的查询语句，目的是生成在这个HTML框架中的下一个组件(组件{next_component_number})。
 
 原始查询：
 {original_query}
@@ -365,7 +375,7 @@ HTML框架：
 
 请思考：
 1. 用户的原始需求中哪些方面尚未被现有组件满足？
-2. 下一个组件应该解决什么具体问题？
+2. 作为组件{next_component_number}，应该解决什么具体问题？
 3. 该组件如何与现有组件形成互补？
 
 请直接输出进阶查询语句，不要包含其他解释内容。
@@ -445,7 +455,7 @@ HTML框架：
             self.logger.error(f"生成HTML制品时发生错误: {str(e)}")
             
             # 错误处理和记录
-            work_base = self.iterations_dir / f"iter{iteration}" if 'iteration' in locals() else self.iterations_dir / "error"
+            work_base = self.iterations_dir / f"iter{iteration}"
             process_dir = work_base / "process"
             output_dir = work_base / "output"
             
@@ -494,7 +504,46 @@ HTML框架：
             self.logger.error(f"获取下一个版本号时发生错误: {str(e)}")
             return 1  # 发生错误时返回1作为安全的默认值
 
-
+    def _get_next_component_id(self) -> int:
+        """获取下一个组件编号（与迭代编号分离）
+        
+        Returns:
+            int: 下一个组件编号，从1开始
+        """
+        components_dir = self.artifacts_dir / "components"
+        if not components_dir.exists():
+            components_dir.mkdir(exist_ok=True)
+            return 1
+            
+        # 从文件名提取组件编号
+        component_nums = []
+        for comp_file in components_dir.glob("component_*.html"):
+            try:
+                # 从component_1.html, component_2.html等文件名中提取数字
+                num_str = comp_file.stem.split('_')[-1]
+                if num_str.isdigit():
+                    component_nums.append(int(num_str))
+            except (ValueError, IndexError):
+                self.logger.warning(f"跳过无效的组件文件名: {comp_file.name}")
+                continue
+                
+        # 从status.json中也提取组件编号
+        status_path = self.artifacts_dir / "status.json"
+        if status_path.exists():
+            try:
+                with open(status_path, "r", encoding="utf-8") as f:
+                    status_info = json.load(f)
+                for comp in status_info.get("components", []):
+                    comp_id = comp.get("id", "")
+                    if comp_id.startswith("component_"):
+                        num_str = comp_id.split('_')[-1]
+                        if num_str.isdigit():
+                            component_nums.append(int(num_str))
+            except Exception as e:
+                self.logger.warning(f"从status.json提取组件编号时出错: {str(e)}")
+                
+        # 返回最大编号+1，如果没有现有组件则返回1
+        return max(component_nums, default=0) + 1
 
     async def _generate_scaffold_html(self, 
                                 search_results_files: List[str], 
@@ -923,13 +972,30 @@ HTML框架：
                 status_info["original_query"] = query
                 self.logger.info(f"在status.json中添加缺失的original_query字段: {query}")
             
-            # 获取组件ID
-            component_id = f"component_{iteration}"
+            # 获取下一个组件编号（与迭代编号分离）
+            try:
+                component_number = self._get_next_component_id()
+            except Exception as e:
+                # 如果方法调用失败，使用迭代号作为备选
+                self.logger.warning(f"获取组件编号失败: {str(e)}，将使用迭代号")
+                component_number = iteration
+                
+            # 生成组件ID
+            component_id = f"component_{component_number}"
+            
+            # 验证组件ID是否有冲突
+            existing_component_ids = [comp.get("id", "") for comp in status_info.get("components", [])]
+            if component_id in existing_component_ids:
+                self.logger.warning(f"组件ID {component_id} 已存在，自动递增编号")
+                # 确保找到一个未使用的ID
+                while component_id in existing_component_ids:
+                    component_number += 1
+                    component_id = f"component_{component_number}"
             
             # 更新元数据结构
             metadata_info = {
                 "artifact_id": f"artifact_{self.alchemy_id}",
-                "type": f"component_{iteration}",
+                "type": f"component_{component_number}",
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
                 "output_name": output_name,
@@ -1028,17 +1094,17 @@ HTML框架：
                 )
                 component_info = {
                     "id": component_id,
-                    "title": f"组件 {iteration}",
+                    "title": f"组件 {component_number}",
                     "description": "生成失败",
-                    "mount_point": f"component_{iteration}"
+                    "mount_point": f"component_{component_number}"
                 }
             else:
                 component_html = component_result["html"]
                 component_info = {
                     "id": component_id,
-                    "title": component_result.get("title", f"组件 {iteration}"),
+                    "title": component_result.get("title", f"组件 {component_number}"),
                     "description": component_result.get("description", ""),
-                    "mount_point": component_result.get("mount_point", f"component_{iteration}")
+                    "mount_point": component_result.get("mount_point", f"component_{component_number}")
                 }
             
             # 保存组件HTML文件
@@ -1046,6 +1112,14 @@ HTML框架：
             components_dir.mkdir(exist_ok=True)
             
             component_path = components_dir / f"{component_id}.html"
+            
+            # 检查组件是否已存在（如果存在，保存为新版本）
+            if component_path.exists():
+                # 保存组件版本历史
+                self._save_component_version(component_id, component_html, query)
+                self.logger.info(f"组件 {component_id} 已存在，保存为新版本")
+            
+            # 保存/更新组件文件
             component_path.write_text(component_html, encoding="utf-8")
             
             # 保存迭代版本HTML文件
@@ -1105,7 +1179,42 @@ HTML框架：
             component_info["created_at"] = datetime.now().isoformat()
             component_info["query"] = query
             
-            status_info["components"].append(component_info)
+            # 确保使用正确的组件编号（从组件ID中提取）
+            try:
+                component_number_str = component_id.split('_')[-1]
+                if component_number_str.isdigit():
+                    component_info["component_number"] = int(component_number_str)
+                else:
+                    component_info["component_number"] = iteration
+            except Exception:
+                # 如果提取失败，回退到使用迭代号
+                component_info["component_number"] = iteration
+                
+            component_info["iteration"] = iteration  # 添加关联的迭代编号
+            
+            # 检查组件是否已存在于status.json中
+            existing_component_index = None
+            for i, comp in enumerate(status_info.get("components", [])):
+                if comp.get("id") == component_id:
+                    existing_component_index = i
+                    break
+            
+            if existing_component_index is not None:
+                # 更新现有组件信息
+                component_info["updated_at"] = datetime.now().isoformat()
+                try:
+                    component_info["version"] = self._get_component_version(component_id) - 1  # 当前版本
+                except Exception as e:
+                    self.logger.warning(f"获取组件版本失败: {str(e)}，将设置为1")
+                    component_info["version"] = 1
+                status_info["components"][existing_component_index] = component_info
+                self.logger.info(f"更新组件信息: {component_id}")
+            else:
+                # 添加新组件信息
+                component_info["version"] = 1  # 首次创建，版本为1
+                status_info["components"].append(component_info)
+                self.logger.info(f"添加新组件信息: {component_id}")
+            
             status_info["updated_at"] = datetime.now().isoformat()
             status_info["latest_iteration"] = iteration
             
@@ -1182,6 +1291,9 @@ HTML框架：
 [已有组件]
 """
         
+        # 获取组件编号，用于显示给模型
+        component_number = component_id.split('_')[-1] if '_' in component_id else ""
+        
         for component in existing_components:
             prompt += f"""
 组件ID: {component.get('id')}
@@ -1225,6 +1337,9 @@ HTML框架：
 
 [当前组件ID]
 {component_id}
+
+[组件编号]
+{component_number}
 
 要求：
 1. 生成一个独立的HTML组件，专注于解决用户问题的一个特定方面
@@ -1645,3 +1760,87 @@ COMPONENT_INFO-->
             self.logger.error(f"更新制品HTML时发生错误: {str(e)}")
             # 如果更新失败，返回原始HTML
             return artifact_html
+
+    def _get_component_version(self, component_id: str) -> int:
+        """获取组件的下一个版本号
+        
+        Args:
+            component_id: 组件ID
+            
+        Returns:
+            int: 组件的下一个版本号，从1开始
+        """
+        component_versions_dir = self.artifacts_dir / "component_versions"
+        component_versions_dir.mkdir(exist_ok=True)
+        
+        # 查找该组件的所有版本
+        version_pattern = f"{component_id}_v*.html"
+        existing_versions = []
+        
+        for version_file in component_versions_dir.glob(version_pattern):
+            try:
+                # 从文件名中提取版本号，例如 component_1_v2.html -> 2
+                version_str = version_file.stem.split('_v')[-1]
+                if version_str.isdigit():
+                    existing_versions.append(int(version_str))
+            except (ValueError, IndexError):
+                self.logger.warning(f"跳过无效的组件版本文件名: {version_file.name}")
+                continue
+                
+        return max(existing_versions, default=0) + 1
+        
+    def _save_component_version(self, component_id: str, component_html: str, query: str) -> dict:
+        """保存组件的版本历史
+        
+        Args:
+            component_id: 组件ID
+            component_html: 组件HTML内容
+            query: 生成该版本的查询
+            
+        Returns:
+            dict: 版本信息
+        """
+        component_versions_dir = self.artifacts_dir / "component_versions"
+        component_versions_dir.mkdir(exist_ok=True)
+        
+        # 获取下一个版本号
+        next_version = self._get_component_version(component_id)
+        
+        # 保存组件版本
+        version_file = f"{component_id}_v{next_version}.html"
+        version_path = component_versions_dir / version_file
+        version_path.write_text(component_html, encoding="utf-8")
+        
+        # 创建版本信息
+        version_info = {
+            "component_id": component_id,
+            "version": next_version,
+            "timestamp": datetime.now().isoformat(),
+            "query": query,
+            "path": str(version_path.relative_to(self.artifacts_base))
+        }
+        
+        # 更新组件版本记录
+        versions_info_path = component_versions_dir / f"{component_id}_versions.json"
+        versions_info = {
+            "component_id": component_id,
+            "latest_version": next_version,
+            "versions": []
+        }
+        
+        if versions_info_path.exists():
+            try:
+                with open(versions_info_path, "r", encoding="utf-8") as f:
+                    versions_info = json.load(f)
+            except Exception as e:
+                self.logger.warning(f"读取组件版本记录时出错: {str(e)}，将创建新记录")
+        
+        # 添加新版本记录
+        versions_info["versions"].append(version_info)
+        versions_info["latest_version"] = next_version
+        
+        # 保存版本记录
+        with open(versions_info_path, "w", encoding="utf-8") as f:
+            json.dump(versions_info, f, ensure_ascii=False, indent=2)
+            
+        return version_info
