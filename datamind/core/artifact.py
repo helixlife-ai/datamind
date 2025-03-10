@@ -2296,22 +2296,68 @@ COMPONENT_INFO-->
         """
         context_contents = {}
         context_files_info = {}
+        all_file_paths = set()  # 用于存储去重后的文件路径
         
+        # 1. 从搜索结果文件中提取所有文件路径
         for file_path in search_results_files:
-            src_path = Path(file_path)
-            if src_path.exists():
-                dst_path = context_dir / src_path.name
-                shutil.copy2(src_path, dst_path)
+            # 将搜索结果文件本身也添加到文件路径集合中
+            all_file_paths.add(file_path)
+            
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    results_data = json.load(f)
                 
-                content = self._read_file_content(file_path)
-                if content:
-                    context_contents[src_path.name] = content
-                    context_files_info[src_path.name] = {
-                        "original_path": str(src_path.absolute()),
-                        "copied_path": str(dst_path.relative_to(work_base)),
-                        "size": src_path.stat().st_size,
-                        "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
-                        "content_hash": hashlib.md5(content.encode()).hexdigest()
-                    }
-                    
+                # 处理structured类型的结果
+                if "structured" in results_data:
+                    for item in results_data["structured"]:
+                        if "_file_path" in item:
+                            all_file_paths.add(item["_file_path"])
+                
+                # 处理vector类型的结果
+                if "vector" in results_data:
+                    for item in results_data["vector"]:
+                        if "file_path" in item:
+                            all_file_paths.add(item["file_path"])
+            except Exception as e:
+                self.logger.error(f"提取文件路径时出错: {str(e)}")
+        
+        # 2. 保存去重后的文件路径列表到JSON文件
+        file_paths_list = list(all_file_paths)
+        file_paths_json = {
+            "file_paths": file_paths_list,
+            "total_count": len(file_paths_list),
+            "generated_at": datetime.now().isoformat()
+        }
+        
+        paths_json_file = context_dir / "file_paths.json"
+        try:
+            with open(paths_json_file, 'w', encoding='utf-8') as f:
+                json.dump(file_paths_json, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"已保存文件路径列表到 {paths_json_file}")
+        except Exception as e:
+            self.logger.error(f"保存文件路径列表时出错: {str(e)}")
+        
+        # 3. 加载所有文件路径中的文件内容
+        for file_path in all_file_paths:
+            path_obj = Path(file_path)
+            if not path_obj.exists():
+                continue
+                
+            rel_path = str(path_obj.relative_to(work_base)) if work_base in path_obj.parents else path_obj.name
+            
+            # 读取文件内容
+            file_content = self._read_file_content(file_path)
+            if file_content:
+                context_contents[rel_path] = file_content
+                
+                # 收集文件元数据
+                file_stat = path_obj.stat()
+                context_files_info[rel_path] = {
+                    "file_name": path_obj.name,
+                    "file_size": file_stat.st_size,
+                    "last_modified": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                    "absolute_path": str(path_obj.absolute()),
+                    "relative_path": rel_path
+                }
+        
         return context_contents, context_files_info
