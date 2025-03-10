@@ -98,34 +98,6 @@ class ArtifactGenerator:
             self.logger.error(f"读取文件 {file_path} 时发生错误: {str(e)}")
             return None
 
-    def _build_html_prompt(self, context_files: Dict[str, str], query: str) -> str:
-        """构建HTML生成的提示词
-        
-        Args:
-            context_files: 文件内容字典，key为文件名，value为文件内容
-            query: 用户的查询内容
-            
-        Returns:
-            str: 生成提示词
-        """
-        prompt = f"""[文件]
-"""
-        for filename, content in context_files.items():
-            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
-        
-        prompt += f"""请根据用户的问题，从上述文件中提炼出相关信息，生成一个HTML页面来解决用户的问题：
-
-[用户的问题]
-{query}
-要求：
-1. 生成一个结构良好的HTML页面
-2. 使用适当的CSS样式美化页面
-3. 合理组织和展示文件中的信息
-4. 确保页面具有良好的可读性和导航性
-5. 可以添加适当的交互元素增强用户体验
-"""
-        return prompt
-
     def _generate_error_html(self, error_message: str, title: str) -> str:
         """生成错误提示页面
         
@@ -676,29 +648,52 @@ class ArtifactGenerator:
                 "optimization_suggestion": optimization_query
             }
             
-            status_info = {
-                "artifact_id": f"artifact_{self.alchemy_id}",
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-                "latest_iteration": iteration,
-                "original_query": query,
-                # 添加artifact字段，与旧版本兼容
-                "artifact": {
-                    "path": "artifact.html",
-                    "timestamp": datetime.now().isoformat()
-                },
-                "scaffold": {
-                    "path": "scaffold.html",
-                    "timestamp": datetime.now().isoformat(),
-                    "is_static": True  # 明确标记scaffold是静态的
-                },
-                "components": [],
-                "iterations": []
-            }
+            # 先检查status.json是否已存在，如果存在则读取现有内容
+            status_path = self.artifacts_dir / "status.json"
+            if status_path.exists():
+                try:
+                    with open(status_path, "r", encoding="utf-8") as f:
+                        status_info = json.load(f)
+                    # 更新必要字段，保留其他现有信息
+                    status_info.update({
+                        "updated_at": datetime.now().isoformat(),
+                        "latest_iteration": iteration,
+                    })
+                    # 确保原始查询存在
+                    if "original_query" not in status_info:
+                        status_info["original_query"] = query
+                except Exception as e:
+                    self.logger.warning(f"读取现有status.json失败: {str(e)}，将创建新文件")
+                    status_info = None
+            
+            # 如果status.json不存在或读取失败，则创建新的status_info
+            if not status_path.exists() or status_info is None:
+                status_info = {
+                    "artifact_id": f"artifact_{self.alchemy_id}",
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat(),
+                    "latest_iteration": iteration,
+                    "original_query": query,
+                    # 添加artifact字段，与旧版本兼容
+                    "artifact": {
+                        "path": "artifact.html",
+                        "timestamp": datetime.now().isoformat()
+                    },
+                    "scaffold": {
+                        "path": "scaffold.html",
+                        "timestamp": datetime.now().isoformat(),
+                        "is_static": True  # 明确标记scaffold是静态的
+                    },
+                    "components": [],
+                    "iterations": []
+                }
+            
+            # 确保iterations字段存在
+            if "iterations" not in status_info:
+                status_info["iterations"] = []
             
             status_info["iterations"].append(iteration_info)
             
-            status_path = self.artifacts_dir / "status.json"
             with open(status_path, "w", encoding="utf-8") as f:
                 json.dump(status_info, f, ensure_ascii=False, indent=2)
 
@@ -739,43 +734,45 @@ class ArtifactGenerator:
         for filename, content in context_files.items():
             prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
         
-        prompt += f"""请根据用户的问题，从上述文件中提炼出相关信息，生成一个框架型HTML页面。这个框架将作为后续组件的容器。
+        prompt += f"""请根据用户的问题，从上述文件中提炼出相关信息，生成一个框架型HTML页面。这个框架必须能够支持无限扩展组件的结构框架。
 
 [用户的问题]
 {query}
 
 要求：
-1. 生成一个结构良好的框架型HTML页面，包含以下元素：
+1. 生成一个高度可扩展的框架型HTML页面，包含以下元素：
    a. 页面标题和基本信息
-   b. 导航区域，用于后续添加组件链接
-   c. 主内容区域，包含多个组件挂载点（使用id标识的div容器）
-   d. 组件目录或索引区域
+   b. 动态导航区域，能随组件增加自动扩展
+   c. 弹性主内容区域，能容纳无限组件（使用id标识的div容器）
+   d. 自动更新的组件目录或索引区域
    e. 页脚信息
 
 2. 框架页面应该包含：
-   a. 响应式布局，适应不同设备
-   b. 清晰的视觉层次结构
-   c. 统一的样式主题
-   d. 基本的交互功能（如导航折叠/展开）
-   e. 组件加载机制（可以是简单的链接或iframe嵌入）
+   a. 响应式布局，适应不同设备和任意数量的组件
+   b. 清晰的视觉层次结构和分页/虚拟滚动机制
+   c. 统一的样式主题和组件样式继承系统
+   d. 高级交互功能（导航折叠/展开、组件分类筛选、搜索）
+   e. 高效组件加载机制（懒加载、按需渲染、动态iframe创建）
 
-3. 预留组件挂载点：
-   a. 至少预留5个主要组件区域，每个区域有明确的id和标题
-   b. 每个组件区域应有占位内容，表明将来会添加什么类型的内容
-   c. 组件区域应有明确的视觉边界
+3. 无限扩展的组件系统：
+   a. 实现动态创建组件容器的JavaScript功能
+   b. 组件容器应有统一的接口和事件系统
+   c. 组件区域应有明确的视觉边界和一致的样式
+   d. 提供组件间通信机制或数据共享接口
 
-4. 实现基本功能：
-   a. 导航可以跳转到各个组件区域
-   b. 提供返回顶部功能
-   c. 可以显示/隐藏组件区域
+4. 实现性能优化功能：
+   a. 导航可以智能分组并跳转到各个组件区域
+   b. 提供返回顶部功能和组件快速定位
+   c. 组件可按需加载/卸载以优化性能
+   d. 提供组件显示/隐藏和折叠功能
 
 5. 确保代码质量：
    a. 使用语义化HTML5标签
-   b. CSS样式应清晰组织
-   c. 必要的JavaScript功能
-   d. 代码应有适当的注释
+   b. 模块化CSS样式设计
+   c. 高效且可扩展的JavaScript架构
+   d. 代码应有详细注释，特别是组件扩展相关功能
 
-请生成完整的HTML代码，包括所有必要的CSS和JavaScript。这个框架将作为后续组件的容器，因此应该具有良好的扩展性。
+请生成完整的HTML代码，包括所有必要的CSS和JavaScript。这个框架必须设计为可以无限扩展组件的系统，确保即使添加大量组件也能保持良好的性能和用户体验。
 """
         return prompt 
 
