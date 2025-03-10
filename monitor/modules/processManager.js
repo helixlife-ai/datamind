@@ -207,8 +207,13 @@ function setupProcessManager(io) {
                     // 处理标准错误
                     proc.stderr.on('data', (data) => {
                         const output = data.toString('utf8');
-                        this.emitTaskOutput(taskId, output, true);
-                        this.addTaskHistory(taskId, output, true);
+                        
+                        // 判断是否为普通日志信息（非错误）
+                        const isActualError = !output.match(/\b(INFO|DEBUG)\b/) || 
+                                              output.match(/\b(ERROR|CRITICAL|FATAL)\b/);
+                        
+                        this.emitTaskOutput(taskId, output, isActualError);
+                        this.addTaskHistory(taskId, output, isActualError);
                     });
                     
                     // 进程结束事件处理

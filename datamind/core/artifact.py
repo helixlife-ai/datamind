@@ -69,6 +69,9 @@ class ArtifactGenerator:
         ))
         return ReasoningLLMEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)
 
+    def print_stream(self,text):
+        print(f"\r{text}", end='', flush=True)
+
     def _read_file_content(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
         """读取文件内容
         
@@ -348,7 +351,8 @@ class ArtifactGenerator:
                 if chunk:
                     full_response += chunk
                     # 显示流式输出内容
-                    self.logger.info(f"生成优化建议: {full_response}")
+                    #self.logger.info(f"生成优化建议: {full_response}")
+                    self.print_stream(chunk)
             
             # 从full_response中提取<answer></answer>标签之间的内容
             if "<answer>" in full_response and "</answer>" in full_response:
@@ -453,9 +457,7 @@ class ArtifactGenerator:
             self.logger.error(f"获取下一个版本号时发生错误: {str(e)}")
             return 1  # 发生错误时返回1作为安全的默认值
 
-    # 适用于Windows的控制台输出函数
-    def print_stream(self,text):
-        print(text, end='', flush=True)
+
 
     async def _generate_scaffold_html(self, 
                                 search_results_files: List[str], 

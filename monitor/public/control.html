@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据炼丹系统控制台</title>
+    <title>DataMind - System Control</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
@@ -987,40 +987,86 @@
                     text = String(text);
                 }
                 
-                // 处理文本行
-                const lines = text.split('\n');
-                lines.forEach(line => {
-                    if (line.trim()) {
-                        // 检查是否需要合并到上一行
-                        const lastElement = outputTerminal.lastElementChild;
+                // 检查是否包含回车符(\r)但不包含换行符(\n)
+                if (text.includes('\r') && !text.includes('\n')) {
+                    // 包含回车符，应该在最后一行的内容后面追加
+                    const lastElement = outputTerminal.lastElementChild;
+                    if (lastElement) {
+                        // 获取不带回车符的文本
+                        const cleanText = text.replace(/\r/g, '');
                         
-                        // 如果上一行存在且不是完整句子（不以标点符号结尾），则合并
-                        if (lastElement && 
-                            !lastElement.textContent.trim().match(/[.!?。！？；;:：]\s*$/) && 
-                            !line.match(/^\[.*?\]/) && // 不以[xxx]开头（不是新的日志标记）
-                            lastElement.className === (isError ? 'error-text' : '')) {
-                            
-                            // 合并到上一行
-                            lastElement.textContent += line;
-                        } else {
-                            // 创建新行
-                            const element = document.createElement('div');
-                            
-                            // 检测是否包含错误、警告或成功信息
-                            if (line.includes('[错误]') || isError) {
-                                element.className = 'error-text';
-                            } else if (line.includes('[警告]') || line.includes('Warning')) {
-                                element.className = 'warning-text';
-                            } else if (line.includes('[成功]') || line.includes('Success') || line.includes('完成')) {
-                                element.className = 'success-text';
-                            }
-                            
-                            // 使用textContent而不是innerHTML以避免XSS攻击
-                            element.textContent = line;
-                            outputTerminal.appendChild(element);
+                        // 获取当前内容，然后追加新内容
+                        const currentContent = lastElement.textContent;
+                        const newContent = currentContent + cleanText;
+                        
+                        // 设置样式类
+                        if (newContent.includes('[错误]') || 
+                            (isError && newContent.match(/\b(ERROR|CRITICAL|FATAL)\b/))) {
+                            lastElement.className = 'error-text';
+                        } else if (newContent.includes('[警告]') || 
+                                   newContent.includes('Warning') || 
+                                   (isError && newContent.match(/\b(WARNING)\b/))) {
+                            lastElement.className = 'warning-text';
+                        } else if (newContent.includes('[成功]') || 
+                                   newContent.includes('Success') || 
+                                   newContent.includes('完成')) {
+                            lastElement.className = 'success-text';
+                        } else if (isError && newContent.match(/\b(INFO|DEBUG)\b/)) {
+                            lastElement.className = '';
+                        } else if (isError) {
+                            lastElement.className = 'error-text';
                         }
+                        
+                        // 更新内容，追加而非替换
+                        lastElement.textContent = newContent;
+                    } else {
+                        // 如果没有最后一行，创建新行
+                        const element = document.createElement('div');
+                        element.textContent = text.replace(/\r/g, '');
+                        outputTerminal.appendChild(element);
                     }
-                });
+                } else {
+                    // 不包含回车符或同时包含回车符和换行符，创建新行
+                    // 按换行符分割文本
+                    const lines = text.split('\n');
+                    
+                    lines.forEach((line, index) => {
+                        // 跳过最后一个空行
+                        if (index === lines.length - 1 && line === '') return;
+                        
+                        // 创建新行
+                        const element = document.createElement('div');
+                        
+                        // 检测是否包含错误、警告或成功信息
+                        if (line.includes('[错误]') || 
+                            (isError && line.match(/\b(ERROR|CRITICAL|FATAL)\b/))) {
+                            // 真正的错误信息
+                            element.className = 'error-text';
+                        } else if (line.includes('[警告]') || 
+                                   line.includes('Warning') || 
+                                   (isError && line.match(/\b(WARNING)\b/))) {
+                            // 警告信息
+                            element.className = 'warning-text';
+                        } else if (line.includes('[成功]') || 
+                                   line.includes('Success') || 
+                                   line.includes('完成')) {
+                            // 成功信息
+                            element.className = 'success-text';
+                        } else if (isError && line.match(/\b(INFO|DEBUG)\b/)) {
+                            // 来自stderr的普通日志信息，不标记为错误
+                            element.className = '';
+                        } else if (isError) {
+                            // 其他stderr输出，仍然标记为错误
+                            element.className = 'error-text';
+                        }
+                        
+                        // 使用textContent而不是innerHTML以避免XSS攻击
+                        element.textContent = line;
+                        outputTerminal.appendChild(element);
+                    });
+                }
+                
+                // 滚动到底部
                 outputTerminal.scrollTop = outputTerminal.scrollHeight;
             } catch (error) {
                 console.error('添加文本到终端时出错:', error);
