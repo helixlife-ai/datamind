@@ -155,42 +155,107 @@ class ArtifactGenerator:
             Optional[str]: 提取的HTML内容，如果提取失败返回None
         """
         try:
+            # 如果响应为空，直接返回None
+            if not full_response or not full_response.strip():
+                return None
+                
             # 1. 如果响应本身就是完整的HTML
-            if full_response.strip().startswith('<!DOCTYPE html>'):
+            if full_response.strip().startswith('<!DOCTYPE html>') or full_response.strip().startswith('<html'):
                 return full_response.strip()
             
             # 2. 尝试提取html代码块
-            start_marker = "```html"
-            end_marker = "```"
+            html_markers = ["```html", "```HTML", "```"]
+            start_marker = None
             
-            if start_marker in full_response:
+            for marker in html_markers:
+                if marker in full_response:
+                    start_marker = marker
+                    break
+            
+            if start_marker:
                 start_idx = full_response.find(start_marker) + len(start_marker)
                 remaining_text = full_response[start_idx:]
+                
+                # 查找结束标记
+                end_marker = "```"
                 if end_marker in remaining_text:
                     end_idx = remaining_text.find(end_marker)
                     html_content = remaining_text[:end_idx].strip()
+                    
+                    # 移除开头的换行符
                     if html_content.startswith('\n'):
                         html_content = html_content[1:]
-                    if html_content:
+                        
+                    if html_content and (html_content.startswith('<!DOCTYPE html>') or html_content.startswith('<html')):
                         return html_content
+                    elif html_content:
+                        # 如果内容不是以<!DOCTYPE html>或<html>开头，但包含有效的HTML标签
+                        if re.search(r'<(?!!)([a-z]+)[^>]*>.*?</\1>', html_content, re.DOTALL):
+                            # 不是完整的HTML文档，但包含有效标签，可能需要包装
+                            if not html_content.startswith('<'):
+                                # 移除开头的非HTML内容
+                                first_tag_idx = re.search(r'<(?!!)([a-z]+)[^>]*>', html_content)
+                                if first_tag_idx:
+                                    html_content = html_content[first_tag_idx.start():]
+                            return html_content
             
-            # 3. 尝试提取任意代码块中的HTML内容
-            if "```" in full_response:
-                start_idx = full_response.find("```") + 3
-                # 跳过语言标识符所在行
-                start_idx = full_response.find("\n", start_idx) + 1
-                remaining_text = full_response[start_idx:]
-                if "```" in remaining_text:
-                    end_idx = remaining_text.find("```")
-                    html_content = remaining_text[:end_idx].strip()
-                    if html_content.startswith('<!DOCTYPE html>'):
-                        return html_content
+            # 3. 尝试从多个代码块中提取HTML
+            code_blocks = re.findall(r'```(?:html|HTML)?\s*(.*?)```', full_response, re.DOTALL)
+            for block in code_blocks:
+                block = block.strip()
+                if block.startswith('<!DOCTYPE html>') or block.startswith('<html'):
+                    return block
+                elif re.search(r'<(?!!)([a-z]+)[^>]*>.*?</\1>', block, re.DOTALL):
+                    # 包含有效HTML标签的代码块
+                    if not block.startswith('<'):
+                        # 移除开头的非HTML内容
+                        first_tag_idx = re.search(r'<(?!!)([a-z]+)[^>]*>', block)
+                        if first_tag_idx:
+                            block = block[first_tag_idx.start():]
+                    return block
             
             # 4. 如果响应包含HTML基本结构但没有代码块标记
             if '<html' in full_response and '</html>' in full_response:
                 start_idx = full_response.find('<html')
                 end_idx = full_response.find('</html>') + 7
                 return full_response[start_idx:end_idx].strip()
+            
+            # 5. 尝试从任意位置提取HTML文档片段
+            if '<!DOCTYPE html>' in full_response:
+                start_idx = full_response.find('<!DOCTYPE html>')
+                # 查找最后一个</html>标签
+                end_html_matches = list(re.finditer(r'</html>', full_response))
+                if end_html_matches:
+                    end_idx = end_html_matches[-1].end()
+                    return full_response[start_idx:end_idx].strip()
+            
+            # 6. 尝试提取任何具有HTML结构的内容
+            html_fragment_pattern = r'<(?!!)([a-z]+)[^>]*>.*?</\1>'
+            html_fragments = re.findall(html_fragment_pattern, full_response, re.DOTALL)
+            
+            if html_fragments:
+                # 找到最长的HTML片段
+                longest_fragment = ''
+                for match in re.finditer(html_fragment_pattern, full_response, re.DOTALL):
+                    fragment = match.group(0)
+                    if len(fragment) > len(longest_fragment):
+                        longest_fragment = fragment
+                
+                if longest_fragment:
+                    return longest_fragment
+            
+            # 7. 最后尝试从响应中提取任何包含尖括号的部分
+            if '<' in full_response and '>' in full_response:
+                # 找到第一个<标签
+                start_idx = full_response.find('<')
+                # 找到最后一个>标签
+                last_close_bracket = full_response.rfind('>')
+                
+                if start_idx < last_close_bracket:
+                    potential_html = full_response[start_idx:last_close_bracket+1].strip()
+                    # 验证是否包含成对的标签
+                    if re.search(r'<([a-z]+)[^>]*>.*?</\1>', potential_html, re.DOTALL):
+                        return potential_html
             
             return None
         
@@ -270,16 +335,16 @@ class ArtifactGenerator:
             # 根据迭代次数调整提示词
             if iteration == 1:
                 # 构建类似于原来的提示词，但保持简单
-                prompt = f"""请分析以下HTML内容和原始查询，提出一个进阶的查询语句，目的是生成第一个组件。
+                prompt = f"""请分析以下HTML框架和原始查询，提出一个进阶的查询语句，目的是生成在这个HTML框架中的第一个组件。
 
 原始查询：
 {original_query}
 
-当前HTML内容：
+HTML框架：
 {html_content}
 
 请思考：
-1. 用户的原始需求中最重要的方面是什么？
+1. 用户的原始查询中最重要的方面是什么？
 2. 第一个组件应该解决什么具体问题？
 3. 该组件需要包含哪些关键信息或功能？
 
@@ -287,7 +352,7 @@ class ArtifactGenerator:
 """
             else:
                 # 后续迭代的提示词，但确保只返回字符串
-                prompt = f"""请分析以下HTML内容、已有组件信息和原始查询，提出一个进阶的查询语句，目的是生成下一个组件。
+                prompt = f"""请分析以下HTML框架、已有组件信息和原始查询，提出一个进阶的查询语句，目的是生成在这个HTML框架中的下一个组件。
 
 原始查询：
 {original_query}
@@ -295,7 +360,7 @@ class ArtifactGenerator:
 已有组件信息：
 {components_text}
 
-当前HTML内容：
+HTML框架：
 {html_content}
 
 请思考：
@@ -734,9 +799,9 @@ class ArtifactGenerator:
         for filename, content in context_files.items():
             prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
         
-        prompt += f"""请根据用户的问题，从上述文件中提炼出相关信息，生成一个框架型HTML页面。这个框架必须能够支持无限扩展组件的结构框架。
+        prompt += f"""目的是满足用户查询背后的意图。从上述文件中提炼相关信息，生成一个合适的框架型HTML页面。因为后续的迭代会不断添加组件，所以框架必须能够支持无限扩展组件的结构框架。
 
-[用户的问题]
+[用户的查询]
 {query}
 
 要求：
@@ -744,35 +809,34 @@ class ArtifactGenerator:
    a. 页面标题和基本信息
    b. 动态导航区域，能随组件增加自动扩展
    c. 弹性主内容区域，能容纳无限组件（使用id标识的div容器）
-   d. 自动更新的组件目录或索引区域
+   d. 组件目录或索引区域
    e. 页脚信息
 
 2. 框架页面应该包含：
    a. 响应式布局，适应不同设备和任意数量的组件
-   b. 清晰的视觉层次结构和分页/虚拟滚动机制
+   b. 清晰的视觉层次结构
    c. 统一的样式主题和组件样式继承系统
-   d. 高级交互功能（导航折叠/展开、组件分类筛选、搜索）
-   e. 高效组件加载机制（懒加载、按需渲染、动态iframe创建）
+   d. 使用锚点链接实现简单导航功能
+   e. 静态展示组件的区域划分
 
 3. 无限扩展的组件系统：
-   a. 实现动态创建组件容器的JavaScript功能
-   b. 组件容器应有统一的接口和事件系统
+   a. 预设多个组件容器的HTML结构
+   b. 组件容器应有统一的样式类和结构
    c. 组件区域应有明确的视觉边界和一致的样式
-   d. 提供组件间通信机制或数据共享接口
 
-4. 实现性能优化功能：
-   a. 导航可以智能分组并跳转到各个组件区域
-   b. 提供返回顶部功能和组件快速定位
-   c. 组件可按需加载/卸载以优化性能
-   d. 提供组件显示/隐藏和折叠功能
+4. CSS框架选择：
+   a. 请使用知名的CSS框架如Tailwind CSS、Bootstrap或Bulma
+   b. 直接通过CDN引入CSS框架
+   c. 利用框架提供的组件和样式类设计界面
+   d. 添加必要的自定义CSS以满足特定需求
 
 5. 确保代码质量：
    a. 使用语义化HTML5标签
    b. 模块化CSS样式设计
-   c. 高效且可扩展的JavaScript架构
-   d. 代码应有详细注释，特别是组件扩展相关功能
+   c. 代码应有详细注释
+   d. 结构清晰，便于后续扩展
 
-请生成完整的HTML代码，包括所有必要的CSS和JavaScript。这个框架必须设计为可以无限扩展组件的系统，确保即使添加大量组件也能保持良好的性能和用户体验。
+请生成完整的HTML代码，包括所有必要的CSS。不需要包含任何JavaScript代码。这个框架必须设计为可以无限扩展组件的系统，确保即使添加大量组件也能保持良好的性能和用户体验。
 """
         return prompt 
 
@@ -1126,6 +1190,34 @@ class ArtifactGenerator:
 挂载点: {component.get('mount_point')}
 """
         
+        # 提取可用的挂载点信息
+        try:
+            soup = BeautifulSoup(scaffold_html, 'html.parser')
+            mount_points = []
+            for element in soup.find_all(id=True):
+                mount_points.append({
+                    "id": element.get("id"),
+                    "type": element.name,
+                    "classes": " ".join(element.get("class", []))
+                })
+            
+            # 将挂载点信息转换为易读格式
+            mount_points_text = ""
+            for i, mp in enumerate(mount_points):
+                mount_points_text += f"""
+挂载点 {i+1}:
+- ID: {mp['id']}
+- 元素类型: {mp['type']}
+- CSS类: {mp['classes']}
+"""
+            
+            prompt += f"""
+[可用挂载点]
+{mount_points_text}
+"""
+        except Exception as e:
+            self.logger.warning(f"提取挂载点信息时发生错误: {str(e)}")
+        
         prompt += f"""请根据用户的问题和上述信息，生成一个HTML组件，该组件将被挂载到框架HTML中。
 
 [用户的问题]
@@ -1141,7 +1233,7 @@ class ArtifactGenerator:
 4. 组件应该提供以下信息（使用JSON格式包装在HTML注释中）：
    a. 组件标题（title）：简短描述组件的主要内容
    b. 组件描述（description）：详细说明组件的功能和内容
-   c. 挂载点（mount_point）：建议在框架HTML中的哪个位置挂载该组件
+   c. 挂载点（mount_point）：建议在框架HTML中的哪个位置挂载该组件，必须使用上述可用挂载点中的ID
 
 JSON格式示例：
 <!--COMPONENT_INFO
@@ -1158,7 +1250,7 @@ COMPONENT_INFO-->
    c. 内容丰富、结构清晰
    d. 如有必要，可以包含交互元素
 
-请生成完整的HTML组件代码，包括所有必要的CSS和JavaScript。
+请生成完整的HTML组件代码，包括所有必要的CSS和JavaScript。特别注意：挂载点必须从上述提供的可用挂载点列表中选择，这一点非常重要。
 """
         return prompt 
 
@@ -1203,6 +1295,49 @@ COMPONENT_INFO-->
                 desc_match = re.search(r'<meta\s+name="description"\s+content="(.*?)"', html_content)
                 if desc_match:
                     component_info["description"] = desc_match.group(1).strip()
+                
+                # 尝试从h1标签提取标题（如果title标签没有提供）
+                if not component_info.get("title"):
+                    h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content, re.DOTALL)
+                    if h1_match:
+                        component_info["title"] = h1_match.group(1).strip()
+            
+            # 如果HTML提取方法都失败，尝试从响应文本中直接寻找关键信息
+            if not component_info.get("title"):
+                # 尝试找出可能的标题 - 查找"标题"、"title"等关键词后的内容
+                title_patterns = [
+                    r'(?:标题|title)[：:]\s*"([^"]+)"',
+                    r'(?:标题|title)[：:]\s*([^\n]+)'
+                ]
+                for pattern in title_patterns:
+                    match = re.search(pattern, full_response, re.IGNORECASE)
+                    if match:
+                        component_info["title"] = match.group(1).strip()
+                        break
+            
+            if not component_info.get("description"):
+                # 尝试找出可能的描述 - 查找"描述"、"description"等关键词后的内容
+                desc_patterns = [
+                    r'(?:描述|description)[：:]\s*"([^"]+)"',
+                    r'(?:描述|description)[：:]\s*([^\n]+)'
+                ]
+                for pattern in desc_patterns:
+                    match = re.search(pattern, full_response, re.IGNORECASE)
+                    if match:
+                        component_info["description"] = match.group(1).strip()
+                        break
+            
+            if not component_info.get("mount_point"):
+                # 尝试找出可能的挂载点 - 查找"挂载点"、"mount_point"等关键词后的内容
+                mount_patterns = [
+                    r'(?:挂载点|mount_point|mount point)[：:]\s*"([^"]+)"',
+                    r'(?:挂载点|mount_point|mount point)[：:]\s*([^\n]+)'
+                ]
+                for pattern in mount_patterns:
+                    match = re.search(pattern, full_response, re.IGNORECASE)
+                    if match:
+                        component_info["mount_point"] = match.group(1).strip()
+                        break
             
             return {
                 "html": html_content,
@@ -1237,8 +1372,10 @@ COMPONENT_INFO-->
             # 1. 更新导航区域
             nav_updated = False
             
-            # 尝试找到导航区域
-            nav_elements = soup.find_all(['nav', 'ul', 'div'], class_=['nav', 'navigation', 'menu', 'sidebar'])
+            # 尝试找到导航区域 - 扩展查找范围
+            nav_elements = soup.find_all(['nav', 'ul', 'div'], 
+                                      class_=['nav', 'navigation', 'menu', 'sidebar', 'navbar', 
+                                             'navbar-nav', 'nav-menu', 'navigation-menu'])
             
             for nav in nav_elements:
                 # 创建新的导航项
@@ -1253,11 +1390,17 @@ COMPONENT_INFO-->
                     ul.append(new_nav_item)
                     nav_updated = True
                     break
+                # 如果没有ul元素但当前元素本身是ul
+                elif nav.name == 'ul':
+                    nav.append(new_nav_item)
+                    nav_updated = True
+                    break
             
             # 如果没有找到合适的导航区域，尝试创建一个
             if not nav_updated:
                 # 查找可能的挂载点
-                potential_nav_containers = soup.find_all(['header', 'div'], class_=['header', 'top', 'navbar'])
+                potential_nav_containers = soup.find_all(['header', 'div'], 
+                                                      class_=['header', 'top', 'navbar', 'navigation-container'])
                 
                 if potential_nav_containers:
                     container = potential_nav_containers[0]
@@ -1276,9 +1419,37 @@ COMPONENT_INFO-->
             # 2. 更新组件区域
             component_updated = False
             
-            # 尝试找到指定的挂载点
+            # 尝试找到指定的挂载点 - 使用多种选择器
             if component_info.get("mount_point"):
-                mount_point = soup.find(id=component_info["mount_point"])
+                # 尝试通过多种选择器查找挂载点
+                mount_point = None
+                selectors = [
+                    f"#{component_info['mount_point']}",  # ID选择器
+                    f"[data-mount='{component_info['mount_point']}']",  # 数据属性选择器
+                    f".{component_info['mount_point']}"  # 类选择器
+                ]
+                
+                for selector in selectors:
+                    try:
+                        elements = soup.select(selector)
+                        if elements:
+                            mount_point = elements[0]
+                            break
+                    except Exception as e:
+                        self.logger.warning(f"尝试选择器 {selector} 时出错: {str(e)}")
+                
+                # 如果直接选择器未找到，尝试更宽松的查找方式
+                if not mount_point:
+                    for element in soup.find_all(True):  # 查找所有元素
+                        # 检查ID是否包含目标挂载点
+                        if element.get('id') and component_info['mount_point'] in element.get('id'):
+                            mount_point = element
+                            break
+                        # 检查class是否包含目标挂载点
+                        elif element.get('class') and component_info['mount_point'] in ' '.join(element.get('class', [])):
+                            mount_point = element
+                            break
+                
                 if mount_point:
                     # 创建组件链接
                     component_link = soup.new_tag('a', href=component_path, class_='component-link')
@@ -1313,7 +1484,31 @@ COMPONENT_INFO-->
             
             # 如果没有找到指定的挂载点，尝试找到主内容区域
             if not component_updated:
-                main_content = soup.find(['main', 'div'], class_=['main', 'content', 'container'])
+                # 扩展主内容区域的查找范围
+                main_content = None
+                
+                # 按优先级尝试不同的选择器
+                main_selectors = [
+                    "main",
+                    ".main",
+                    "#main",
+                    ".content",
+                    "#content",
+                    ".container",
+                    "#container",
+                    "article",
+                    ".article",
+                    "section",
+                    ".components-container",
+                    "[data-role='content']",
+                    ".main-content"
+                ]
+                
+                for selector in main_selectors:
+                    elements = soup.select(selector)
+                    if elements:
+                        main_content = elements[0]
+                        break
                 
                 if main_content:
                     # 创建新的组件容器
@@ -1346,12 +1541,50 @@ COMPONENT_INFO-->
                     # 添加到主内容区域
                     main_content.append(component_container)
                     component_updated = True
+                else:
+                    # 找不到主内容区域时，添加到body
+                    body = soup.find('body')
+                    if body:
+                        # 创建一个主内容区域
+                        main_content = soup.new_tag('div', class_='main-content')
+                        
+                        # 创建新的组件容器
+                        component_container = soup.new_tag('div', id=component_info["id"], class_='component-container')
+                        
+                        # 添加标题和描述
+                        component_title = soup.new_tag('h3')
+                        component_title.string = component_info["title"]
+                        component_container.append(component_title)
+                        
+                        if component_info.get("description"):
+                            component_desc = soup.new_tag('p')
+                            component_desc.string = component_info["description"]
+                            component_container.append(component_desc)
+                        
+                        # 创建iframe
+                        component_iframe = soup.new_tag('iframe', 
+                                                      src=component_path, 
+                                                      class_='component-frame',
+                                                      frameborder="0",
+                                                      width="100%",
+                                                      height="500px")
+                        component_container.append(component_iframe)
+                        
+                        # 创建组件链接
+                        component_link = soup.new_tag('a', href=component_path, class_='component-link')
+                        component_link.string = f'在新窗口中查看 {component_info["title"]}'
+                        component_container.append(component_link)
+                        
+                        # 添加到主内容区域和body
+                        main_content.append(component_container)
+                        body.append(main_content)
+                        component_updated = True
             
             # 3. 更新组件索引/目录区域
             index_updated = False
             
             # 尝试找到组件索引区域
-            index_area = soup.find(['div', 'section'], class_=['component-index', 'index', 'directory'])
+            index_area = soup.find(['div', 'section'], class_=['component-index', 'index', 'directory', 'toc', 'table-of-contents'])
             
             if index_area:
                 # 创建新的索引项
@@ -1374,7 +1607,7 @@ COMPONENT_INFO-->
             
             # 如果没有找到索引区域，尝试在侧边栏或页脚创建一个
             if not index_updated:
-                sidebar = soup.find(['aside', 'div'], class_=['sidebar', 'aside'])
+                sidebar = soup.find(['aside', 'div'], class_=['sidebar', 'aside', 'toc-container'])
                 
                 if sidebar:
                     # 创建索引区域
