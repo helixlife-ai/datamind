@@ -1147,12 +1147,21 @@ HTML框架：
                 "iteration": iteration,
                 "query": query,
                 "html_path": f"components/{component_id}.html",
+                "component_url": f"components/{component_id}.html",  # 明确设置用于iframe的URL
                 "status": "active",
                 "component_number": component_number,
                 "version": 1 if not component_path.exists() else self._get_component_version(component_id) - 1,
                 "dependencies": [],
                 "tags": []
             }
+            
+            # 额外检查并修正mount_point，确保它是ID而不是路径
+            if "/" in component_metadata["mount_point"] or "." in component_metadata["mount_point"]:
+                self.logger.warning(f"挂载点 {component_metadata['mount_point']} 格式异常，尝试修正")
+                # 提取ID部分
+                mount_id = component_metadata["mount_point"].split("/")[-1].replace(".html", "")
+                component_metadata["mount_point"] = mount_id
+                self.logger.info(f"修正后的挂载点: {mount_id}")
             
             # 保存组件元数据
             metadata_path = metadata_dir / f"{component_id}.json"
@@ -1169,8 +1178,8 @@ HTML框架：
             # 注意：我们不再更新scaffold.html，只更新artifact.html
             updated_artifact = self._update_artifact_with_component(
                 artifact_html,
-                str(component_path.relative_to(self.artifacts_dir)),
-                component_info
+                f"components/{component_id}.html",  # 使用相对路径，方便在HTML中引用
+                component_metadata  # 使用完整元数据替代简单的component_info
             )
             
             # 更新artifact.html（作为最新版本的完整制品）
@@ -1433,77 +1442,162 @@ COMPONENT_INFO-->
             # 提取HTML内容
             html_content = self._extract_html_content(full_response)
             if not html_content:
+                self.logger.warning("无法从响应中提取有效的HTML内容")
                 return None
             
             # 提取组件信息
             component_info = {}
             
-            # 查找组件信息注释
-            info_pattern = r'<!--COMPONENT_INFO\s*(.*?)\s*COMPONENT_INFO-->'
-            info_match = re.search(info_pattern, html_content, re.DOTALL)
+            # 查找组件信息注释 - 使用更健壮的正则表达式
+            info_patterns = [
+                r'<!--\s*COMPONENT_INFO\s*([\s\S]*?)\s*COMPONENT_INFO\s*-->',  # 标准格式
+                r'<!--\s*组件信息\s*([\s\S]*?)\s*组件信息\s*-->',  # 中文格式
+                r'<!--\s*组件元数据\s*([\s\S]*?)\s*组件元数据\s*-->',  # 中文格式2
+                r'<!--\s*METADATA\s*([\s\S]*?)\s*METADATA\s*-->',  # 备用格式
+                r'<!--\s*JSON_INFO\s*([\s\S]*?)\s*JSON_INFO\s*-->'  # 备用格式2
+            ]
             
-            if info_match:
-                try:
-                    # 尝试解析JSON
-                    info_json = info_match.group(1).strip()
-                    component_info = json.loads(info_json)
-                except Exception as e:
-                    self.logger.warning(f"解析组件信息JSON时发生错误: {str(e)}")
+            # 逐个尝试不同的注释格式
+            for pattern in info_patterns:
+                info_match = re.search(pattern, html_content, re.DOTALL)
+                if info_match:
+                    try:
+                        # 尝试解析JSON
+                        info_json = info_match.group(1).strip()
+                        # 确保是有效的JSON格式，移除可能的额外括号和引号
+                        info_json = info_json.strip('"\'').strip()
+                        # 尝试处理可能存在的转义问题
+                        info_json = re.sub(r'\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r'', info_json)
+                        
+                        # 尝试解析JSON
+                        component_info = json.loads(info_json)
+                        self.logger.info(f"成功从注释中提取到组件信息: {component_info}")
+                        break  # 成功提取到信息，跳出循环
+                    except Exception as e:
+                        self.logger.warning(f"解析组件信息JSON时发生错误: {str(e)}，尝试下一种模式")
+                        # 尝试手动解析JSON
+                        try:
+                            # 尝试修复常见的JSON错误并重新解析
+                            fixed_json = info_json.replace("'", '"')  # 替换单引号为双引号
+                            fixed_json = re.sub(r',\s*}', '}', fixed_json)  # 移除JSON对象末尾的逗号
+                            component_info = json.loads(fixed_json)
+                            self.logger.info(f"通过修复JSON格式成功提取组件信息: {component_info}")
+                            break
+                        except Exception:
+                            self.logger.warning(f"修复JSON格式后仍然解析失败")
+                            continue
             
-            # 如果没有找到组件信息或解析失败，尝试从HTML中提取基本信息
+            # 如果无法从注释中提取，尝试从HTML中提取基本信息
             if not component_info:
-                # 尝试从title标签提取标题
-                title_match = re.search(r'<title>(.*?)</title>', html_content)
-                if title_match:
-                    component_info["title"] = title_match.group(1).strip()
+                self.logger.info("尝试从HTML标签中提取组件信息")
                 
-                # 尝试从meta description提取描述
-                desc_match = re.search(r'<meta\s+name="description"\s+content="(.*?)"', html_content)
-                if desc_match:
-                    component_info["description"] = desc_match.group(1).strip()
-                
-                # 尝试从h1标签提取标题（如果title标签没有提供）
-                if not component_info.get("title"):
-                    h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content, re.DOTALL)
-                    if h1_match:
-                        component_info["title"] = h1_match.group(1).strip()
+                # 使用BeautifulSoup解析HTML以更可靠地提取信息
+                try:
+                    soup = BeautifulSoup(html_content, 'html.parser')
+                    
+                    # 从title标签提取标题
+                    title_tag = soup.find('title')
+                    if title_tag and title_tag.string:
+                        component_info["title"] = title_tag.string.strip()
+                    
+                    # 从meta description提取描述
+                    meta_desc = soup.find('meta', attrs={'name': 'description'})
+                    if meta_desc and meta_desc.get('content'):
+                        component_info["description"] = meta_desc['content'].strip()
+                    
+                    # 从h1标签提取标题（如果title标签没有提供）
+                    if not component_info.get("title"):
+                        h1_tag = soup.find('h1')
+                        if h1_tag:
+                            component_info["title"] = h1_tag.get_text().strip()
+                    
+                    # 尝试从data-mount-point属性提取挂载点
+                    mount_el = soup.find(attrs={'data-mount-point': True})
+                    if mount_el:
+                        component_info["mount_point"] = mount_el['data-mount-point']
+                    
+                    # 尝试从其他常见属性提取挂载点
+                    if not component_info.get("mount_point"):
+                        for attr in ['data-component', 'data-target', 'data-container']:
+                            el = soup.find(attrs={attr: True})
+                            if el:
+                                component_info["mount_point"] = el[attr]
+                                break
+                    
+                    self.logger.info(f"从HTML标签中提取的组件信息: {component_info}")
+                except Exception as e:
+                    self.logger.warning(f"使用BeautifulSoup提取HTML信息时出错: {str(e)}")
             
             # 如果HTML提取方法都失败，尝试从响应文本中直接寻找关键信息
-            if not component_info.get("title"):
+            if not component_info.get("title") or not component_info.get("description") or not component_info.get("mount_point"):
+                self.logger.info("尝试从响应文本中提取组件信息")
+                
                 # 尝试找出可能的标题 - 查找"标题"、"title"等关键词后的内容
-                title_patterns = [
-                    r'(?:标题|title)[：:]\s*"([^"]+)"',
-                    r'(?:标题|title)[：:]\s*([^\n]+)'
-                ]
-                for pattern in title_patterns:
-                    match = re.search(pattern, full_response, re.IGNORECASE)
-                    if match:
-                        component_info["title"] = match.group(1).strip()
-                        break
+                if not component_info.get("title"):
+                    title_patterns = [
+                        r'(?:标题|title|组件标题)[：:]\s*"([^"]+)"',
+                        r'(?:标题|title|组件标题)[：:]\s*([^\n,\.]+)',
+                        r'[<\[](?:标题|title|组件标题)[>\]][：:]*\s*([^\n,\.]+)'
+                    ]
+                    for pattern in title_patterns:
+                        match = re.search(pattern, full_response, re.IGNORECASE)
+                        if match:
+                            component_info["title"] = match.group(1).strip()
+                            self.logger.info(f"从响应文本中提取到标题: {component_info['title']}")
+                            break
+            
+                if not component_info.get("description"):
+                    # 尝试找出可能的描述 - 查找"描述"、"description"等关键词后的内容
+                    desc_patterns = [
+                        r'(?:描述|description|组件描述)[：:]\s*"([^"]+)"',
+                        r'(?:描述|description|组件描述)[：:]\s*([^\n]{5,100})',  # 限制长度，避免提取太多内容
+                        r'[<\[](?:描述|description|组件描述)[>\]][：:]*\s*([^\n]{5,100})'
+                    ]
+                    for pattern in desc_patterns:
+                        match = re.search(pattern, full_response, re.IGNORECASE)
+                        if match:
+                            component_info["description"] = match.group(1).strip()
+                            self.logger.info(f"从响应文本中提取到描述: {component_info['description']}")
+                            break
+            
+                if not component_info.get("mount_point"):
+                    # 尝试找出可能的挂载点 - 查找"挂载点"、"mount_point"等关键词后的内容
+                    mount_patterns = [
+                        r'(?:挂载点|mount_point|mount point|挂载位置)[：:]\s*"([^"]+)"',
+                        r'(?:挂载点|mount_point|mount point|挂载位置)[：:]\s*([a-zA-Z0-9_\-]+)',
+                        r'[<\[](?:挂载点|mount_point|mount point|挂载位置)[>\]][：:]*\s*([a-zA-Z0-9_\-]+)'
+                    ]
+                    for pattern in mount_patterns:
+                        match = re.search(pattern, full_response, re.IGNORECASE)
+                        if match:
+                            component_info["mount_point"] = match.group(1).strip()
+                            self.logger.info(f"从响应文本中提取到挂载点: {component_info['mount_point']}")
+                            break
+            
+            # 确保组件信息包含基本字段，设置默认值
+            component_number = re.search(r'component[_-](\d+)', component_info.get("id", ""), re.IGNORECASE)
+            default_number = component_number.group(1) if component_number else "1"
+            
+            if not component_info.get("title"):
+                component_info["title"] = f"组件 {default_number}"
+                self.logger.info(f"未找到标题，使用默认标题: {component_info['title']}")
             
             if not component_info.get("description"):
-                # 尝试找出可能的描述 - 查找"描述"、"description"等关键词后的内容
-                desc_patterns = [
-                    r'(?:描述|description)[：:]\s*"([^"]+)"',
-                    r'(?:描述|description)[：:]\s*([^\n]+)'
-                ]
-                for pattern in desc_patterns:
-                    match = re.search(pattern, full_response, re.IGNORECASE)
-                    if match:
-                        component_info["description"] = match.group(1).strip()
-                        break
-            
+                component_info["description"] = f"组件 {default_number} 的内容"
+                self.logger.info(f"未找到描述，使用默认描述: {component_info['description']}")
+                
             if not component_info.get("mount_point"):
-                # 尝试找出可能的挂载点 - 查找"挂载点"、"mount_point"等关键词后的内容
-                mount_patterns = [
-                    r'(?:挂载点|mount_point|mount point)[：:]\s*"([^"]+)"',
-                    r'(?:挂载点|mount_point|mount point)[：:]\s*([^\n]+)'
-                ]
-                for pattern in mount_patterns:
-                    match = re.search(pattern, full_response, re.IGNORECASE)
-                    if match:
-                        component_info["mount_point"] = match.group(1).strip()
-                        break
+                # 使用一个比较通用和安全的挂载点ID
+                component_info["mount_point"] = f"component_{default_number}"
+                self.logger.info(f"未找到挂载点，使用默认挂载点: {component_info['mount_point']}")
+            
+            # 确保mount_point不是相对路径而是元素ID
+            if "/" in component_info.get("mount_point", ""):
+                self.logger.warning(f"挂载点 {component_info['mount_point']} 看起来是路径而不是元素ID，尝试修正")
+                # 尝试从路径中提取ID部分
+                mount_id = component_info["mount_point"].split("/")[-1].replace(".html", "")
+                component_info["mount_point"] = mount_id
+                self.logger.info(f"修正后的挂载点ID: {mount_id}")
             
             return {
                 "html": html_content,
@@ -1514,7 +1608,8 @@ COMPONENT_INFO-->
             
         except Exception as e:
             self.logger.error(f"提取组件信息时发生错误: {str(e)}")
-            return None 
+            traceback.print_exc()
+            return None
 
     def _update_artifact_with_component(self, 
                           artifact_html: str, 
@@ -1531,6 +1626,10 @@ COMPONENT_INFO-->
             str: 更新后的制品HTML内容
         """
         try:
+            self.logger.info(f"开始更新制品HTML，添加组件: {component_info.get('id', '')}")
+            self.logger.info(f"组件信息: {component_info}")
+            self.logger.info(f"组件路径: {component_path}")
+            
             # 尝试从元数据文件加载更完整的组件信息
             component_id = component_info.get("id")
             metadata_path = self.artifacts_dir / "component_metadata" / f"{component_id}.json"
@@ -1543,12 +1642,33 @@ COMPONENT_INFO-->
                     for key in ["title", "description", "mount_point"]:
                         if key in metadata and metadata[key]:
                             component_info[key] = metadata[key]
-                        self.logger.info(f"已从元数据文件加载组件 {component_id} 的信息")
+                    self.logger.info(f"已从元数据文件加载组件 {component_id} 的信息: {metadata}")
                 except Exception as e:
                     self.logger.warning(f"读取组件元数据时出错: {str(e)}，将使用传入的组件信息")
             
             # 解析HTML
             soup = BeautifulSoup(artifact_html, 'html.parser')
+            
+            # 获取组件实际路径(用于iframe和链接)
+            component_url = component_path
+            if not component_url.startswith(('http://', 'https://', './', '../', '/')):
+                component_url = f"./{component_url}"
+            
+            self.logger.info(f"组件URL: {component_url}")
+            
+            # 确保mount_point是ID而不是路径
+            mount_point_id = component_info.get("mount_point", "")
+            if "/" in mount_point_id or "." in mount_point_id:
+                # 可能是路径而不是ID，提取ID部分
+                mount_point_id = mount_point_id.split("/")[-1].replace(".html", "")
+                self.logger.warning(f"挂载点看起来是路径，已提取ID部分: {mount_point_id}")
+            
+            # 组件自身的ID (用于被链接)
+            component_id_for_link = component_info.get("id", "")
+            if not component_id_for_link:
+                component_id_for_link = f"component_{len(soup.find_all('div', class_='component-container')) + 1}"
+            
+            self.logger.info(f"挂载点ID: {mount_point_id}, 组件链接ID: {component_id_for_link}")
             
             # 1. 更新导航区域
             nav_updated = False
@@ -1561,8 +1681,8 @@ COMPONENT_INFO-->
             for nav in nav_elements:
                 # 创建新的导航项
                 new_nav_item = soup.new_tag('li')
-                new_nav_link = soup.new_tag('a', href=f'#{component_info["id"]}')
-                new_nav_link.string = component_info["title"]
+                new_nav_link = soup.new_tag('a', href=f'#{component_id_for_link}')
+                new_nav_link.string = component_info.get("title", f"组件 {component_id_for_link}")
                 new_nav_item.append(new_nav_link)
                 
                 # 尝试找到合适的位置添加
@@ -1570,11 +1690,13 @@ COMPONENT_INFO-->
                 if ul:
                     ul.append(new_nav_item)
                     nav_updated = True
+                    self.logger.info(f"已更新导航区域，添加到现有ul元素中")
                     break
                 # 如果没有ul元素但当前元素本身是ul
                 elif nav.name == 'ul':
                     nav.append(new_nav_item)
                     nav_updated = True
+                    self.logger.info(f"已更新导航区域，添加到ul元素")
                     break
             
             # 如果没有找到合适的导航区域，尝试创建一个
@@ -1588,26 +1710,27 @@ COMPONENT_INFO-->
                     new_nav = soup.new_tag('nav', class_='navigation')
                     new_ul = soup.new_tag('ul')
                     new_nav_item = soup.new_tag('li')
-                    new_nav_link = soup.new_tag('a', href=f'#{component_info["id"]}')
-                    new_nav_link.string = component_info["title"]
+                    new_nav_link = soup.new_tag('a', href=f'#{component_id_for_link}')
+                    new_nav_link.string = component_info.get("title", f"组件 {component_id_for_link}")
                     
                     new_nav_item.append(new_nav_link)
                     new_ul.append(new_nav_item)
                     new_nav.append(new_ul)
                     container.append(new_nav)
                     nav_updated = True
+                    self.logger.info(f"创建了新的导航区域")
             
             # 2. 更新组件区域
             component_updated = False
             
-            # 尝试找到指定的挂载点 - 使用多种选择器
-            if component_info.get("mount_point"):
+            # 尝试找到指定的挂载点
+            if mount_point_id:
                 # 尝试通过多种选择器查找挂载点
                 mount_point = None
                 selectors = [
-                    f"#{component_info['mount_point']}",  # ID选择器
-                    f"[data-mount='{component_info['mount_point']}']",  # 数据属性选择器
-                    f".{component_info['mount_point']}"  # 类选择器
+                    f"#{mount_point_id}",  # ID选择器
+                    f"[data-mount='{mount_point_id}']",  # 数据属性选择器
+                    f".{mount_point_id}"  # 类选择器
                 ]
                 
                 for selector in selectors:
@@ -1615,56 +1738,73 @@ COMPONENT_INFO-->
                         elements = soup.select(selector)
                         if elements:
                             mount_point = elements[0]
+                            self.logger.info(f"使用选择器 {selector} 找到挂载点")
                             break
                     except Exception as e:
                         self.logger.warning(f"尝试选择器 {selector} 时出错: {str(e)}")
                 
                 # 如果直接选择器未找到，尝试更宽松的查找方式
                 if not mount_point:
+                    self.logger.info("未找到精确匹配的挂载点，尝试部分匹配")
                     for element in soup.find_all(True):  # 查找所有元素
                         # 检查ID是否包含目标挂载点
-                        if element.get('id') and component_info['mount_point'] in element.get('id'):
+                        if element.get('id') and mount_point_id in element.get('id'):
                             mount_point = element
+                            self.logger.info(f"通过ID部分匹配找到挂载点: {element.get('id')}")
                             break
                         # 检查class是否包含目标挂载点
-                        elif element.get('class') and component_info['mount_point'] in ' '.join(element.get('class', [])):
+                        elif element.get('class') and mount_point_id in ' '.join(element.get('class', [])):
                             mount_point = element
+                            self.logger.info(f"通过class部分匹配找到挂载点: {element.get('class')}")
                             break
                 
                 if mount_point:
-                    # 创建组件链接
-                    component_link = soup.new_tag('a', href=component_info["mount_point"], class_='component-link')
-                    component_link.string = f'查看 {component_info["title"]}'
+                    self.logger.info(f"找到挂载点: {mount_point.name}#{mount_point.get('id', '')}")
                     
-                    # 创建iframe（可选）
-                    component_iframe = soup.new_tag('iframe', 
-                                                  src=component_info["mount_point"], 
-                                                  class_='component-frame',
-                                                  frameborder="0",
-                                                  width="100%",
-                                                  height="500px")
-                    
-                    # 清空挂载点内容并添加新内容
-                    mount_point.clear()
+                    # 创建组件容器
+                    component_container = soup.new_tag('div', id=component_id_for_link, class_='component-container')
                     
                     # 添加标题和描述
                     component_title = soup.new_tag('h3')
-                    component_title.string = component_info["title"]
-                    mount_point.append(component_title)
+                    component_title.string = component_info.get("title", f"组件 {component_id_for_link}")
+                    component_container.append(component_title)
                     
                     if component_info.get("description"):
                         component_desc = soup.new_tag('p')
-                        component_desc.string = component_info["description"]
-                        mount_point.append(component_desc)
+                        component_desc.string = component_info.get("description")
+                        component_container.append(component_desc)
                     
-                    # 添加iframe和链接
-                    mount_point.append(component_iframe)
-                    mount_point.append(component_link)
+                    # 创建iframe，使用实际路径
+                    component_iframe = soup.new_tag('iframe', 
+                                                  src=component_url,
+                                                  class_='component-frame',
+                                                  frameborder="0",
+                                                  style="width:100%; height:500px; border:none;")
+                    component_container.append(component_iframe)
+                    
+                    # 创建组件链接，使用实际路径
+                    component_link = soup.new_tag('a', href=component_url, class_='component-link', target="_blank")
+                    component_link.string = f'在新窗口中查看 {component_info.get("title", "组件")}'
+                    component_container.append(component_link)
+                    
+                    # 添加到挂载点
+                    # 根据挂载点类型决定是否清空挂载点
+                    if mount_point.name in ['div', 'section', 'article'] and not mount_point.get('id', '').startswith('component_'):
+                        # 保留挂载点内容，只添加新组件
+                        mount_point.append(component_container)
+                        self.logger.info(f"保留挂载点内容，添加组件")
+                    else:
+                        # 清空挂载点并添加组件
+                        mount_point.clear()
+                        mount_point.append(component_container)
+                        self.logger.info(f"清空挂载点内容，添加组件")
                     
                     component_updated = True
             
             # 如果没有找到指定的挂载点，尝试找到主内容区域
             if not component_updated:
+                self.logger.info("未找到指定挂载点，尝试添加到主内容区域")
+                
                 # 扩展主内容区域的查找范围
                 main_content = None
                 
@@ -1689,77 +1829,79 @@ COMPONENT_INFO-->
                     elements = soup.select(selector)
                     if elements:
                         main_content = elements[0]
+                        self.logger.info(f"使用选择器 {selector} 找到主内容区域")
                         break
                 
                 if main_content:
                     # 创建新的组件容器
-                    component_container = soup.new_tag('div', id=component_info["id"], class_='component-container')
+                    component_container = soup.new_tag('div', id=component_id_for_link, class_='component-container')
                     
                     # 添加标题和描述
                     component_title = soup.new_tag('h3')
-                    component_title.string = component_info["title"]
+                    component_title.string = component_info.get("title", f"组件 {component_id_for_link}")
                     component_container.append(component_title)
                     
                     if component_info.get("description"):
                         component_desc = soup.new_tag('p')
-                        component_desc.string = component_info["description"]
+                        component_desc.string = component_info.get("description")
                         component_container.append(component_desc)
                     
                     # 创建iframe，使用实际路径
                     component_iframe = soup.new_tag('iframe', 
-                                                  src=component_info["mount_point"], 
+                                                  src=component_url, 
                                                   class_='component-frame',
                                                   frameborder="0",
-                                                  width="100%",
-                                                  height="500px")
+                                                  style="width:100%; height:500px; border:none;")
                     component_container.append(component_iframe)
                     
                     # 创建组件链接，使用实际路径
-                    component_link = soup.new_tag('a', href=component_info["mount_point"], class_='component-link')
-                    component_link.string = f'在新窗口中查看 {component_info["title"]}'
+                    component_link = soup.new_tag('a', href=component_url, class_='component-link', target="_blank")
+                    component_link.string = f'在新窗口中查看 {component_info.get("title", "组件")}'
                     component_container.append(component_link)
                     
                     # 添加到主内容区域
                     main_content.append(component_container)
                     component_updated = True
+                    self.logger.info(f"已添加组件到主内容区域")
                 else:
                     # 找不到主内容区域时，添加到body
+                    self.logger.info("未找到主内容区域，尝试添加到body")
                     body = soup.find('body')
                     if body:
                         # 创建一个主内容区域
                         main_content = soup.new_tag('div', class_='main-content')
                         
                         # 创建新的组件容器
-                        component_container = soup.new_tag('div', id=component_info["id"], class_='component-container')
+                        component_container = soup.new_tag('div', id=component_id_for_link, class_='component-container')
                         
                         # 添加标题和描述
                         component_title = soup.new_tag('h3')
-                        component_title.string = component_info["title"]
+                        component_title.string = component_info.get("title", f"组件 {component_id_for_link}")
                         component_container.append(component_title)
                         
                         if component_info.get("description"):
                             component_desc = soup.new_tag('p')
-                            component_desc.string = component_info["description"]
+                            component_desc.string = component_info.get("description")
                             component_container.append(component_desc)
                         
                         # 创建iframe，使用实际路径
                         component_iframe = soup.new_tag('iframe', 
-                                                      src=component_info["mount_point"], 
+                                                      src=component_url,
                                                       class_='component-frame',
                                                       frameborder="0",
-                                                      width="100%",
-                                                      height="500px")
+                                                      style="width:100%; height:500px; border:none;")
                         component_container.append(component_iframe)
                         
                         # 创建组件链接，使用实际路径
-                        component_link = soup.new_tag('a', href=component_info["mount_point"], class_='component-link')
-                        component_link.string = f'在新窗口中查看 {component_info["title"]}'
+                        component_link = soup.new_tag('a', href=component_url, class_='component-link', target="_blank")
+                        component_link.string = f'在新窗口中查看 {component_info.get("title", "组件")}'
                         component_container.append(component_link)
                         
                         # 添加到主内容区域和body
                         main_content.append(component_container)
                         body.append(main_content)
                         component_updated = True
+                        self.logger.info(f"创建了新的主内容区域并添加组件")
             
             # 3. 更新组件索引/目录区域
             index_updated = False
@@ -1772,19 +1914,20 @@ COMPONENT_INFO-->
                 index_item = soup.new_tag('div', class_='index-item')
                 
                 index_title = soup.new_tag('h4')
-                index_link = soup.new_tag('a', href=f'#{component_info["id"]}')
-                index_link.string = component_info["title"]
+                index_link = soup.new_tag('a', href=f'#{component_id_for_link}')
+                index_link.string = component_info.get("title", f"组件 {component_id_for_link}")
                 index_title.append(index_link)
                 index_item.append(index_title)
                 
                 if component_info.get("description"):
                     index_desc = soup.new_tag('p')
-                    index_desc.string = component_info["description"]
+                    index_desc.string = component_info.get("description")
                     index_item.append(index_desc)
                 
                 # 添加到索引区域
                 index_area.append(index_item)
                 index_updated = True
+                self.logger.info(f"已更新组件索引区域")
             
             # 如果没有找到索引区域，尝试在侧边栏或页脚创建一个
             if not index_updated:
@@ -1802,14 +1945,14 @@ COMPONENT_INFO-->
                     index_item = soup.new_tag('div', class_='index-item')
                     
                     index_title = soup.new_tag('h4')
-                    index_link = soup.new_tag('a', href=f'#{component_info["id"]}')
-                    index_link.string = component_info["title"]
+                    index_link = soup.new_tag('a', href=f'#{component_id_for_link}')
+                    index_link.string = component_info.get("title", f"组件 {component_id_for_link}")
                     index_title.append(index_link)
                     index_item.append(index_title)
                     
                     if component_info.get("description"):
                         index_desc = soup.new_tag('p')
-                        index_desc.string = component_info["description"]
+                        index_desc.string = component_info.get("description")
                         index_item.append(index_desc)
                     
                     # 添加到索引区域
@@ -1818,12 +1961,16 @@ COMPONENT_INFO-->
                     # 添加到侧边栏
                     sidebar.append(index_area)
                     index_updated = True
+                    self.logger.info(f"创建了新的组件索引区域")
             
             # 返回更新后的HTML
-            return str(soup)
+            updated_html = str(soup)
+            self.logger.info(f"制品HTML更新完成")
+            return updated_html
             
         except Exception as e:
             self.logger.error(f"更新制品HTML时发生错误: {str(e)}")
+            traceback.print_exc()
             # 如果更新失败，返回原始HTML
             return artifact_html
 
