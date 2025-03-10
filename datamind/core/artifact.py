@@ -163,7 +163,7 @@ class ArtifactGenerator:
             if full_response.strip().startswith('<!DOCTYPE html>') or full_response.strip().startswith('<html'):
                 return full_response.strip()
             
-            # 2. 尝试提取html代码块
+            # 2. 尝试提取html代码块 - 改进提取逻辑，确保只获取代码部分
             html_markers = ["```html", "```HTML", "```"]
             start_marker = None
             
@@ -173,61 +173,71 @@ class ArtifactGenerator:
                     break
             
             if start_marker:
-                start_idx = full_response.find(start_marker) + len(start_marker)
-                remaining_text = full_response[start_idx:]
-                
-                # 查找结束标记
-                end_marker = "```"
-                if end_marker in remaining_text:
-                    end_idx = remaining_text.find(end_marker)
-                    html_content = remaining_text[:end_idx].strip()
+                # 查找代码块的边界
+                parts = full_response.split(start_marker, 1)
+                if len(parts) > 1:
+                    remaining_text = parts[1].lstrip()
                     
-                    # 移除开头的换行符
-                    if html_content.startswith('\n'):
-                        html_content = html_content[1:]
+                    # 查找结束标记
+                    end_marker = "```"
+                    if end_marker in remaining_text:
+                        code_part = remaining_text.split(end_marker, 1)[0].strip()
                         
-                    if html_content and (html_content.startswith('<!DOCTYPE html>') or html_content.startswith('<html')):
-                        return html_content
-                    elif html_content:
-                        # 如果内容不是以<!DOCTYPE html>或<html>开头，但包含有效的HTML标签
-                        if re.search(r'<(?!!)([a-z]+)[^>]*>.*?</\1>', html_content, re.DOTALL):
-                            # 不是完整的HTML文档，但包含有效标签，可能需要包装
-                            if not html_content.startswith('<'):
-                                # 移除开头的非HTML内容
-                                first_tag_idx = re.search(r'<(?!!)([a-z]+)[^>]*>', html_content)
-                                if first_tag_idx:
-                                    html_content = html_content[first_tag_idx.start():]
-                            return html_content
+                        # 如果代码块的第一行是语言标识符，去掉它
+                        if code_part.startswith('html') or code_part.startswith('HTML'):
+                            code_part = code_part[4:].lstrip()
+                        
+                        if code_part and (code_part.startswith('<!DOCTYPE html>') or code_part.startswith('<html')):
+                            return code_part
+                        elif code_part:
+                            # 检查是否包含有效的HTML标签
+                            if re.search(r'<(?!!)([a-z]+)[^>]*>.*?</\1>', code_part, re.DOTALL):
+                                # 移除可能的前导注释或非HTML内容
+                                first_tag_match = re.search(r'<(?!!)([a-z]+)[^>]*>', code_part)
+                                if first_tag_match:
+                                    code_part = code_part[first_tag_match.start():]
+                                return code_part
             
-            # 3. 尝试从多个代码块中提取HTML
+            # 3. 尝试从多个代码块中提取最符合条件的HTML
             code_blocks = re.findall(r'```(?:html|HTML)?\s*(.*?)```', full_response, re.DOTALL)
+            valid_html_blocks = []
+            
             for block in code_blocks:
                 block = block.strip()
+                # 如果第一行是语言标识符，去掉它
+                if block.startswith('html') or block.startswith('HTML'):
+                    block = block[4:].lstrip()
+                    
                 if block.startswith('<!DOCTYPE html>') or block.startswith('<html'):
-                    return block
+                    valid_html_blocks.append((block, 3))  # 优先级3：完整HTML文档
                 elif re.search(r'<(?!!)([a-z]+)[^>]*>.*?</\1>', block, re.DOTALL):
-                    # 包含有效HTML标签的代码块
-                    if not block.startswith('<'):
-                        # 移除开头的非HTML内容
-                        first_tag_idx = re.search(r'<(?!!)([a-z]+)[^>]*>', block)
-                        if first_tag_idx:
-                            block = block[first_tag_idx.start():]
-                    return block
+                    # 确保提取的是HTML片段，而不是其他内容
+                    first_tag_match = re.search(r'<(?!!)([a-z]+)[^>]*>', block)
+                    if first_tag_match:
+                        # 从第一个HTML标签开始
+                        clean_block = block[first_tag_match.start():]
+                        valid_html_blocks.append((clean_block, 2))  # 优先级2：有效HTML片段
+            
+            # 返回优先级最高的HTML块
+            if valid_html_blocks:
+                valid_html_blocks.sort(key=lambda x: x[1], reverse=True)
+                return valid_html_blocks[0][0]
             
             # 4. 如果响应包含HTML基本结构但没有代码块标记
             if '<html' in full_response and '</html>' in full_response:
-                start_idx = full_response.find('<html')
-                end_idx = full_response.find('</html>') + 7
-                return full_response[start_idx:end_idx].strip()
+                html_start = full_response.find('<html')
+                html_end = full_response.rfind('</html>') + 7
+                if html_start < html_end:
+                    return full_response[html_start:html_end].strip()
             
-            # 5. 尝试从任意位置提取HTML文档片段
+            # 5. 尝试从响应中提取DOCTYPE到结束的完整HTML
             if '<!DOCTYPE html>' in full_response:
-                start_idx = full_response.find('<!DOCTYPE html>')
+                doctype_start = full_response.find('<!DOCTYPE html>')
                 # 查找最后一个</html>标签
                 end_html_matches = list(re.finditer(r'</html>', full_response))
                 if end_html_matches:
                     end_idx = end_html_matches[-1].end()
-                    return full_response[start_idx:end_idx].strip()
+                    return full_response[doctype_start:end_idx].strip()
             
             # 6. 尝试提取任何具有HTML结构的内容
             html_fragment_pattern = r'<(?!!)([a-z]+)[^>]*>.*?</\1>'
@@ -1122,6 +1132,35 @@ HTML框架：
             # 保存/更新组件文件
             component_path.write_text(component_html, encoding="utf-8")
             
+            # 新增：创建组件元数据目录并保存组件元数据JSON
+            metadata_dir = self.artifacts_dir / "component_metadata"
+            metadata_dir.mkdir(exist_ok=True)
+            
+            # 准备更完整的组件元数据
+            component_metadata = {
+                "id": component_id,
+                "title": component_info.get("title", f"组件 {component_number}"),
+                "description": component_info.get("description", ""),
+                "mount_point": component_info.get("mount_point", f"component_{component_number}"),
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "iteration": iteration,
+                "query": query,
+                "html_path": f"components/{component_id}.html",
+                "status": "active",
+                "component_number": component_number,
+                "version": 1 if not component_path.exists() else self._get_component_version(component_id) - 1,
+                "dependencies": [],
+                "tags": []
+            }
+            
+            # 保存组件元数据
+            metadata_path = metadata_dir / f"{component_id}.json"
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                json.dump(component_metadata, f, ensure_ascii=False, indent=2)
+            
+            self.logger.info(f"已保存组件元数据: {metadata_path}")
+            
             # 保存迭代版本HTML文件
             output_path = output_dir / f"{artifact_name}.html"
             output_path.write_text(component_html, encoding="utf-8")
@@ -1202,18 +1241,15 @@ HTML框架：
             if existing_component_index is not None:
                 # 更新现有组件信息
                 component_info["updated_at"] = datetime.now().isoformat()
-                try:
-                    component_info["version"] = self._get_component_version(component_id) - 1  # 当前版本
-                except Exception as e:
-                    self.logger.warning(f"获取组件版本失败: {str(e)}，将设置为1")
-                    component_info["version"] = 1
+                # 使用已经计算好的组件版本
+                component_info["version"] = self._get_component_version(component_id)
                 status_info["components"][existing_component_index] = component_info
-                self.logger.info(f"更新组件信息: {component_id}")
+                self.logger.info(f"更新组件信息: {component_id}, 版本: {component_info['version']}")
             else:
                 # 添加新组件信息
-                component_info["version"] = 1  # 首次创建，版本为1
+                component_info["version"] = self._get_component_version(component_id)  # 使用已计算的版本号
                 status_info["components"].append(component_info)
-                self.logger.info(f"添加新组件信息: {component_id}")
+                self.logger.info(f"添加新组件信息: {component_id}, 版本: {component_info['version']}")
             
             status_info["updated_at"] = datetime.now().isoformat()
             status_info["latest_iteration"] = iteration
@@ -1255,6 +1291,9 @@ HTML框架：
             with open(output_dir / "generation_info.json", "w", encoding="utf-8") as f:
                 json.dump(generation_info, f, ensure_ascii=False, indent=2)
 
+            # 更新组件元数据索引
+            self._update_component_metadata_index()
+            
             return output_path
 
         except Exception as e:
@@ -1365,7 +1404,19 @@ COMPONENT_INFO-->
    c. 内容丰富、结构清晰
    d. 如有必要，可以包含交互元素
 
-请生成完整的HTML组件代码，包括所有必要的CSS和JavaScript。特别注意：挂载点必须从上述提供的可用挂载点列表中选择，这一点非常重要。
+重要说明：请将HTML代码放在单独的代码块中，不要在代码块内添加任何解释或说明文本。
+例如：
+
+```html
+<!DOCTYPE html>
+<html>
+...您的代码...
+</html>
+```
+
+请分两部分回复：
+1. 首先是对组件的说明
+2. 然后单独放置HTML代码块，确保代码块内只有纯HTML代码，不含任何额外说明
 """
         return prompt 
 
@@ -1466,11 +1517,10 @@ COMPONENT_INFO-->
             return None 
 
     def _update_artifact_with_component(self, 
-                              artifact_html: str, 
-                              component_path: str, 
-                              component_info: Dict) -> str:
-        """更新制品HTML，添加新组件的链接。与_update_scaffold_with_component相同，
-        但名称更加明确，表示这是针对artifact的更新而非scaffold
+                          artifact_html: str, 
+                          component_path: str, 
+                          component_info: Dict) -> str:
+        """更新制品HTML，添加新组件的链接
         
         Args:
             artifact_html: 制品HTML内容
@@ -1481,6 +1531,22 @@ COMPONENT_INFO-->
             str: 更新后的制品HTML内容
         """
         try:
+            # 尝试从元数据文件加载更完整的组件信息
+            component_id = component_info.get("id")
+            metadata_path = self.artifacts_dir / "component_metadata" / f"{component_id}.json"
+            
+            if metadata_path.exists():
+                try:
+                    with open(metadata_path, "r", encoding="utf-8") as f:
+                        metadata = json.load(f)
+                    # 更新组件信息，优先使用元数据中的信息
+                    for key in ["title", "description", "mount_point"]:
+                        if key in metadata and metadata[key]:
+                            component_info[key] = metadata[key]
+                        self.logger.info(f"已从元数据文件加载组件 {component_id} 的信息")
+                except Exception as e:
+                    self.logger.warning(f"读取组件元数据时出错: {str(e)}，将使用传入的组件信息")
+            
             # 解析HTML
             soup = BeautifulSoup(artifact_html, 'html.parser')
             
@@ -1567,12 +1633,12 @@ COMPONENT_INFO-->
                 
                 if mount_point:
                     # 创建组件链接
-                    component_link = soup.new_tag('a', href=component_path, class_='component-link')
+                    component_link = soup.new_tag('a', href=component_info["mount_point"], class_='component-link')
                     component_link.string = f'查看 {component_info["title"]}'
                     
                     # 创建iframe（可选）
                     component_iframe = soup.new_tag('iframe', 
-                                                  src=component_path, 
+                                                  src=component_info["mount_point"], 
                                                   class_='component-frame',
                                                   frameborder="0",
                                                   width="100%",
@@ -1639,17 +1705,17 @@ COMPONENT_INFO-->
                         component_desc.string = component_info["description"]
                         component_container.append(component_desc)
                     
-                    # 创建iframe
+                    # 创建iframe，使用实际路径
                     component_iframe = soup.new_tag('iframe', 
-                                                  src=component_path, 
+                                                  src=component_info["mount_point"], 
                                                   class_='component-frame',
                                                   frameborder="0",
                                                   width="100%",
                                                   height="500px")
                     component_container.append(component_iframe)
                     
-                    # 创建组件链接
-                    component_link = soup.new_tag('a', href=component_path, class_='component-link')
+                    # 创建组件链接，使用实际路径
+                    component_link = soup.new_tag('a', href=component_info["mount_point"], class_='component-link')
                     component_link.string = f'在新窗口中查看 {component_info["title"]}'
                     component_container.append(component_link)
                     
@@ -1676,17 +1742,17 @@ COMPONENT_INFO-->
                             component_desc.string = component_info["description"]
                             component_container.append(component_desc)
                         
-                        # 创建iframe
+                        # 创建iframe，使用实际路径
                         component_iframe = soup.new_tag('iframe', 
-                                                      src=component_path, 
+                                                      src=component_info["mount_point"], 
                                                       class_='component-frame',
                                                       frameborder="0",
                                                       width="100%",
                                                       height="500px")
                         component_container.append(component_iframe)
                         
-                        # 创建组件链接
-                        component_link = soup.new_tag('a', href=component_path, class_='component-link')
+                        # 创建组件链接，使用实际路径
+                        component_link = soup.new_tag('a', href=component_info["mount_point"], class_='component-link')
                         component_link.string = f'在新窗口中查看 {component_info["title"]}'
                         component_container.append(component_link)
                         
@@ -1800,47 +1866,306 @@ COMPONENT_INFO-->
         Returns:
             dict: 版本信息
         """
-        component_versions_dir = self.artifacts_dir / "component_versions"
-        component_versions_dir.mkdir(exist_ok=True)
-        
-        # 获取下一个版本号
-        next_version = self._get_component_version(component_id)
-        
-        # 保存组件版本
-        version_file = f"{component_id}_v{next_version}.html"
-        version_path = component_versions_dir / version_file
-        version_path.write_text(component_html, encoding="utf-8")
-        
-        # 创建版本信息
-        version_info = {
-            "component_id": component_id,
-            "version": next_version,
-            "timestamp": datetime.now().isoformat(),
-            "query": query,
-            "path": str(version_path.relative_to(self.artifacts_base))
-        }
-        
-        # 更新组件版本记录
-        versions_info_path = component_versions_dir / f"{component_id}_versions.json"
-        versions_info = {
-            "component_id": component_id,
-            "latest_version": next_version,
-            "versions": []
-        }
-        
-        if versions_info_path.exists():
-            try:
-                with open(versions_info_path, "r", encoding="utf-8") as f:
-                    versions_info = json.load(f)
-            except Exception as e:
-                self.logger.warning(f"读取组件版本记录时出错: {str(e)}，将创建新记录")
-        
-        # 添加新版本记录
-        versions_info["versions"].append(version_info)
-        versions_info["latest_version"] = next_version
-        
-        # 保存版本记录
-        with open(versions_info_path, "w", encoding="utf-8") as f:
-            json.dump(versions_info, f, ensure_ascii=False, indent=2)
+        try:
+            component_versions_dir = self.artifacts_dir / "component_versions"
+            component_versions_dir.mkdir(exist_ok=True)
             
-        return version_info
+            # 获取下一个版本号
+            next_version = self._get_component_version(component_id)
+            
+            # 保存组件版本
+            version_file = f"{component_id}_v{next_version}.html"
+            version_path = component_versions_dir / version_file
+            version_path.write_text(component_html, encoding="utf-8")
+            
+            # 创建版本信息
+            version_info = {
+                "component_id": component_id,
+                "version": next_version,
+                "timestamp": datetime.now().isoformat(),
+                "query": query,
+                "path": str(version_path.relative_to(self.artifacts_base))
+            }
+            
+            # 更新组件版本记录
+            versions_info_path = component_versions_dir / f"{component_id}_versions.json"
+            versions_info = {
+                "component_id": component_id,
+                "latest_version": next_version,
+                "versions": []
+            }
+            
+            if versions_info_path.exists():
+                try:
+                    with open(versions_info_path, "r", encoding="utf-8") as f:
+                        versions_info = json.load(f)
+                except Exception as e:
+                    self.logger.warning(f"读取组件版本记录时出错: {str(e)}，将创建新记录")
+            
+            # 添加新版本记录
+            versions_info["versions"].append(version_info)
+            versions_info["latest_version"] = next_version
+            
+            # 保存版本记录
+            with open(versions_info_path, "w", encoding="utf-8") as f:
+                json.dump(versions_info, f, ensure_ascii=False, indent=2)
+                
+            return version_info
+            
+        except Exception as e:
+            self.logger.error(f"保存组件版本时出错: {str(e)}")
+            # 返回基本版本信息作为回退
+            return {
+                "component_id": component_id,
+                "version": 1,
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e)
+            }
+
+    def _update_component_metadata_index(self):
+        """更新组件元数据索引文件
+        
+        生成一个包含所有组件元数据的索引文件，便于快速访问所有组件信息
+        """
+        try:
+            metadata_dir = self.artifacts_dir / "component_metadata"
+            if not metadata_dir.exists():
+                metadata_dir.mkdir(exist_ok=True)
+                return
+            
+            # 读取所有组件元数据文件
+            components_metadata = []
+            for metadata_file in metadata_dir.glob("*.json"):
+                try:
+                    with open(metadata_file, "r", encoding="utf-8") as f:
+                        metadata = json.load(f)
+                    components_metadata.append(metadata)
+                except Exception as e:
+                    self.logger.warning(f"读取组件元数据文件 {metadata_file} 时出错: {str(e)}")
+            
+            # 按组件编号排序
+            components_metadata.sort(key=lambda x: x.get("component_number", 0))
+            
+            # 创建索引文件
+            index_data = {
+                "updated_at": datetime.now().isoformat(),
+                "count": len(components_metadata),
+                "components": components_metadata
+            }
+            
+            # 保存索引文件
+            index_path = self.artifacts_dir / "component_index.json"
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(index_data, f, ensure_ascii=False, indent=2)
+                
+            self.logger.info(f"已更新组件元数据索引，共 {len(components_metadata)} 个组件")
+            
+        except Exception as e:
+            self.logger.error(f"更新组件元数据索引时出错: {str(e)}")
+
+    def _get_component_relative_url(self, path_str: str) -> str:
+        """获取组件的相对URL，用于在HTML中引用
+        
+        Args:
+            path_str: 组件路径字符串，可以是相对路径或绝对路径
+            
+        Returns:
+            str: 适合在HTML中使用的URL格式路径
+        """
+        try:
+            path = Path(path_str)
+            
+            # 检查是否是绝对路径
+            if path.is_absolute():
+                # 尝试转换为相对于制品目录的路径
+                try:
+                    # 确保artifacts_dir是绝对路径
+                    artifacts_abs_dir = self.artifacts_dir.absolute()
+                    path_abs = path.absolute()
+                    
+                    # 检查path是否是artifacts_dir的子路径
+                    if str(path_abs).startswith(str(artifacts_abs_dir)):
+                        rel_path = path_abs.relative_to(artifacts_abs_dir)
+                        return str(rel_path).replace("\\", "/")
+                    else:
+                        # 如果不是制品目录的子路径，使用file:// URL
+                        normalized_path = str(path_abs).replace("\\", "/")
+                        # 确保Windows路径被正确处理
+                        if ":" in normalized_path:  # Windows路径包含冒号
+                            return f"file:///{normalized_path}"
+                        else:
+                            return f"file://{normalized_path}"
+                except Exception as e:
+                    self.logger.warning(f"转换为相对路径时出错: {str(e)}")
+                    # 回退到简单的替换
+                    return str(path).replace("\\", "/")
+            else:
+                # 已经是相对路径，确保使用正斜杠
+                return str(path).replace("\\", "/")
+        except Exception as e:
+            self.logger.warning(f"处理组件路径时出错: {str(e)}，将使用原始路径")
+            # 确保至少进行基本的斜杠替换
+            return str(path_str).replace("\\", "/")
+
+    def _get_component_paths(self, component_id: str) -> Dict[str, str]:
+        """获取组件的各种路径表示
+        
+        Args:
+            component_id: 组件ID
+            
+        Returns:
+            Dict[str, str]: 包含不同路径表示的字典
+        """
+        try:
+            # 基本路径
+            components_dir = self.artifacts_dir / "components"
+            component_path = components_dir / f"{component_id}.html"
+            
+            # 构建不同类型的路径
+            paths = {
+                "id": component_id,
+                "filename": f"{component_id}.html",
+                "relative_path": f"components/{component_id}.html",
+                "absolute_path": str(component_path.absolute()),
+                "normalized_path": str(component_path).replace("\\", "/"),
+                "url_path": self._get_component_relative_url(str(component_path)),
+                "exists": component_path.exists()
+            }
+            
+            # 如果存在元数据，从元数据中获取其他路径信息
+            metadata_path = self.artifacts_dir / "component_metadata" / f"{component_id}.json"
+            if metadata_path.exists():
+                try:
+                    with open(metadata_path, "r", encoding="utf-8") as f:
+                        metadata = json.load(f)
+                    
+                    # 添加元数据中的额外路径信息
+                    for key in ["iteration_path", "output_path"]:
+                        if key in metadata:
+                            paths[key] = metadata[key]
+                except Exception:
+                    pass
+                
+            return paths
+        except Exception as e:
+            self.logger.error(f"获取组件 {component_id} 路径时出错: {str(e)}")
+            # 返回基本信息
+            return {
+                "id": component_id,
+                "filename": f"{component_id}.html",
+                "relative_path": f"components/{component_id}.html"
+            }
+
+    def get_component_metadata(self, component_id: str) -> Optional[Dict]:
+        """获取组件元数据
+        
+        Args:
+            component_id: 组件ID
+            
+        Returns:
+            Optional[Dict]: 组件元数据，如果不存在返回None
+        """
+        try:
+            metadata_path = self.artifacts_dir / "component_metadata" / f"{component_id}.json"
+            if not metadata_path.exists():
+                return None
+                
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.error(f"获取组件 {component_id} 元数据时出错: {str(e)}")
+            return None
+        
+    def get_all_components_metadata(self) -> List[Dict]:
+        """获取所有组件元数据
+        
+        Returns:
+            List[Dict]: 所有组件元数据列表
+        """
+        try:
+            index_path = self.artifacts_dir / "component_index.json"
+            if not index_path.exists():
+                # 尝试重建索引
+                self._update_component_metadata_index()
+                
+                # 如果索引仍不存在，返回空列表
+                if not index_path.exists():
+                    return []
+                
+            with open(index_path, "r", encoding="utf-8") as f:
+                index_data = json.load(f)
+            
+            return index_data.get("components", [])
+        except Exception as e:
+            self.logger.error(f"获取所有组件元数据时出错: {str(e)}")
+            return []
+
+    def load_component_for_integration(self, component_id: str) -> Dict:
+        """加载组件用于制品整合
+        
+        Args:
+            component_id: 组件ID
+            
+        Returns:
+            Dict: 包含组件所有需要整合的信息
+        """
+        try:
+            # 获取组件元数据
+            metadata = self.get_component_metadata(component_id)
+            if not metadata:
+                self.logger.warning(f"找不到组件 {component_id} 的元数据")
+                # 尝试基于ID构建基本信息
+                basic_metadata = {
+                    "id": component_id,
+                    "title": f"组件 {component_id.split('_')[-1] if '_' in component_id else component_id}",
+                    "description": "未找到元数据",
+                    "status": "missing_metadata"
+                }
+                metadata = basic_metadata
+                
+            # 获取组件路径
+            paths = self._get_component_paths(component_id)
+            
+            # 读取组件HTML内容
+            component_path = Path(paths["absolute_path"])
+            component_html = ""
+            component_exists = component_path.exists()
+            
+            if component_exists:
+                try:
+                    component_html = component_path.read_text(encoding="utf-8")
+                except Exception as e:
+                    self.logger.error(f"读取组件 {component_id} 的HTML内容时出错: {str(e)}")
+                    component_html = f"<!-- 无法读取组件内容: {str(e)} -->"
+            else:
+                self.logger.warning(f"找不到组件 {component_id} 的HTML文件: {component_path}")
+                component_html = f"<!-- 组件文件不存在: {component_path} -->"
+            
+            # 返回整合所需的所有信息
+            result = {
+                "id": component_id,
+                "metadata": metadata,
+                "paths": paths,
+                "html": component_html,
+                "exists": component_exists,
+                "loaded_at": datetime.now().isoformat(),
+                "status": "success" if component_exists else "file_missing"
+            }
+            
+            # 如果没有HTML内容但有元数据，添加元数据作为HTML注释
+            if not component_html and metadata:
+                metadata_json = json.dumps(metadata, ensure_ascii=False, indent=2)
+                result["html"] = f"<!-- 组件元数据:\n{metadata_json}\n-->"
+                
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"加载组件 {component_id} 用于整合时出错: {str(e)}")
+            # 返回错误信息
+            return {
+                "id": component_id,
+                "error": str(e),
+                "status": "error",
+                "timestamp": datetime.now().isoformat(),
+                "traceback": traceback.format_exc()
+            }
