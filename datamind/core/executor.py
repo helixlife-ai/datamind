@@ -12,10 +12,6 @@ from pathlib import Path
 import hashlib
 from ..utils.common import DateTimeEncoder
 
-# 创建一个模块级别的日志记录器
-logger = logging.getLogger(__name__)
-
-
 class ResultFormatter:
     """统一的结果格式化器"""
     def __init__(self, logger: Optional[logging.Logger] = None):

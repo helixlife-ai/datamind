@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import traceback
 from ..utils.stream_logger import StreamLineHandler
@@ -584,27 +584,10 @@ HTML框架：
             for dir_path in [work_base, process_dir, output_dir, context_dir]:
                 dir_path.mkdir(parents=True, exist_ok=True)
 
-            # 复制上下文文件并记录信息
-            context_contents = {}
-            context_files_info = {}
-            
-            for file_path in search_results_files:
-                src_path = Path(file_path)
-                if src_path.exists():
-                    dst_path = context_dir / src_path.name
-                    shutil.copy2(src_path, dst_path)
-                    
-                    content = self._read_file_content(file_path)
-                    if content:
-                        context_contents[src_path.name] = content
-                        context_files_info[src_path.name] = {
-                            "original_path": str(src_path.absolute()),
-                            "copied_path": str(dst_path.relative_to(work_base)),
-                            "size": src_path.stat().st_size,
-                            "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
-                            "content_hash": hashlib.md5(content.encode()).hexdigest()
-                        }
-
+            # 将上下文文件复制到工作目录，并收集内容信息
+            context_contents, context_files_info = self._prepare_context_files(
+                search_results_files, context_dir, work_base)
+                
             if not context_contents:
                 raise ValueError("未能成功读取任何上下文文件内容")
 
@@ -928,26 +911,9 @@ HTML框架：
             for dir_path in [work_base, process_dir, output_dir, context_dir]:
                 dir_path.mkdir(parents=True, exist_ok=True)
 
-            # 复制上下文文件并记录信息
-            context_contents = {}
-            context_files_info = {}
-            
-            for file_path in search_results_files:
-                src_path = Path(file_path)
-                if src_path.exists():
-                    dst_path = context_dir / src_path.name
-                    shutil.copy2(src_path, dst_path)
-                    
-                    content = self._read_file_content(file_path)
-                    if content:
-                        context_contents[src_path.name] = content
-                        context_files_info[src_path.name] = {
-                            "original_path": str(src_path.absolute()),
-                            "copied_path": str(dst_path.relative_to(work_base)),
-                            "size": src_path.stat().st_size,
-                            "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
-                            "content_hash": hashlib.md5(content.encode()).hexdigest()
-                        }
+            # 将上下文文件复制到组件工作目录，并收集内容信息
+            context_contents, context_files_info = self._prepare_context_files(
+                search_results_files, context_dir, work_base)
 
             if not context_contents:
                 raise ValueError("未能成功读取任何上下文文件内容")
@@ -2316,3 +2282,36 @@ COMPONENT_INFO-->
                 "timestamp": datetime.now().isoformat(),
                 "traceback": traceback.format_exc()
             }
+
+    def _prepare_context_files(self, search_results_files: List[str], context_dir: Path, work_base: Path) -> Tuple[Dict[str, str], Dict[str, Dict]]:
+        """准备上下文文件，复制文件并收集内容与元数据
+        
+        Args:
+            search_results_files: 搜索结果文件路径列表
+            context_dir: 上下文文件目标目录
+            work_base: 工作目录基础路径
+            
+        Returns:
+            Tuple[Dict[str, str], Dict[str, Dict]]: (context_contents, context_files_info)
+        """
+        context_contents = {}
+        context_files_info = {}
+        
+        for file_path in search_results_files:
+            src_path = Path(file_path)
+            if src_path.exists():
+                dst_path = context_dir / src_path.name
+                shutil.copy2(src_path, dst_path)
+                
+                content = self._read_file_content(file_path)
+                if content:
+                    context_contents[src_path.name] = content
+                    context_files_info[src_path.name] = {
+                        "original_path": str(src_path.absolute()),
+                        "copied_path": str(dst_path.relative_to(work_base)),
+                        "size": src_path.stat().st_size,
+                        "modified_time": datetime.fromtimestamp(src_path.stat().st_mtime).isoformat(),
+                        "content_hash": hashlib.md5(content.encode()).hexdigest()
+                    }
+                    
+        return context_contents, context_files_info
