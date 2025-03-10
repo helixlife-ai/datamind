@@ -987,23 +987,38 @@
                     text = String(text);
                 }
                 
+                // 处理文本行
                 const lines = text.split('\n');
                 lines.forEach(line => {
                     if (line.trim()) {
-                        const element = document.createElement('div');
+                        // 检查是否需要合并到上一行
+                        const lastElement = outputTerminal.lastElementChild;
                         
-                        // 检测是否包含错误、警告或成功信息
-                        if (line.includes('[错误]') || isError) {
-                            element.className = 'error-text';
-                        } else if (line.includes('[警告]') || line.includes('Warning')) {
-                            element.className = 'warning-text';
-                        } else if (line.includes('[成功]') || line.includes('Success') || line.includes('完成')) {
-                            element.className = 'success-text';
+                        // 如果上一行存在且不是完整句子（不以标点符号结尾），则合并
+                        if (lastElement && 
+                            !lastElement.textContent.trim().match(/[.!?。！？；;:：]\s*$/) && 
+                            !line.match(/^\[.*?\]/) && // 不以[xxx]开头（不是新的日志标记）
+                            lastElement.className === (isError ? 'error-text' : '')) {
+                            
+                            // 合并到上一行
+                            lastElement.textContent += line;
+                        } else {
+                            // 创建新行
+                            const element = document.createElement('div');
+                            
+                            // 检测是否包含错误、警告或成功信息
+                            if (line.includes('[错误]') || isError) {
+                                element.className = 'error-text';
+                            } else if (line.includes('[警告]') || line.includes('Warning')) {
+                                element.className = 'warning-text';
+                            } else if (line.includes('[成功]') || line.includes('Success') || line.includes('完成')) {
+                                element.className = 'success-text';
+                            }
+                            
+                            // 使用textContent而不是innerHTML以避免XSS攻击
+                            element.textContent = line;
+                            outputTerminal.appendChild(element);
                         }
-                        
-                        // 使用textContent而不是innerHTML以避免XSS攻击
-                        element.textContent = line;
-                        outputTerminal.appendChild(element);
                     }
                 });
                 outputTerminal.scrollTop = outputTerminal.scrollHeight;

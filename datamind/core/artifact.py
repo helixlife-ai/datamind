@@ -453,69 +453,9 @@ class ArtifactGenerator:
             self.logger.error(f"获取下一个版本号时发生错误: {str(e)}")
             return 1  # 发生错误时返回1作为安全的默认值
 
-    async def _merge_html_contents(self, current_artifact: str, new_content: str, query: str) -> Optional[str]:
-        """合并当前artifact.html和新生成的HTML内容
-        
-        Args:
-            current_artifact: 当前artifact.html的内容
-            new_content: 新生成的HTML内容
-            query: 用户的查询内容
-            
-        Returns:
-            Optional[str]: 合并后的HTML内容
-        """
-        try:
-            if not self.reasoning_engine:
-                raise ValueError("未配置推理引擎，无法合并内容")
-
-            prompt = f"""请分析并合并以下两个HTML内容，生成一个新的综合版本。
-
-当前artifact.html内容：
-{current_artifact}
-
-新生成的HTML内容：
-{new_content}
-
-用户的查询内容：
-{query}
-
-要求：
-1. 保留两个版本中的重要信息
-2. 确保合并后的内容结构合理、样式统一
-3. 新内容应该自然地融入现有结构
-4. 保持页面的整体一致性和美观性
-5. 只输出合并后的HTML内容，不要其他说明
-
-请生成合并后的HTML内容："""
-
-            # 在添加新消息前清除历史对话记录
-            self.reasoning_engine.clear_history()
-            
-            # 添加用户消息
-            self.reasoning_engine.add_message("user", prompt)
-            
-            # 收集合并后的内容
-            merged_content = []
-            async for chunk in self.reasoning_engine.get_stream_response(
-                temperature=0.7,
-                metadata={'stage': 'html_merge'}
-            ):
-                if chunk:
-                    merged_content.append(chunk)
-                    self.logger.info(f"\r合并内容: {''.join(merged_content)}")
-
-            final_content = ''.join(merged_content)
-            html_content = self._extract_html_content(final_content)
-            
-            if not html_content:
-                raise ValueError("无法从合并响应中提取有效的HTML内容")
-                
-            return html_content
-
-        except Exception as e:
-            self.logger.error(f"合并HTML内容时发生错误: {str(e)}")
-            return None 
-
+    # 适用于Windows的控制台输出函数
+    def print_stream(self,text):
+        print(text, end='', flush=True)
 
     async def _generate_scaffold_html(self, 
                                 search_results_files: List[str], 
@@ -609,11 +549,6 @@ class ArtifactGenerator:
             html_started = False
             in_html_block = False
 
-            # 适用于Windows的控制台输出函数
-            def print_stream(text):
-                sys.stdout.write(text)
-                sys.stdout.flush()
-
             async for chunk in self.reasoning_engine.get_stream_response(
                 temperature=0.7,
                 metadata={'stage': 'scaffold_generation'}
@@ -628,7 +563,7 @@ class ArtifactGenerator:
                     # 显示流式输出内容
                     #self.logger.info(f"\r生成框架内容: {full_response}")
 
-                    print_stream(chunk)
+                    self.print_stream(chunk)
                     
                     # 尝试实时提取和更新HTML内容
                     if not html_started:
@@ -656,8 +591,6 @@ class ArtifactGenerator:
                     if current_html_content:
                         combined_content = ''.join(current_html_content)
                         temp_html_path.write_text(combined_content.strip(), encoding="utf-8")
-           
-            print_stream("\n")
 
             if not full_response:
                 raise ValueError("生成内容为空")
@@ -988,7 +921,8 @@ class ArtifactGenerator:
                         f.write(chunk)
                     
                     # 显示流式输出内容
-                    self.logger.info(f"\r生成组件内容: {full_response}")
+                    #self.logger.info(f"\r生成组件内容: {full_response}")
+                    self.print_stream(chunk)
                     
                     # 尝试实时提取和更新HTML内容
                     if not html_started:
