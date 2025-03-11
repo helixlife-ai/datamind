@@ -148,6 +148,41 @@
             background-color: #94a3b8;
         }
         
+        /* 添加文件夹折叠相关样式 */
+        .folder-toggle {
+            cursor: pointer;
+            user-select: none;
+            display: inline-flex;
+            align-items: center;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        
+        .folder-toggle:hover {
+            background-color: rgba(241, 245, 249, 0.7);
+        }
+        
+        .folder-toggle .folder-icon {
+            margin-right: 5px;
+            font-size: 14px;
+            transition: transform 0.2s;
+        }
+        
+        .folder-toggle.collapsed .folder-icon {
+            transform: rotate(-90deg);
+        }
+        
+        .sub-file-list {
+            overflow: hidden;
+            transition: height 0.2s;
+        }
+        
+        .sub-file-list.collapsed {
+            height: 0 !important;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        
         .form-label {
             font-weight: 500;
             color: #334155;
@@ -401,6 +436,101 @@
             .product-subtitle {
                 font-size: 14px;
             }
+        }
+
+        /* 添加文件夹折叠/展开样式 */
+        .folder, .file {
+            padding: 10px;
+            margin: 3px 0;
+            cursor: pointer;
+            position: relative;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .folder-content {
+            margin-left: 20px;
+            border-left: 1px solid rgba(203, 213, 225, 0.5);
+            padding-left: 10px;
+            display: block;
+        }
+
+        /* 修改文件夹和文件的图标与文本对齐 */
+        .folder > .folder-header {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* 修改文件夹箭头图标位置 */
+        .folder > .folder-header::before {
+            content: "▶";
+            font-size: 0.8em;
+            color: #64748b;
+            transition: transform 0.2s;
+            min-width: 12px;
+            order: 1;
+            display: inline-block;
+        }
+
+        /* 修改文件夹图标位置 */
+        .folder > .folder-header::after {
+            content: "📁";
+            order: 0; /* 放到最前面 */
+            margin-right: 5px;
+        }
+
+        .folder.open > .folder-header::after {
+            content: "📂";
+        }
+
+        .folder.open > .folder-header::before {
+            transform: rotate(90deg);
+        }
+
+        .folder > .folder-content {
+            display: none;
+        }
+
+        .folder.open > .folder-content {
+            display: block;
+            animation: slideDown 0.2s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 文件夹名称位置 */
+        .folder-name {
+            order: 2;
+            flex: 1;
+            font-weight: 500;
+            color: #334155;
+        }
+
+        /* 文件图标和名称对齐 */
+        .file {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .file::before {
+            content: "📄";
+            min-width: 20px;
+        }
+
+        /* 优化文件和文件夹的悬停效果 */
+        .folder:hover, .file:hover {
+            background-color: rgba(241, 245, 249, 0.7);
+            transform: translateX(2px);
+        }
+
+        .file-name {
+            flex: 1;
+            color: #475569;
         }
     </style>
 </head>
@@ -1134,7 +1264,38 @@
                     
                     const subDirHeader = document.createElement('div');
                     subDirHeader.className = 'sub-directory-header';
-                    subDirHeader.innerHTML = `<span class="folder-name">📁 ${name}</span>`;
+                    
+                    // 创建可折叠的文件夹标题
+                    const folderToggle = document.createElement('div');
+                    folderToggle.className = 'folder-toggle';
+                    folderToggle.innerHTML = `<span class="folder-icon">▼</span> <span class="folder-name">${name}</span>`;
+                    
+                    // 添加点击事件处理折叠/展开
+                    folderToggle.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const subFileList = subDirElement.querySelector('.sub-file-list');
+                        
+                        if (subFileList.classList.contains('collapsed')) {
+                            // 展开文件夹
+                            subFileList.classList.remove('collapsed');
+                            folderToggle.classList.remove('collapsed');
+                            // 存储原始高度
+                            const height = subFileList.scrollHeight;
+                            subFileList.style.height = `${height}px`;
+                        } else {
+                            // 折叠文件夹
+                            const height = subFileList.scrollHeight;
+                            subFileList.style.height = `${height}px`;
+                            
+                            // 触发重绘
+                            setTimeout(() => {
+                                subFileList.classList.add('collapsed');
+                                folderToggle.classList.add('collapsed');
+                            }, 10);
+                        }
+                    });
+                    
+                    subDirHeader.appendChild(folderToggle);
                     subDirElement.appendChild(subDirHeader);
                     
                     const subFileList = document.createElement('div');
@@ -1674,6 +1835,9 @@
             const modal = new bootstrap.Modal(document.getElementById('folderBrowserModal'));
             modal.show();
             
+            // 添加文件夹状态管理
+            const folderStates = new Map(); // 用于存储文件夹的折叠状态
+            
             // 确保模态框关闭时清理背景
             document.getElementById('folderBrowserModal').addEventListener('hidden.bs.modal', function () {
                 // 移除可能残留的模态框背景
@@ -1685,6 +1849,76 @@
                 document.body.style.overflow = '';
                 document.body.style.paddingRight = '';
             });
+            
+            // 添加文件夹折叠/展开处理函数
+            function handleFolderClick(folderDiv, folderPath) {
+                folderDiv.classList.toggle('open');
+                // 保存文件夹的状态
+                folderStates.set(folderPath, folderDiv.classList.contains('open'));
+            }
+            
+            // 创建文件夹元素的函数
+            function createFolderElement(name, fullPath, level) {
+                const folderDiv = document.createElement('div');
+                folderDiv.className = 'folder';
+                
+                // 从存储的状态中恢复折叠状态，如果没有存储状态则默认打开
+                if (folderStates.has(fullPath)) {
+                    if (folderStates.get(fullPath)) {
+                        folderDiv.classList.add('open');
+                    }
+                } else {
+                    folderDiv.classList.add('open'); // 默认打开状态
+                }
+
+                const folderHeader = document.createElement('div');
+                folderHeader.className = 'folder-header';
+                folderHeader.style.paddingLeft = `${level * 20}px`;
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'folder-name';
+                nameSpan.textContent = name;
+                folderHeader.appendChild(nameSpan);
+
+                folderDiv.appendChild(folderHeader);
+
+                folderHeader.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleFolderClick(folderDiv, fullPath);
+                });
+
+                return folderDiv;
+            }
+            
+            // 显示文件系统结构的函数
+            function updateFileStructure(parentElement, structure, parentPath, level) {
+                // 处理文件夹
+                Object.entries(structure)
+                    .filter(([name, content]) => typeof content === 'object')
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .forEach(([name, content]) => {
+                        const fullPath = parentPath ? `${parentPath}/${name}` : name;
+                        
+                        const folderDiv = createFolderElement(name, fullPath, level);
+                        const contentDiv = document.createElement('div');
+                        contentDiv.className = 'folder-content';
+                        
+                        updateFileStructure(contentDiv, content, fullPath, level + 1);
+                        
+                        folderDiv.appendChild(contentDiv);
+                        parentElement.appendChild(folderDiv);
+                    });
+
+                // 处理文件
+                Object.entries(structure)
+                    .filter(([name, content]) => content === true)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .forEach(([name]) => {
+                        const fullPath = parentPath ? `${parentPath}/${name}` : name;
+                        const fileDiv = createFileElement(name, fullPath, level);
+                        parentElement.appendChild(fileDiv);
+                    });
+            }
         }
 
         // 添加迭代配置相关功能
@@ -1985,96 +2219,34 @@
             window.loadConfigTasksList = loadConfigTasksList;
             window.addConfigInputDir = addConfigInputDir;
         }
-        
-        // 修改showFolderBrowser函数，使其可以被不同的面板共用
-        function showFolderBrowser(data, inputPathElement, addBtnElement) {
-            const currentFolderPath = document.getElementById('currentFolderPath');
-            const folderList = document.getElementById('folderList');
-            const selectCurrentFolder = document.getElementById('selectCurrentFolder');
-            
-            // 设置当前路径
-            currentFolderPath.value = data.current_path;
-            
-            // 清空文件夹列表
-            folderList.innerHTML = '';
-            
-            // 添加文件夹到列表
-            data.directories.forEach(dir => {
-                const item = document.createElement('button');
-                item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+
+        // 添加文件元素创建函数
+        function createFileElement(name, fullPath, level) {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file';
+            fileDiv.style.paddingLeft = `${level * 20}px`;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'file-name';
+            nameSpan.textContent = name;
+            fileDiv.appendChild(nameSpan);
+
+            fileDiv.addEventListener('click', () => {
+                // 移除其他文件的active状态
+                document.querySelectorAll('.file').forEach(f => f.classList.remove('active'));
+                fileDiv.classList.add('active');
                 
-                const nameSpan = document.createElement('span');
-                if (dir.isParent) {
-                    nameSpan.innerHTML = `<i class="bi bi-arrow-up-circle"></i> ${dir.name}`;
-                } else {
-                    nameSpan.innerHTML = `<i class="bi bi-folder"></i> ${dir.name}`;
-                }
-                
-                item.appendChild(nameSpan);
-                
-                // 点击文件夹导航到该文件夹
-                item.addEventListener('click', async () => {
-                    try {
-                        const response = await fetch(`/api/browse-folders?path=${encodeURIComponent(dir.path)}`);
-                        if (response.ok) {
-                            const newData = await response.json();
-                            if (newData.success) {
-                                showFolderBrowser(newData, inputPathElement, addBtnElement);
-                            } else {
-                                appendToTerminal(`[警告] 浏览文件夹失败: ${newData.error || '未知错误'}\n`);
-                            }
-                        } else {
-                            appendToTerminal(`[错误] 浏览文件夹请求失败: ${response.statusText}\n`);
-                        }
-                    } catch (error) {
-                        appendToTerminal(`[错误] 浏览文件夹出错: ${error.message}\n`);
-                    }
-                });
-                
-                folderList.appendChild(item);
+                // 处理文件选择
+                handleFileSelect(fullPath);
             });
             
-            // 选择当前文件夹按钮点击事件
-            selectCurrentFolder.onclick = async () => {
-                try {
-                    const response = await fetch(`/api/browse-folders?path=${encodeURIComponent(currentFolderPath.value)}&select=true`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.success && data.path) {
-                            // 关闭模态框
-                            const modal = bootstrap.Modal.getInstance(document.getElementById('folderBrowserModal'));
-                            modal.hide();
-                            
-                            // 设置选择的路径
-                            inputPathElement.value = data.path;
-                            // 自动添加选择的路径
-                            addBtnElement.click();
-                        } else {
-                            appendToTerminal(`[警告] 选择文件夹失败: ${data.error || '未知错误'}\n`);
-                        }
-                    } else {
-                        appendToTerminal(`[错误] 选择文件夹请求失败: ${response.statusText}\n`);
-                    }
-                } catch (error) {
-                    appendToTerminal(`[错误] 选择文件夹出错: ${error.message}\n`);
-                }
-            };
-            
-            // 显示模态框
-            const modal = new bootstrap.Modal(document.getElementById('folderBrowserModal'));
-            modal.show();
-            
-            // 确保模态框关闭时清理背景
-            document.getElementById('folderBrowserModal').addEventListener('hidden.bs.modal', function () {
-                // 移除可能残留的模态框背景
-                const modalBackdrops = document.querySelectorAll('.modal-backdrop');
-                modalBackdrops.forEach(backdrop => {
-                    backdrop.remove();
-                });
-                document.body.classList.remove('modal-open');
-                document.body.style.overflow = '';
-                document.body.style.paddingRight = '';
-            });
+            return fileDiv;
+        }
+
+        // 文件选择处理函数
+        function handleFileSelect(filePath) {
+            // 设置选择的路径到输入框
+            document.getElementById('folderPath').value = filePath;
         }
     </script>
 </body>
