@@ -383,7 +383,7 @@
             padding: 16px;
             font-family: 'Menlo', 'Monaco', monospace;
             line-height: 1.6;
-            max-height: 500px;
+            max-height: 80vh; /* 改为视口高度的80% */
             overflow-y: auto;
         }
         
@@ -531,6 +531,24 @@
         .file-name {
             flex: 1;
             color: #475569;
+        }
+
+        /* 添加自定义大屏幕模态框样式 */
+        @media (min-width: 1200px) {
+            .modal-xl {
+                max-width: 90%;
+                max-height: 90vh; /* 添加最大高度 */
+            }
+            
+            /* 确保模态框可以充分利用屏幕高度 */
+            #fileViewerModal .modal-content {
+                max-height: 90vh;
+            }
+            
+            #fileViewerModal .modal-body {
+                max-height: calc(90vh - 60px); /* 减去header的高度 */
+                overflow: hidden;
+            }
         }
     </style>
 </head>
@@ -706,7 +724,7 @@
         
         <!-- 文件查看器模态框 -->
         <div class="modal fade" id="fileViewerModal" tabindex="-1">
-            <div class="modal-dialog modal-lg">
+            <div class="modal-dialog modal-xl">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title" id="fileViewerTitle">文件查看器</h5>
