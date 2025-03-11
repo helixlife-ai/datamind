@@ -34,8 +34,8 @@ class ComponentManager:
         self.components_dir = self.artifacts_dir / "components"
         self.components_dir.mkdir(exist_ok=True)
         
-        # 组件元数据索引文件路径
-        self.component_index_path = self.artifacts_dir / "component_index.json"
+        # 状态文件路径
+        self.status_path = self.artifacts_dir / "status.json"
         
     def get_next_component_id(self) -> int:
         """获取下一个组件编号
@@ -43,164 +43,31 @@ class ComponentManager:
         Returns:
             int: 下一个组件编号，从1开始
         """
-        if not self.components_dir.exists():
-            self.components_dir.mkdir(exist_ok=True)
+        if not self.status_path.exists():
             return 1
             
-        # 从文件名提取组件编号
-        component_nums = []
-        for comp_file in self.components_dir.glob("component_*.html"):
-            try:
-                # 从component_1.html, component_2.html等文件名中提取数字
-                num_str = comp_file.stem.split('_')[-1]
-                if num_str.isdigit():
-                    component_nums.append(int(num_str))
-            except (ValueError, IndexError):
-                self.logger.warning(f"跳过无效的组件文件名: {comp_file.name}")
+        try:
+            with open(self.status_path, "r", encoding="utf-8") as f:
+                status_info = json.load(f)
                 
-        return max(component_nums, default=0) + 1
-    
-    def get_component_version(self, component_id: str) -> int:
-        """获取组件的下一个版本号
-        
-        Args:
-            component_id: 组件ID
+            components = status_info.get("components", [])
+            component_nums = []
             
-        Returns:
-            int: 下一个版本号
-        """
-        component_dir = self.components_dir / component_id
-        if not component_dir.exists():
-            component_dir.mkdir(exist_ok=True, parents=True)
+            for component in components:
+                try:
+                    # 从组件ID中提取数字
+                    comp_id = component.get("id", "")
+                    if comp_id.startswith("component_"):
+                        num_str = comp_id.split('_')[-1]
+                        if num_str.isdigit():
+                            component_nums.append(int(num_str))
+                except (ValueError, IndexError):
+                    self.logger.warning(f"跳过无效的组件ID: {component.get('id', '')}")
+                    
+            return max(component_nums, default=0) + 1
+        except Exception as e:
+            self.logger.error(f"从status.json获取组件编号失败: {str(e)}")
             return 1
-            
-        # 查找现有版本
-        existing_versions = []
-        for version_file in component_dir.glob("v*.html"):
-            try:
-                version_str = version_file.stem[1:]  # 去掉v前缀
-                if version_str.isdigit():
-                    existing_versions.append(int(version_str))
-            except (ValueError, IndexError):
-                self.logger.warning(f"跳过无效的组件版本文件: {version_file.name}")
-                
-        return max(existing_versions, default=0) + 1
-    
-    def save_component_version(self, component_id: str, component_html: str, query: str) -> dict:
-        """保存组件的新版本
-        
-        Args:
-            component_id: 组件ID
-            component_html: 组件HTML内容
-            query: 生成组件的查询
-            
-        Returns:
-            dict: 组件元数据
-        """
-        # 确保组件目录存在
-        component_dir = self.components_dir / component_id
-        component_dir.mkdir(exist_ok=True, parents=True)
-        
-        # 获取下一个版本号
-        version = self.get_component_version(component_id)
-        
-        # 保存组件HTML
-        version_file = component_dir / f"v{version}.html"
-        with open(version_file, "w", encoding="utf-8") as f:
-            f.write(component_html)
-            
-        # 同时保存最新版本
-        latest_file = self.components_dir / f"{component_id}.html"
-        with open(latest_file, "w", encoding="utf-8") as f:
-            f.write(component_html)
-            
-        # 更新元数据
-        timestamp = datetime.now().isoformat()
-        metadata = {
-            "id": component_id,
-            "version": version,
-            "created_at": timestamp,
-            "query": query,
-            "file_path": str(version_file.relative_to(self.artifacts_dir)),
-            "latest_path": str(latest_file.relative_to(self.artifacts_dir))
-        }
-        
-        # 保存元数据到组件目录
-        metadata_file = component_dir / "metadata.json"
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2)
-            
-        # 更新组件索引
-        self.update_component_metadata_index()
-        
-        return metadata
-    
-    def update_component_metadata_index(self):
-        """更新组件元数据索引文件"""
-        all_metadata = []
-        
-        # 收集所有组件的元数据
-        for metadata_file in self.components_dir.glob("*/metadata.json"):
-            try:
-                with open(metadata_file, "r", encoding="utf-8") as f:
-                    metadata = json.load(f)
-                    all_metadata.append(metadata)
-            except Exception as e:
-                self.logger.error(f"读取组件元数据失败: {metadata_file}, 错误: {str(e)}")
-                
-        # 按创建时间排序
-        all_metadata.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-        
-        # 保存索引文件
-        with open(self.component_index_path, "w", encoding="utf-8") as f:
-            json.dump(all_metadata, f, indent=2)
-    
-    def get_component_relative_url(self, path_str: str) -> str:
-        """获取组件的相对URL路径
-        
-        Args:
-            path_str: 组件文件路径
-            
-        Returns:
-            str: 相对URL路径
-        """
-        # 将路径转换为相对于artifacts目录的URL格式
-        path = Path(path_str)
-        if path.is_absolute():
-            try:
-                path = path.relative_to(self.artifacts_dir)
-            except ValueError:
-                # 如果不是相对于artifacts_dir的路径，保持原样
-                pass
-                
-        # 转换为URL格式（使用正斜杠）
-        url_path = str(path).replace("\\", "/")
-        
-        # 确保以/开头
-        if not url_path.startswith("/"):
-            url_path = "/" + url_path
-            
-        return url_path
-    
-    def get_component_paths(self, component_id: str) -> Dict[str, str]:
-        """获取组件的各种路径
-        
-        Args:
-            component_id: 组件ID
-            
-        Returns:
-            Dict[str, str]: 包含组件各种路径的字典
-        """
-        component_dir = self.components_dir / component_id
-        latest_file = self.components_dir / f"{component_id}.html"
-        metadata_file = component_dir / "metadata.json"
-        
-        return {
-            "dir": str(component_dir),
-            "latest": str(latest_file),
-            "metadata": str(metadata_file),
-            "url": self.get_component_relative_url(str(latest_file.relative_to(self.artifacts_dir)))
-        }
     
     def get_component_metadata(self, component_id: str) -> Optional[Dict]:
         """获取组件的元数据
@@ -211,15 +78,23 @@ class ComponentManager:
         Returns:
             Optional[Dict]: 组件元数据，如果不存在则返回None
         """
-        metadata_path = self.components_dir / component_id / "metadata.json"
-        if not metadata_path.exists():
+        if not self.status_path.exists():
             return None
             
         try:
-            with open(metadata_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            with open(self.status_path, "r", encoding="utf-8") as f:
+                status_info = json.load(f)
+                
+            components = status_info.get("components", [])
+            
+            # 查找匹配的组件
+            for component in components:
+                if component.get("id") == component_id:
+                    return component
+                    
+            return None
         except Exception as e:
-            self.logger.error(f"读取组件元数据失败: {metadata_path}, 错误: {str(e)}")
+            self.logger.error(f"从status.json获取组件元数据失败: {str(e)}")
             return None
     
     def get_all_components_metadata(self) -> List[Dict]:
@@ -228,14 +103,16 @@ class ComponentManager:
         Returns:
             List[Dict]: 所有组件的元数据列表
         """
-        if not self.component_index_path.exists():
+        if not self.status_path.exists():
             return []
             
         try:
-            with open(self.component_index_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            with open(self.status_path, "r", encoding="utf-8") as f:
+                status_info = json.load(f)
+                
+            return status_info.get("components", [])
         except Exception as e:
-            self.logger.error(f"读取组件索引失败: {self.component_index_path}, 错误: {str(e)}")
+            self.logger.error(f"从status.json获取所有组件元数据失败: {str(e)}")
             return []
     
     def load_component_for_integration(self, component_id: str) -> Dict:
@@ -312,7 +189,7 @@ class ComponentManager:
             str: 更新后的工件HTML
         """
         # 获取组件的相对URL
-        component_url = self.get_component_relative_url(component_path)
+        component_url = component_path
         
         # 创建组件引用代码
         component_id = component_info.get("id", "unknown")
@@ -1380,7 +1257,7 @@ HTML框架：
                 raise ValueError("生成内容为空")
             
             # 提取最终的HTML内容和组件信息
-            component_result = self._extract_component_info(full_response)
+            component_result = self.component_manager.extract_component_info(full_response)
             
             if not component_result or not component_result.get("html"):
                 self.logger.warning("无法从响应中提取有效的组件HTML内容，将生成错误页面")
@@ -1409,20 +1286,10 @@ HTML框架：
             
             component_path = components_dir / f"{component_id}.html"
             
-            # 检查组件是否已存在（如果存在，保存为新版本）
-            if component_path.exists():
-                # 保存组件版本历史
-                self._save_component_version(component_id, component_html, query)
-                self.logger.info(f"组件 {component_id} 已存在，保存为新版本")
-            
             # 保存/更新组件文件
             component_path.write_text(component_html, encoding="utf-8")
             
-            # 新增：创建组件元数据目录并保存组件元数据JSON
-            metadata_dir = self.artifacts_dir / "component_metadata"
-            metadata_dir.mkdir(exist_ok=True)
-            
-            # 准备更完整的组件元数据
+            # 准备组件元数据
             component_metadata = {
                 "id": component_id,
                 "title": component_info.get("title", f"组件 {component_number}"),
@@ -1436,7 +1303,7 @@ HTML框架：
                 "component_url": f"components/{component_id}.html",  # 明确设置用于iframe的URL
                 "status": "active",
                 "component_number": component_number,
-                "version": 1 if not component_path.exists() else self._get_component_version(component_id) - 1,
+                "version": 1,
                 "dependencies": [],
                 "tags": []
             }
@@ -1449,12 +1316,26 @@ HTML框架：
                 component_metadata["mount_point"] = mount_id
                 self.logger.info(f"修正后的挂载点: {mount_id}")
             
-            # 保存组件元数据
-            metadata_path = metadata_dir / f"{component_id}.json"
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                json.dump(component_metadata, f, ensure_ascii=False, indent=2)
+            # 读取或创建组件元数据文件
+            metadata_file = components_dir / "component_metadata.json"
+            all_components_metadata = {}
             
-            self.logger.info(f"已保存组件元数据: {metadata_path}")
+            if metadata_file.exists():
+                try:
+                    with open(metadata_file, "r", encoding="utf-8") as f:
+                        all_components_metadata = json.load(f)
+                except json.JSONDecodeError:
+                    self.logger.warning(f"无法解析组件元数据文件，将创建新文件")
+                    all_components_metadata = {}
+            
+            # 更新元数据字典
+            all_components_metadata[component_id] = component_metadata
+            
+            # 保存更新后的元数据文件
+            with open(metadata_file, "w", encoding="utf-8") as f:
+                json.dump(all_components_metadata, f, ensure_ascii=False, indent=2)
+                
+            self.logger.info(f"已更新组件元数据文件: {metadata_file}")
             
             # 保存迭代版本HTML文件
             output_path = output_dir / f"{artifact_name}.html"
@@ -1462,9 +1343,9 @@ HTML框架：
             
             # 更新artifact HTML，添加新组件的链接
             # 注意：我们不再更新scaffold.html，只更新artifact.html
-            updated_artifact = self._update_artifact_with_component(
+            updated_artifact = self.component_manager.update_artifact_with_component(
                 artifact_html,
-                f"components/{component_id}.html",  # 使用相对路径，方便在HTML中引用
+                self.artifacts_dir / f"components/{component_id}.html",  # 使用相对路径，方便在HTML中引用
                 component_metadata  # 使用完整元数据替代简单的component_info
             )
             
@@ -1526,26 +1407,6 @@ HTML框架：
                 
             component_info["iteration"] = iteration  # 添加关联的迭代编号
             
-            # 检查组件是否已存在于status.json中
-            existing_component_index = None
-            for i, comp in enumerate(status_info.get("components", [])):
-                if comp.get("id") == component_id:
-                    existing_component_index = i
-                    break
-            
-            if existing_component_index is not None:
-                # 更新现有组件信息
-                component_info["updated_at"] = datetime.now().isoformat()
-                # 使用已经计算好的组件版本
-                component_info["version"] = self._get_component_version(component_id)
-                status_info["components"][existing_component_index] = component_info
-                self.logger.info(f"更新组件信息: {component_id}, 版本: {component_info['version']}")
-            else:
-                # 添加新组件信息
-                component_info["version"] = self._get_component_version(component_id)  # 使用已计算的版本号
-                status_info["components"].append(component_info)
-                self.logger.info(f"添加新组件信息: {component_id}, 版本: {component_info['version']}")
-            
             status_info["updated_at"] = datetime.now().isoformat()
             status_info["latest_iteration"] = iteration
             
@@ -1586,9 +1447,6 @@ HTML框架：
             with open(output_dir / "generation_info.json", "w", encoding="utf-8") as f:
                 json.dump(generation_info, f, ensure_ascii=False, indent=2)
 
-            # 更新组件元数据索引
-            self._update_component_metadata_index()
-            
             return output_path
 
         except Exception as e:
@@ -1715,113 +1573,6 @@ COMPONENT_INFO-->
 """
         return prompt 
 
-    def _extract_component_info(self, full_response: str) -> Optional[Dict]:
-        """从完整响应中提取组件信息
-        
-        Args:
-            full_response: 完整的响应文本
-            
-        Returns:
-            Optional[Dict]: 组件信息，如果提取失败则返回None
-        """
-        return self.component_manager.extract_component_info(full_response)
-
-    def _update_artifact_with_component(self, 
-                          artifact_html: str, 
-                          component_path: str, 
-                          component_info: Dict) -> str:
-        """使用组件更新工件HTML
-        
-        Args:
-            artifact_html: 工件HTML内容
-            component_path: 组件路径
-            component_info: 组件信息
-            
-        Returns:
-            str: 更新后的工件HTML
-        """
-        return self.component_manager.update_artifact_with_component(
-            artifact_html, component_path, component_info)
-
-    def _get_component_version(self, component_id: str) -> int:
-        """获取组件的下一个版本号
-        
-        Args:
-            component_id: 组件ID
-            
-        Returns:
-            int: 下一个版本号
-        """
-        return self.component_manager.get_component_version(component_id)
-
-    def _save_component_version(self, component_id: str, component_html: str, query: str) -> dict:
-        """保存组件的新版本
-        
-        Args:
-            component_id: 组件ID
-            component_html: 组件HTML内容
-            query: 生成组件的查询
-            
-        Returns:
-            dict: 组件元数据
-        """
-        return self.component_manager.save_component_version(component_id, component_html, query)
-
-    def _update_component_metadata_index(self):
-        """更新组件元数据索引文件"""
-        self.component_manager.update_component_metadata_index()
-
-    def _get_component_relative_url(self, path_str: str) -> str:
-        """获取组件的相对URL路径
-        
-        Args:
-            path_str: 组件文件路径
-            
-        Returns:
-            str: 相对URL路径
-        """
-        return self.component_manager.get_component_relative_url(path_str)
-
-    def _get_component_paths(self, component_id: str) -> Dict[str, str]:
-        """获取组件的各种路径
-        
-        Args:
-            component_id: 组件ID
-            
-        Returns:
-            Dict[str, str]: 包含组件各种路径的字典
-        """
-        return self.component_manager.get_component_paths(component_id)
-
-    def get_component_metadata(self, component_id: str) -> Optional[Dict]:
-        """获取组件的元数据
-        
-        Args:
-            component_id: 组件ID
-            
-        Returns:
-            Optional[Dict]: 组件元数据，如果不存在则返回None
-        """
-        return self.component_manager.get_component_metadata(component_id)
-
-    def get_all_components_metadata(self) -> List[Dict]:
-        """获取所有组件的元数据
-        
-        Returns:
-            List[Dict]: 所有组件的元数据列表
-        """
-        return self.component_manager.get_all_components_metadata()
-
-    def load_component_for_integration(self, component_id: str) -> Dict:
-        """加载组件用于集成
-        
-        Args:
-            component_id: 组件ID
-            
-        Returns:
-            Dict: 包含组件信息的字典
-        """
-        return self.component_manager.load_component_for_integration(component_id)
 
     def _prepare_context_files(self, search_results_files: List[str], context_dir: Path, work_base: Path) -> Tuple[Dict[str, str], Dict[str, Dict]]:
         """准备上下文文件，复制文件并收集内容与元数据
