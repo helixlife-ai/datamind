@@ -435,6 +435,39 @@ HTML框架：
         try:
             if not self.reasoning_engine:
                 raise ValueError("未配置推理引擎，无法生成内容")
+                
+            # 检查status.json文件是否存在，不存在则创建
+            status_file = self.artifacts_dir / "status.json"
+            if not status_file.exists():
+                self.logger.info("status.json文件不存在，正在创建初始文件...")
+                
+                # 使用self.alchemy_id作为artifact_id
+                current_time = datetime.now()
+                iso_timestamp = current_time.isoformat()
+                
+                initial_status = {
+                    "artifact_id": self.alchemy_id,
+                    "created_at": iso_timestamp,
+                    "updated_at": iso_timestamp,
+                    "latest_iteration": 0,
+                    "original_query": query,
+                    "artifact": {
+                        "path": "artifact.html",
+                        "timestamp": iso_timestamp
+                    },
+                    "scaffold": {
+                        "path": "scaffold.html",
+                        "timestamp": iso_timestamp,
+                        "is_static": True
+                    },
+                    "components": [],
+                    "iterations": []
+                }
+                
+                status_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(status_file, 'w', encoding='utf-8') as f:
+                    json.dump(initial_status, f, ensure_ascii=False, indent=2)
+                self.logger.info(f"status.json文件已创建，artifact_id: {self.alchemy_id}")
 
             # 确定生成目录
             iteration = self._get_next_iteration()
