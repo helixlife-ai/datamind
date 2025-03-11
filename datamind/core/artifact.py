@@ -1543,13 +1543,13 @@ HTML框架：
    c. 挂载点（mount_point）：建议在框架HTML中的哪个位置挂载该组件，必须使用上述可用挂载点中的ID
 
 JSON格式示例：
-<!--COMPONENT_INFO
+<component_info>
 {{
   "title": "组件标题",
   "description": "组件详细描述",
   "mount_point": "建议的挂载点ID"
 }}
-COMPONENT_INFO-->
+</component_info>
 
 5. 确保组件内容：
    a. 专注于解决用户问题的一个特定方面
