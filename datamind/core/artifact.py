@@ -148,32 +148,6 @@ class ComponentManager:
             self.logger.error(f"加载组件失败: {component_id}, 错误: {str(e)}")
             raise
     
-    def extract_component_info(self, full_response: str) -> Optional[Dict]:
-        """从完整响应中提取组件信息
-        
-        Args:
-            full_response: 完整的响应文本
-            
-        Returns:
-            Optional[Dict]: 组件信息，如果提取失败则返回None
-        """
-        # 提取组件信息部分
-        component_info_match = re.search(r'<component_info>(.*?)</component_info>', 
-                                        full_response, re.DOTALL)
-        if not component_info_match:
-            self.logger.warning("未找到组件信息标记")
-            return None
-            
-        component_info_text = component_info_match.group(1).strip()
-        
-        # 尝试解析JSON
-        try:
-            component_info = json.loads(component_info_text)
-            return component_info
-        except json.JSONDecodeError as e:
-            self.logger.error(f"解析组件信息JSON失败: {str(e)}")
-            return None
-    
     def update_artifact_with_component(self, 
                           artifact_html: str, 
                           component_path: str, 
@@ -1079,6 +1053,173 @@ HTML框架：
 """
         return prompt 
 
+    def _build_component_info_prompt(self, 
+                                context_files: Dict[str, str], 
+                                query: str, 
+                                scaffold_html: str,
+                                existing_components: List[Dict],
+                                component_id: str) -> str:
+        """构建生成组件信息的提示词
+        
+        Args:
+            context_files: 文件内容字典，key为文件名，value为文件内容
+            query: 用户的查询内容
+            scaffold_html: 框架HTML内容
+            existing_components: 已有组件信息列表
+            component_id: 当前组件ID
+            
+        Returns:
+            str: 生成提示词
+        """
+        prompt = f"""[文件]
+"""
+        for filename, content in context_files.items():
+            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
+        
+        prompt += f"""[框架HTML]
+{scaffold_html}
+
+[已有组件]
+"""
+        
+        # 获取组件编号，用于显示给模型
+        component_number = component_id.split('_')[-1] if '_' in component_id else ""
+        
+        for component in existing_components:
+            prompt += f"""
+组件ID: {component.get('id')}
+标题: {component.get('title')}
+描述: {component.get('description')}
+挂载点: {component.get('mount_point')}
+"""
+        
+        # 提取可用的挂载点信息
+        try:
+            soup = BeautifulSoup(scaffold_html, 'html.parser')
+            mount_points = []
+            for element in soup.find_all(id=True):
+                mount_points.append({
+                    "id": element.get("id"),
+                    "type": element.name,
+                    "classes": " ".join(element.get("class", []))
+                })
+            
+            # 将挂载点信息转换为易读格式
+            mount_points_text = ""
+            for i, mp in enumerate(mount_points):
+                mount_points_text += f"""
+挂载点 {i+1}:
+- ID: {mp['id']}
+- 元素类型: {mp['type']}
+- CSS类: {mp['classes']}
+"""
+            
+            prompt += f"""
+[可用挂载点]
+{mount_points_text}
+"""
+        except Exception as e:
+            self.logger.warning(f"提取挂载点信息时发生错误: {str(e)}")
+        
+        prompt += f"""请为即将创建的组件提供组件信息。根据用户的问题和提供的文件内容，设计一个合适的组件信息。
+
+[用户的问题]
+{query}
+
+[当前组件ID]
+{component_id}
+
+[组件编号]
+{component_number}
+
+要求：
+1. 组件应专注于解决用户问题的一个特定方面
+2. 确保组件与已有组件不重复
+3. 组件应该提供以下信息：
+   a. 组件标题（title）：简短描述组件的主要内容
+   b. 组件描述（description）：详细说明组件的功能和内容
+   c. 挂载点（mount_point）：建议在框架HTML中的哪个位置挂载该组件，必须使用上述可用挂载点中的ID
+
+只需返回JSON格式的组件信息，不要添加其他解释，格式如下：
+
+```json
+{{
+  "title": "组件标题",
+  "description": "组件详细描述",
+  "html_type": "图表/表格/文本/交互式控件/其他类型",
+  "mount_point": "建议的挂载点ID",
+  "height": 合适的高度值(数字),
+  "width": "100%"
+}}
+```
+
+注意：
+- 确保JSON格式正确，所有键使用双引号
+- html_type应指明组件的主要内容类型，有助于后续生成
+"""
+        return prompt
+
+    def _build_component_html_from_info_prompt(self, 
+                                        context_files: Dict[str, str], 
+                                        query: str, 
+                                        scaffold_html: str,
+                                        component_info: Dict,
+                                        component_id: str) -> str:
+        """基于组件信息构建生成HTML内容的提示词
+        
+        Args:
+            context_files: 文件内容字典，key为文件名，value为文件内容
+            query: 用户的查询内容
+            scaffold_html: 框架HTML内容
+            component_info: 组件信息
+            component_id: 当前组件ID
+            
+        Returns:
+            str: 生成提示词
+        """
+        prompt = f"""[文件]
+"""
+        for filename, content in context_files.items():
+            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
+        
+        prompt += f"""[框架HTML]
+{scaffold_html}
+
+[组件信息]
+组件ID: {component_id}
+标题: {component_info.get('title', '未指定')}
+描述: {component_info.get('description', '未指定')}
+挂载点: {component_info.get('mount_point', '未指定')}
+组件类型: {component_info.get('html_type', '未指定')}
+建议高度: {component_info.get('height', 300)}
+建议宽度: {component_info.get('width', '100%')}
+
+[用户的问题]
+{query}
+
+请根据上述信息，生成一个完整的HTML组件。
+
+要求：
+1. 生成一个独立的HTML组件，实现上述组件信息中描述的功能
+2. 组件应该是一个完整的HTML页面，包含所有必要的样式和脚本
+3. 组件应该与框架HTML的样式保持一致
+4. 根据组件类型({component_info.get('html_type', '未指定')})提供合适的内容结构
+5. 确保组件内容：
+   a. 专注于解决用户问题的特定方面
+   b. 内容丰富、结构清晰
+   c. 如有必要，可以包含交互元素
+
+生成HTML时，请在HTML注释中包含组件信息，格式如下：
+<!-- 
+<component_info>
+{json.dumps(component_info, ensure_ascii=False, indent=2)}
+</component_info>
+-->
+
+请直接生成HTML代码，不要添加任何解释或说明文本。
+"""
+        return prompt
+
     async def _generate_component_html(self, 
                                  search_results_files: List[str], 
                                  output_name: str,
@@ -1183,8 +1324,9 @@ HTML框架：
             with open(work_base / "metadata.json", "w", encoding="utf-8") as f:
                 json.dump(metadata_info, f, ensure_ascii=False, indent=2)
 
-            # 构建组件HTML提示词
-            component_prompt = self._build_component_html_prompt(
+            # 第一步：生成组件信息 (component_info)
+            # 构建组件信息提示词
+            component_info_prompt = self._build_component_info_prompt(
                 context_contents, 
                 query, 
                 scaffold_html,
@@ -1192,18 +1334,110 @@ HTML框架：
                 component_id
             )
             
-            with open(process_dir / "component_prompt.md", "w", encoding="utf-8") as f:
-                f.write(component_prompt)
+            with open(process_dir / "component_info_prompt.md", "w", encoding="utf-8") as f:
+                f.write(component_info_prompt)
 
-            # 在添加新消息前清除历史对话记录
+            # 清除历史对话记录
             self.reasoning_engine.clear_history()
             
             # 添加用户消息
-            self.reasoning_engine.add_message("user", component_prompt)
+            self.reasoning_engine.add_message("user", component_info_prompt)
+            
+            # 收集生成的内容
+            info_response = ""
+            info_process_path = process_dir / "info_generation_process.txt"
+            
+            self.logger.info("第一步：生成组件信息...")
+            
+            async for chunk in self.reasoning_engine.get_stream_response(
+                temperature=0.7,
+                metadata={'stage': 'component_info_generation'}
+            ):
+                if chunk:
+                    info_response += chunk
+                    
+                    # 保存生成过程
+                    with info_process_path.open("a", encoding="utf-8") as f:
+                        f.write(chunk)
+                    
+                    # 显示流式输出内容
+                    self.print_stream(chunk)
+                    
+            if not info_response:
+                raise ValueError("组件信息生成为空")
+            
+            # 尝试解析JSON响应
+            component_info = None
+            try:
+                # 使用正则表达式来提取JSON内容
+                json_pattern = r'```(?:json)?\s*([\s\S]*?)```'
+                json_matches = re.findall(json_pattern, info_response)
+                
+                if json_matches:
+                    # 使用找到的第一个JSON匹配
+                    json_content = json_matches[0].strip()
+                    component_info = json.loads(json_content)
+                else:
+                    # 如果没有找到代码块，尝试直接解析整个响应
+                    # 清理响应文本，移除可能的markdown代码块标记
+                    cleaned_response = info_response.strip()
+                    if cleaned_response.startswith('```json'):
+                        cleaned_response = cleaned_response[7:]
+                    if cleaned_response.endswith('```'):
+                        cleaned_response = cleaned_response[:-3]
+                    
+                    # 尝试解析JSON
+                    component_info = json.loads(cleaned_response.strip())
+            
+            except Exception as e:
+                self.logger.error(f"解析组件信息JSON失败: {str(e)}")
+                # 创建默认组件信息
+                component_info = {
+                    "id": component_id,
+                    "title": f"组件 {component_number}",
+                    "description": f"基于查询'{query}'生成的组件",
+                    "mount_point": f"component_{component_number}",
+                    "html_type": "文本",
+                    "height": 300,
+                    "width": "100%"
+                }
+            
+            # 确保组件信息包含必要字段
+            if not component_info.get('title'):
+                component_info['title'] = f"组件 {component_number}"
+            if not component_info.get('description'):
+                component_info['description'] = f"基于查询'{query}'生成的组件"
+            if not component_info.get('mount_point'):
+                component_info['mount_point'] = f"component_{component_number}"
+            
+            # 保存组件信息
+            with open(process_dir / "component_info.json", "w", encoding="utf-8") as f:
+                json.dump(component_info, f, ensure_ascii=False, indent=2)
+                    
+            self.logger.info(f"组件信息生成成功: {component_info['title']}")
+            
+            # 第二步：基于组件信息生成组件HTML
+            # 构建组件HTML提示词
+            component_html_prompt = self._build_component_html_from_info_prompt(
+                context_contents, 
+                query, 
+                scaffold_html,
+                component_info,
+                component_id
+            )
+            
+            with open(process_dir / "component_html_prompt.md", "w", encoding="utf-8") as f:
+                f.write(component_html_prompt)
+
+            # 清除历史对话记录
+            self.reasoning_engine.clear_history()
+            
+            # 添加用户消息
+            self.reasoning_engine.add_message("user", component_html_prompt)
             
             # 收集生成的内容
             full_response = ""
-            process_path = process_dir / "generation_process.txt"
+            process_path = process_dir / "html_generation_process.txt"
             temp_html_path = process_dir / "temp_content.html"
             current_html_content = []  # 使用列表存储HTML片段
             
@@ -1211,9 +1445,11 @@ HTML框架：
             html_started = False
             in_html_block = False
             
+            self.logger.info("第二步：生成组件HTML内容...")
+            
             async for chunk in self.reasoning_engine.get_stream_response(
                 temperature=0.7,
-                metadata={'stage': 'component_generation'}
+                metadata={'stage': 'component_html_generation'}
             ):
                 if chunk:
                     full_response += chunk
@@ -1223,7 +1459,6 @@ HTML框架：
                         f.write(chunk)
                     
                     # 显示流式输出内容
-                    #self.logger.info(f"\r生成组件内容: {full_response}")
                     self.print_stream(chunk)
                     
                     # 尝试实时提取和更新HTML内容
@@ -1256,29 +1491,38 @@ HTML框架：
             if not full_response:
                 raise ValueError("生成内容为空")
             
-            # 提取最终的HTML内容和组件信息
-            component_result = self.component_manager.extract_component_info(full_response)
+            # 提取最终的HTML内容
+            component_html = self._extract_html_content(full_response)
             
-            if not component_result or not component_result.get("html"):
+            if not component_html:
                 self.logger.warning("无法从响应中提取有效的组件HTML内容，将生成错误页面")
                 component_html = self._generate_error_html(
                     "无法从AI响应中提取有效的组件HTML内容",
                     query
                 )
-                component_info = {
-                    "id": component_id,
-                    "title": f"组件 {component_number}",
-                    "description": "生成失败",
-                    "mount_point": f"component_{component_number}"
-                }
-            else:
-                component_html = component_result["html"]
-                component_info = {
-                    "id": component_id,
-                    "title": component_result.get("title", f"组件 {component_number}"),
-                    "description": component_result.get("description", ""),
-                    "mount_point": component_result.get("mount_point", f"component_{component_number}")
-                }
+            
+            # 确保HTML中包含组件信息
+            if "component_info" not in component_html:
+                # 将组件信息添加到HTML中
+                component_info_json = json.dumps(component_info, ensure_ascii=False, indent=2)
+                component_info_html = f"""<!-- 
+<component_info>
+{component_info_json}
+</component_info>
+-->"""
+                
+                # 检查HTML是否有头部
+                if "<!DOCTYPE html>" in component_html:
+                    # 在DOCTYPE后添加组件信息
+                    doctype_end = component_html.find("<!DOCTYPE html>") + len("<!DOCTYPE html>")
+                    component_html = component_html[:doctype_end] + "\n" + component_info_html + component_html[doctype_end:]
+                elif "<html" in component_html:
+                    # 在html标签前添加组件信息
+                    html_start = component_html.find("<html")
+                    component_html = component_html[:html_start] + component_info_html + "\n" + component_html[html_start:]
+                else:
+                    # 添加到开头
+                    component_html = component_info_html + "\n" + component_html
             
             # 保存组件HTML文件
             components_dir = self.artifacts_dir / "components"
@@ -1305,7 +1549,9 @@ HTML框架：
                 "component_number": component_number,
                 "version": 1,
                 "dependencies": [],
-                "tags": []
+                "tags": [],
+                "height": component_info.get("height", 300),
+                "width": component_info.get("width", "100%")
             }
             
             # 额外检查并修正mount_point，确保它是ID而不是路径
@@ -1345,7 +1591,7 @@ HTML框架：
             # 注意：我们不再更新scaffold.html，只更新artifact.html
             updated_artifact = self.component_manager.update_artifact_with_component(
                 artifact_html,
-                self.artifacts_dir / f"components/{component_id}.html",  # 使用相对路径，方便在HTML中引用
+                f"components/{component_id}.html",  # 使用相对路径，方便在HTML中引用
                 component_metadata  # 使用完整元数据替代简单的component_info
             )
             
@@ -1389,23 +1635,12 @@ HTML框架：
             artifact_path.write_text(updated_artifact, encoding="utf-8")
             self.logger.info(f"已更新主制品: {artifact_path}")
             
-            # 更新状态信息
-            component_info["path"] = f"components/{component_id}.html"
-            component_info["created_at"] = datetime.now().isoformat()
-            component_info["query"] = query
-            
-            # 确保使用正确的组件编号（从组件ID中提取）
-            try:
-                component_number_str = component_id.split('_')[-1]
-                if component_number_str.isdigit():
-                    component_info["component_number"] = int(component_number_str)
-                else:
-                    component_info["component_number"] = iteration
-            except Exception:
-                # 如果提取失败，回退到使用迭代号
-                component_info["component_number"] = iteration
+            # 更新状态信息文件中的组件列表
+            if "components" not in status_info:
+                status_info["components"] = []
                 
-            component_info["iteration"] = iteration  # 添加关联的迭代编号
+            # 添加新组件到组件列表
+            status_info["components"].append(component_metadata)
             
             status_info["updated_at"] = datetime.now().isoformat()
             status_info["latest_iteration"] = iteration
@@ -1452,127 +1687,7 @@ HTML框架：
         except Exception as e:
             self.logger.error(f"生成组件HTML时发生错误: {str(e)}")
             traceback.print_exc()
-            return None 
-
-    def _build_component_html_prompt(self, 
-                                context_files: Dict[str, str], 
-                                query: str, 
-                                scaffold_html: str,
-                                existing_components: List[Dict],
-                                component_id: str) -> str:
-        """构建组件HTML生成的提示词
-        
-        Args:
-            context_files: 文件内容字典，key为文件名，value为文件内容
-            query: 用户的查询内容
-            scaffold_html: 框架HTML内容
-            existing_components: 已有组件信息列表
-            component_id: 当前组件ID
-            
-        Returns:
-            str: 生成提示词
-        """
-        prompt = f"""[文件]
-"""
-        for filename, content in context_files.items():
-            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
-        
-        prompt += f"""[框架HTML]
-{scaffold_html}
-
-[已有组件]
-"""
-        
-        # 获取组件编号，用于显示给模型
-        component_number = component_id.split('_')[-1] if '_' in component_id else ""
-        
-        for component in existing_components:
-            prompt += f"""
-组件ID: {component.get('id')}
-标题: {component.get('title')}
-描述: {component.get('description')}
-挂载点: {component.get('mount_point')}
-"""
-        
-        # 提取可用的挂载点信息
-        try:
-            soup = BeautifulSoup(scaffold_html, 'html.parser')
-            mount_points = []
-            for element in soup.find_all(id=True):
-                mount_points.append({
-                    "id": element.get("id"),
-                    "type": element.name,
-                    "classes": " ".join(element.get("class", []))
-                })
-            
-            # 将挂载点信息转换为易读格式
-            mount_points_text = ""
-            for i, mp in enumerate(mount_points):
-                mount_points_text += f"""
-挂载点 {i+1}:
-- ID: {mp['id']}
-- 元素类型: {mp['type']}
-- CSS类: {mp['classes']}
-"""
-            
-            prompt += f"""
-[可用挂载点]
-{mount_points_text}
-"""
-        except Exception as e:
-            self.logger.warning(f"提取挂载点信息时发生错误: {str(e)}")
-        
-        prompt += f"""请根据用户的问题和上述信息，生成一个HTML组件，该组件将被挂载到框架HTML中。
-
-[用户的问题]
-{query}
-
-[当前组件ID]
-{component_id}
-
-[组件编号]
-{component_number}
-
-要求：
-1. 生成一个独立的HTML组件，专注于解决用户问题的一个特定方面
-2. 组件应该是一个完整的HTML页面，包含所有必要的样式和脚本
-3. 组件应该与框架HTML的样式保持一致
-4. 组件应该提供以下信息（使用JSON格式包装在HTML注释中）：
-   a. 组件标题（title）：简短描述组件的主要内容
-   b. 组件描述（description）：详细说明组件的功能和内容
-   c. 挂载点（mount_point）：建议在框架HTML中的哪个位置挂载该组件，必须使用上述可用挂载点中的ID
-
-JSON格式示例：
-<component_info>
-{{
-  "title": "组件标题",
-  "description": "组件详细描述",
-  "mount_point": "建议的挂载点ID"
-}}
-</component_info>
-
-5. 确保组件内容：
-   a. 专注于解决用户问题的一个特定方面
-   b. 与已有组件不重复
-   c. 内容丰富、结构清晰
-   d. 如有必要，可以包含交互元素
-
-重要说明：请将HTML代码放在单独的代码块中，不要在代码块内添加任何解释或说明文本。
-例如：
-
-```html
-<!DOCTYPE html>
-<html>
-...您的代码...
-</html>
-```
-
-请分两部分回复：
-1. 首先是对组件的说明
-2. 然后单独放置HTML代码块，确保代码块内只有纯HTML代码，不含任何额外说明
-"""
-        return prompt 
-
+            return None
 
     def _prepare_context_files(self, search_results_files: List[str], context_dir: Path, work_base: Path) -> Tuple[Dict[str, str], Dict[str, Dict]]:
         """准备上下文文件，复制文件并收集内容与元数据
