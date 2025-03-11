@@ -417,7 +417,30 @@
         </div>
         
         <div class="content-container">
-            <!-- 左侧：任务控制面板 -->
+            <!-- 左侧：文件浏览器 -->
+            <div class="col-md-3" style="padding: 0; height: 100%;">
+                <div class="card">
+                    <div class="card-header">文件浏览器</div>
+                    <div class="card-body p-0">
+                        <div class="file-browser" id="fileBrowser"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 中间：输出终端 -->
+            <div class="col-md-5" style="padding: 0; height: 100%;">
+                <div class="card">
+                    <div class="card-header">任务输出</div>
+                    <div class="card-body p-0">
+                        <div class="terminal" id="outputTerminal"></div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-sm btn-secondary" id="clearTerminal">清空输出</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧：任务控制面板 -->
             <div class="col-md-4" style="padding: 0; height: 100%;">
                 <div class="card">
                     <div class="card-header">
@@ -546,29 +569,6 @@
                                 </form>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 中间：输出终端 -->
-            <div class="col-md-5" style="padding: 0; height: 100%;">
-                <div class="card">
-                    <div class="card-header">任务输出</div>
-                    <div class="card-body p-0">
-                        <div class="terminal" id="outputTerminal"></div>
-                    </div>
-                    <div class="card-footer">
-                        <button class="btn btn-sm btn-secondary" id="clearTerminal">清空输出</button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 右侧：文件浏览器 -->
-            <div class="col-md-3" style="padding: 0; height: 100%;">
-                <div class="card">
-                    <div class="card-header">文件浏览器</div>
-                    <div class="card-body p-0">
-                        <div class="file-browser" id="fileBrowser"></div>
                     </div>
                 </div>
             </div>
