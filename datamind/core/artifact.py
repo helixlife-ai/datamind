@@ -163,8 +163,20 @@ class ComponentManager:
         Returns:
             str: 更新后的工件HTML
         """
-        # 获取组件的相对URL
-        component_url = component_path
+        # 获取组件的绝对URL路径，使用父类的alchemy_dir路径
+        # 检查是否已经是绝对路径
+        if not component_path.startswith('/') and not component_path.startswith('http'):
+            # 将相对路径转换为绝对路径
+            try:
+                # 获取artifacts_dir的父目录（即alchemy_dir）
+                alchemy_dir = str(self.artifacts_dir.parent)
+                component_url = f"file://{alchemy_dir}/{component_path}"
+                self.logger.info(f"组件路径已转换为绝对路径: {component_url}")
+            except Exception as e:
+                self.logger.warning(f"转换组件路径时出错: {str(e)}，将使用原始路径")
+                component_url = component_path
+        else:
+            component_url = component_path
         
         # 创建组件引用代码
         component_id = component_info.get("id", "unknown")
@@ -174,30 +186,54 @@ class ComponentManager:
         component_ref += f'title="{component_info.get("title", "组件")}">'
         component_ref += f'</iframe>\n</div>\n'
         
-        # 查找组件占位符
+        # 首先查找组件占位符
         placeholder_pattern = r'<!-- COMPONENT_PLACEHOLDER -->'
         if re.search(placeholder_pattern, artifact_html):
             # 替换第一个占位符
             updated_html = re.sub(placeholder_pattern, component_ref, artifact_html, count=1)
-        else:
-            # 如果没有占位符，添加到内容区域
-            content_pattern = r'(<div[^>]*class="[^"]*content[^"]*"[^>]*>)'
-            match = re.search(content_pattern, artifact_html)
+            return updated_html
+        
+        # 如果没有占位符，尝试从status.json读取容器class
+        container_class = "content"  # 默认值
+        try:
+            if self.status_path.exists():
+                with open(self.status_path, "r", encoding="utf-8") as f:
+                    status_info = json.load(f)
+                    if "container_class" in status_info and status_info["container_class"]:
+                        container_class = status_info["container_class"]
+                        self.logger.info(f"从status.json读取到容器class: {container_class}")
+        except Exception as e:
+            self.logger.warning(f"读取容器class时出错: {str(e)}，将使用默认值'content'")
+        
+        # 使用容器class查找插入位置
+        if container_class:
+            class_pattern = r'(<div[^>]*class="[^"]*' + re.escape(container_class) + r'[^"]*"[^>]*>)'
+            match = re.search(class_pattern, artifact_html)
             if match:
                 # 在内容区域开始标签后添加组件
                 pos = match.end()
                 updated_html = artifact_html[:pos] + '\n' + component_ref + artifact_html[pos:]
-            else:
-                # 如果找不到内容区域，添加到body
-                body_pattern = r'(<body[^>]*>)'
-                match = re.search(body_pattern, artifact_html)
-                if match:
-                    pos = match.end()
-                    updated_html = artifact_html[:pos] + '\n' + component_ref + artifact_html[pos:]
-                else:
-                    # 最后的选择：添加到HTML末尾
-                    updated_html = artifact_html + '\n' + component_ref
+                return updated_html
         
+        # 如果找不到指定的容器class，尝试找任何内容区域
+        content_pattern = r'(<div[^>]*class="[^"]*content[^"]*"[^>]*>)'
+        match = re.search(content_pattern, artifact_html)
+        if match:
+            # 在内容区域开始标签后添加组件
+            pos = match.end()
+            updated_html = artifact_html[:pos] + '\n' + component_ref + artifact_html[pos:]
+            return updated_html
+        
+        # 如果找不到内容区域，添加到body
+        body_pattern = r'(<body[^>]*>)'
+        match = re.search(body_pattern, artifact_html)
+        if match:
+            pos = match.end()
+            updated_html = artifact_html[:pos] + '\n' + component_ref + artifact_html[pos:]
+            return updated_html
+        
+        # 最后的选择：添加到HTML末尾
+        updated_html = artifact_html + '\n' + component_ref
         return updated_html
 
 class ArtifactGenerator:
@@ -680,6 +716,114 @@ class ArtifactGenerator:
         """
         return self.component_manager.get_next_component_id()
 
+    async def _analyze_component_container(self, scaffold_html: str) -> str:
+        """分析scaffold.html文件，找出最适合作为组件容器的标签的class值
+        
+        Args:
+            scaffold_html: scaffold.html的内容
+            
+        Returns:
+            str: 容器标签的class值，未找到则返回空字符串
+        """
+        try:
+            # 清除历史对话记录
+            self.reasoning_engine.clear_history()
+            
+            # 构建分析提示词
+            try:
+                analyze_prompt = format_prompt("artifact/analyze_container_prompt",
+                                             scaffold_html=scaffold_html)
+            except Exception as e:
+                self.logger.warning(f"获取分析提示词模板失败: {str(e)}，将使用默认提示词")
+                
+                # 直接构建默认的分析提示词
+                analyze_prompt = f"""
+请分析以下HTML代码，找出最适合作为组件容器的元素标签的class值。
+
+组件容器应该满足以下条件：
+1. 通常是一个div元素
+2. 通常具有类似'content'、'container'、'main'或'components'等class名称
+3. 通常位于HTML文档的主体部分
+4. 具有足够的空间容纳新的组件
+
+请仔细分析并只返回最合适的容器元素的class值。不要返回分析过程，只返回一个class名称。
+
+HTML代码：
+```html
+{scaffold_html}
+```
+
+请在<class></class>标签中返回最合适的容器class值。例如：<class>content</class>
+"""
+            
+            # 添加用户消息
+            self.reasoning_engine.add_message("user", analyze_prompt)
+            
+            # 收集分析结果
+            response = await self._collect_stream_response(
+                temperature=0.3,  # 使用较低的温度以获得更确定的分析
+                metadata={'stage': 'container_analysis'}
+            )
+            
+            if not response:
+                self.logger.warning("分析组件容器返回空响应")
+                return ""
+                
+            # 尝试从响应中提取class值
+            # 先尝试获取<class></class>标签中的内容
+            if "<class>" in response and "</class>" in response:
+                start_idx = response.find("<class>") + len("<class>")
+                end_idx = response.find("</class>")
+                if start_idx < end_idx:
+                    container_class = response[start_idx:end_idx].strip()
+                    self.logger.info(f"找到组件容器class: {container_class}")
+                    return container_class
+            
+            # 如果没有找到标签，尝试直接从文本中提取
+            # 查找类似"最合适的容器class是: xxx"这样的模式
+            class_patterns = [
+                r"最合适的容器class[\s是:]+['\"](.*?)['\"]",
+                r"容器class[\s是:]+['\"](.*?)['\"]", 
+                r"组件容器[\s是:]+['\"](.*?)['\"]",
+                r"class[\s值是:]+['\"](.*?)['\"]",
+                r"['\"](content|container|main|components?|wrapper)['\"]"
+            ]
+            
+            for pattern in class_patterns:
+                matches = re.search(pattern, response, re.IGNORECASE)
+                if matches:
+                    container_class = matches.group(1).strip()
+                    self.logger.info(f"通过模式匹配找到组件容器class: {container_class}")
+                    return container_class
+            
+            # 仍未找到，尝试使用BeautifulSoup分析HTML并寻找可能的容器元素
+            try:
+                soup = BeautifulSoup(scaffold_html, 'html.parser')
+                
+                # 查找可能的容器元素（按优先级排序）
+                container_candidates = [
+                    soup.find('div', class_=lambda c: c and ('content' in c or 'container' in c or 'main' in c or 'components' in c)),
+                    soup.find('main'),
+                    soup.find('div', id=lambda i: i and ('content' in i or 'container' in i or 'main' in i or 'components' in i)),
+                    soup.find('div', class_=True)  # 任何带class的div
+                ]
+                
+                for candidate in container_candidates:
+                    if candidate and candidate.get('class'):
+                        container_class = ' '.join(candidate['class'])
+                        self.logger.info(f"通过HTML分析找到组件容器class: {container_class}")
+                        return container_class
+            except Exception as e:
+                self.logger.warning(f"使用BeautifulSoup分析HTML时出错: {str(e)}")
+            
+            # 最后返回默认值
+            self.logger.warning("未能找到组件容器class，将使用默认值'content'")
+            return "content"
+            
+        except Exception as e:
+            self.logger.error(f"分析组件容器时出错: {str(e)}")
+            return ""  # 出错时返回空字符串
+
     async def _generate_scaffold_html(self, 
                                 search_results_files: List[str], 
                                 output_name: str,
@@ -777,6 +921,10 @@ class ArtifactGenerator:
             scaffold_path.write_text(scaffold_html, encoding="utf-8")
             self.logger.info(f"已保存框架HTML: {scaffold_path}")
             
+            # 分析scaffold.html，找出组件容器class
+            container_class = await self._analyze_component_container(scaffold_html)
+            self.logger.info(f"组件容器分析结果: class='{container_class}'")
+            
             # 同时创建artifact.html作为初始版本（后续会随组件添加而更新）
             artifact_path = self.artifacts_dir / "artifact.html"
             
@@ -872,6 +1020,9 @@ class ArtifactGenerator:
                     "components": [],
                     "iterations": []
                 }
+            
+            # 保存容器class到status.json
+            status_info["container_class"] = container_class
             
             # 确保iterations字段存在
             if "iterations" not in status_info:
