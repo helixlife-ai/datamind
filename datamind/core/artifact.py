@@ -16,6 +16,7 @@ import shutil
 import re
 from bs4 import BeautifulSoup
 from ..core.context_preparation import prepare_context_files, read_file_content
+from ..prompts import load_prompt, format_prompt
 
 class ComponentManager:
     """组件管理器类，负责处理所有与组件相关的操作"""
@@ -279,42 +280,10 @@ class ArtifactGenerator:
         Returns:
             str: 错误页面HTML内容
         """
-        return f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title} - 生成失败</title>
-    <style>
-        body {{
-            font-family: system-ui, -apple-system, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 20px;
-            background: #f5f5f5;
-        }}
-        .error-container {{
-            background: white;
-            border-left: 5px solid #dc3545;
-            padding: 20px;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        h1 {{
-            color: #dc3545;
-            margin-top: 0;
-        }}
-    </style>
-</head>
-<body>
-    <div class="error-container">
-        <h1>内容生成失败</h1>
-        <p>{error_message}</p>
-        <p>请检查生成日志获取详细信息。</p>
-    </div>
-</body>
-</html>"""
+        # 加载错误HTML模板并替换占位符
+        return format_prompt("artifact/error_html_template", 
+                            error_message=error_message,
+                            title=title)
 
     def _extract_html_content(self, full_response: str) -> Optional[str]:
         """从响应中提取HTML内容
@@ -525,42 +494,17 @@ class ArtifactGenerator:
             
             # 根据迭代次数调整提示词
             if iteration == 1:
-                # 构建类似于原来的提示词，但保持简单并加入组件编号信息
-                prompt = f"""请分析以下HTML框架和原始查询，提出一个进阶的查询语句，目的是生成在这个HTML框架中的第一个组件(组件1)。
-
-原始查询：
-{original_query}
-
-HTML框架：
-{html_content}
-
-请思考：
-1. 用户的原始查询中最重要的方面是什么？
-2. 作为组件1，应该解决什么具体问题？
-3. 该组件需要包含哪些关键信息或功能？
-
-请直接输出进阶查询语句，不要包含其他解释内容。
-"""
+                # 加载第一个组件的优化建议提示词模板
+                prompt = format_prompt("artifact/first_component_query_prompt",
+                                      original_query=original_query,
+                                      html_content=html_content)
             else:
-                # 后续迭代的提示词，加入下一个组件编号信息
-                prompt = f"""请分析以下HTML框架、已有组件信息和原始查询，提出一个进阶的查询语句，目的是生成在这个HTML框架中的下一个组件(组件{next_component_number})。
-
-原始查询：
-{original_query}
-
-已有组件信息：
-{components_text}
-
-HTML框架：
-{html_content}
-
-请思考：
-1. 用户的原始需求中哪些方面尚未被现有组件满足？
-2. 作为组件{next_component_number}，应该解决什么具体问题？
-3. 该组件如何与现有组件形成互补？
-
-请直接输出进阶查询语句，不要包含其他解释内容。
-"""
+                # 加载后续组件的优化建议提示词模板
+                prompt = format_prompt("artifact/optimization_query_prompt",
+                                      original_query=original_query,
+                                      components_text=components_text,
+                                      html_content=html_content,
+                                      next_component_number=next_component_number)
             
             # 在添加新消息前清除历史对话记录
             self.reasoning_engine.clear_history()
@@ -1007,51 +951,15 @@ HTML框架：
         Returns:
             str: 生成提示词
         """
-        prompt = f"""[文件]
-"""
+        # 将文件内容格式化为字符串
+        context_files_str = ""
         for filename, content in context_files.items():
-            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
+            context_files_str += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
         
-        prompt += f"""目的是满足用户查询背后的意图。从上述文件中提炼相关信息，生成一个合适的框架型HTML页面。因为后续的迭代会不断添加组件，所以框架必须能够支持无限扩展组件的结构框架。
-
-[用户的查询]
-{query}
-
-要求：
-1. 生成一个高度可扩展的框架型HTML页面，包含以下元素：
-   a. 页面标题和基本信息
-   b. 动态导航区域，能随组件增加自动扩展
-   c. 弹性主内容区域，能容纳无限组件（使用id标识的div容器）
-   d. 组件目录或索引区域
-   e. 页脚信息
-
-2. 框架页面应该包含：
-   a. 响应式布局，适应不同设备和任意数量的组件
-   b. 清晰的视觉层次结构
-   c. 统一的样式主题和组件样式继承系统
-   d. 使用锚点链接实现简单导航功能
-   e. 静态展示组件的区域划分
-
-3. 无限扩展的组件系统：
-   a. 预设多个组件容器的HTML结构
-   b. 组件容器应有统一的样式类和结构
-   c. 组件区域应有明确的视觉边界和一致的样式
-
-4. CSS框架选择：
-   a. 请使用知名的CSS框架如Tailwind CSS、Bootstrap或Bulma
-   b. 直接通过CDN引入CSS框架
-   c. 利用框架提供的组件和样式类设计界面
-   d. 添加必要的自定义CSS以满足特定需求
-
-5. 确保代码质量：
-   a. 使用语义化HTML5标签
-   b. 模块化CSS样式设计
-   c. 代码应有详细注释
-   d. 结构清晰，便于后续扩展
-
-请生成完整的HTML代码，包括所有必要的CSS。不需要包含任何JavaScript代码。这个框架必须设计为可以无限扩展组件的系统，确保即使添加大量组件也能保持良好的性能和用户体验。
-"""
-        return prompt 
+        # 加载提示词模板并替换占位符
+        return format_prompt("artifact/scaffold_html_prompt",
+                            context_files=context_files_str,
+                            query=query)
 
     def _build_component_info_prompt(self, 
                                 context_files: Dict[str, str], 
@@ -1071,22 +979,15 @@ HTML框架：
         Returns:
             str: 生成提示词
         """
-        prompt = f"""[文件]
-"""
+        # 将文件内容格式化为字符串
+        context_files_str = ""
         for filename, content in context_files.items():
-            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
+            context_files_str += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
         
-        prompt += f"""[框架HTML]
-{scaffold_html}
-
-[已有组件]
-"""
-        
-        # 获取组件编号，用于显示给模型
-        component_number = component_id.split('_')[-1] if '_' in component_id else ""
-        
+        # 格式化已有组件信息
+        existing_components_str = ""
         for component in existing_components:
-            prompt += f"""
+            existing_components_str += f"""
 组件ID: {component.get('id')}
 标题: {component.get('title')}
 描述: {component.get('description')}
@@ -1094,6 +995,7 @@ HTML框架：
 """
         
         # 提取可用的挂载点信息
+        mount_points_text = ""
         try:
             soup = BeautifulSoup(scaffold_html, 'html.parser')
             mount_points = []
@@ -1105,7 +1007,6 @@ HTML框架：
                 })
             
             # 将挂载点信息转换为易读格式
-            mount_points_text = ""
             for i, mp in enumerate(mount_points):
                 mount_points_text += f"""
 挂载点 {i+1}:
@@ -1113,51 +1014,21 @@ HTML框架：
 - 元素类型: {mp['type']}
 - CSS类: {mp['classes']}
 """
-            
-            prompt += f"""
-[可用挂载点]
-{mount_points_text}
-"""
         except Exception as e:
             self.logger.warning(f"提取挂载点信息时发生错误: {str(e)}")
         
-        prompt += f"""请为即将创建的组件提供组件信息。根据用户的问题和提供的文件内容，设计一个合适的组件信息。
-
-[用户的问题]
-{query}
-
-[当前组件ID]
-{component_id}
-
-[组件编号]
-{component_number}
-
-要求：
-1. 组件应专注于解决用户问题的一个特定方面
-2. 确保组件与已有组件不重复
-3. 组件应该提供以下信息：
-   a. 组件标题（title）：简短描述组件的主要内容
-   b. 组件描述（description）：详细说明组件的功能和内容
-   c. 挂载点（mount_point）：建议在框架HTML中的哪个位置挂载该组件，必须使用上述可用挂载点中的ID
-
-只需返回JSON格式的组件信息，不要添加其他解释，格式如下：
-
-```json
-{{
-  "title": "组件标题",
-  "description": "组件详细描述",
-  "html_type": "图表/表格/文本/交互式控件/其他类型",
-  "mount_point": "建议的挂载点ID",
-  "height": 合适的高度值(数字),
-  "width": "100%"
-}}
-```
-
-注意：
-- 确保JSON格式正确，所有键使用双引号
-- html_type应指明组件的主要内容类型，有助于后续生成
-"""
-        return prompt
+        # 获取组件编号，用于显示给模型
+        component_number = component_id.split('_')[-1] if '_' in component_id else ""
+        
+        # 加载提示词模板并替换占位符
+        return format_prompt("artifact/component_info_prompt",
+                            context_files=context_files_str,
+                            scaffold_html=scaffold_html,
+                            existing_components=existing_components_str,
+                            mount_points_text=mount_points_text,
+                            query=query,
+                            component_id=component_id,
+                            component_number=component_number)
 
     def _build_component_html_from_info_prompt(self, 
                                         context_files: Dict[str, str], 
@@ -1177,48 +1048,22 @@ HTML框架：
         Returns:
             str: 生成提示词
         """
-        prompt = f"""[文件]
-"""
+        # 将文件内容格式化为字符串
+        context_files_str = ""
         for filename, content in context_files.items():
-            prompt += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
+            context_files_str += f"\n[file name]: {filename}\n[file content begin]\n{content}\n[file content end]\n"
         
-        prompt += f"""[框架HTML]
-{scaffold_html}
-
-[组件信息]
-组件ID: {component_id}
-标题: {component_info.get('title', '未指定')}
-描述: {component_info.get('description', '未指定')}
-挂载点: {component_info.get('mount_point', '未指定')}
-组件类型: {component_info.get('html_type', '未指定')}
-建议高度: {component_info.get('height', 300)}
-建议宽度: {component_info.get('width', '100%')}
-
-[用户的问题]
-{query}
-
-请根据上述信息，生成一个完整的HTML组件。
-
-要求：
-1. 生成一个独立的HTML组件，实现上述组件信息中描述的功能
-2. 组件应该是一个完整的HTML页面，包含所有必要的样式和脚本
-3. 组件应该与框架HTML的样式保持一致
-4. 根据组件类型({component_info.get('html_type', '未指定')})提供合适的内容结构
-5. 确保组件内容：
-   a. 专注于解决用户问题的特定方面
-   b. 内容丰富、结构清晰
-   c. 如有必要，可以包含交互元素
-
-生成HTML时，请在HTML注释中包含组件信息，格式如下：
-<!-- 
-<component_info>
-{json.dumps(component_info, ensure_ascii=False, indent=2)}
-</component_info>
--->
-
-请直接生成HTML代码，不要添加任何解释或说明文本。
-"""
-        return prompt
+        # 将组件信息转换为JSON字符串
+        component_info_json = json.dumps(component_info, ensure_ascii=False, indent=2)
+        
+        # 加载提示词模板并替换占位符
+        return format_prompt("artifact/component_html_prompt",
+                            context_files=context_files_str,
+                            scaffold_html=scaffold_html,
+                            component_id=component_id,
+                            component_info=component_info,
+                            component_info_json=component_info_json,
+                            query=query)
 
     async def _generate_component_html(self, 
                                  search_results_files: List[str], 

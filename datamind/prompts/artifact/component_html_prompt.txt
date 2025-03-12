@@ -1,0 +1,38 @@
+[文件]
+{{context_files}}
+
+[框架HTML]
+{{scaffold_html}}
+
+[组件信息]
+组件ID: {{component_id}}
+标题: {{component_info.title}}
+描述: {{component_info.description}}
+挂载点: {{component_info.mount_point}}
+组件类型: {{component_info.html_type}}
+建议高度: {{component_info.height}}
+建议宽度: {{component_info.width}}
+
+[用户的问题]
+{{query}}
+
+请根据上述信息，生成一个完整的HTML组件。
+
+要求：
+1. 生成一个独立的HTML组件，实现上述组件信息中描述的功能
+2. 组件应该是一个完整的HTML页面，包含所有必要的样式和脚本
+3. 组件应该与框架HTML的样式保持一致
+4. 根据组件类型提供合适的内容结构
+5. 确保组件内容：
+   a. 专注于解决用户问题的特定方面
+   b. 内容丰富、结构清晰
+   c. 如有必要，可以包含交互元素
+
+生成HTML时，请在HTML注释中包含组件信息，格式如下：
+<!-- 
+<component_info>
+{{component_info_json}}
+</component_info>
+-->
+
+请直接生成HTML代码，不要添加任何解释或说明文本。 
