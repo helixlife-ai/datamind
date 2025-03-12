@@ -15,7 +15,7 @@ from ..config.settings import (
 import shutil
 import re
 from bs4 import BeautifulSoup
-from ..core.context_preparation import prepare_context_files, read_file_content
+from ..core.context_preparation import prepare_context_files
 from ..prompts import load_prompt, format_prompt
 
 class ComponentManager:
@@ -253,23 +253,7 @@ class ArtifactGenerator:
             api_key=DEFAULT_LLM_API_KEY
         ))
         return ReasoningLLMEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)
-
-    def print_stream(self,text):
-        print(f"\r{text}", end='', flush=True)
-
-    def _read_file_content(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
-        """读取文件内容
-        
-        Args:
-            file_path: 文件路径
-            encoding: 编码方式，默认utf-8
-            
-        Returns:
-            Optional[str]: 文件内容，如果读取失败则返回None
-        """
-        # 使用封装后的函数
-        return read_file_content(file_path, encoding, self.logger)
-
+       
     def _generate_error_html(self, error_message: str, title: str) -> str:
         """生成错误提示页面
         
@@ -423,6 +407,39 @@ class ArtifactGenerator:
                              if v.name.startswith('iter')]
         return max(existing_iterations, default=0) + 1
 
+    async def _collect_stream_response(self, 
+                                 temperature=0.7, 
+                                 metadata=None, 
+                                 process_path=None):
+        """收集流式响应并显示
+        
+        Args:
+            temperature: 温度参数
+            metadata: 元数据字典
+            process_path: 可选，保存生成过程的文件路径
+            
+        Returns:
+            str: 收集到的完整响应
+        """
+        full_response = ""
+        
+        async for chunk in self.reasoning_engine.get_stream_response(
+            temperature=temperature,
+            metadata=metadata or {}
+        ):
+            if chunk:
+                full_response += chunk
+                
+                # 如果提供了文件路径，保存生成过程
+                if process_path:
+                    with process_path.open("a", encoding="utf-8") as f:
+                        f.write(chunk)
+                
+                # 显示流式输出内容
+                print(f"\r{chunk}", end='', flush=True)
+                
+        return full_response
+
     async def _get_optimization_query(self, html_content: str) -> Optional[str]:
         """分析当前HTML内容并生成优化建议查询
         
@@ -513,18 +530,11 @@ class ArtifactGenerator:
             self.reasoning_engine.add_message("user", prompt)
             
             # 使用流式输出收集响应
-            full_response = ""
-            suggestion = ""
-            
-            async for chunk in self.reasoning_engine.get_stream_response(
+            full_response = await self._collect_stream_response(
                 temperature=0.7,
-                metadata={'stage': 'optimization_suggestion'}
-            ):
-                if chunk:
-                    full_response += chunk
-                    # 显示流式输出内容
-                    #self.logger.info(f"生成优化建议: {full_response}")
-                    self.print_stream(chunk)
+                metadata={'stage': 'optimization_suggestion'},
+                process_path=None
+            )
             
             # 从full_response中提取<answer></answer>标签之间的内容
             if "<answer>" in full_response and "</answer>" in full_response:
@@ -700,8 +710,7 @@ class ArtifactGenerator:
                 dir_path.mkdir(parents=True, exist_ok=True)
 
             # 将上下文文件复制到工作目录，并收集内容信息
-            context_contents, context_files_info = self._prepare_context_files(
-                search_results_files, context_dir, work_base)
+            context_contents, context_files_info = prepare_context_files(search_results_files, context_dir, work_base, self.logger)
                 
             if not context_contents:
                 raise ValueError("未能成功读取任何上下文文件内容")
@@ -736,58 +745,12 @@ class ArtifactGenerator:
             self.reasoning_engine.add_message("user", scaffold_prompt)
             
             # 收集生成的内容
-            full_response = ""
-            process_path = process_dir / "generation_process.txt"
-            temp_html_path = process_dir / "temp_content.html"
-            current_html_content = []  # 使用列表存储HTML片段
-            
-            # 用于跟踪HTML内容的状态
-            html_started = False
-            in_html_block = False
-
-            async for chunk in self.reasoning_engine.get_stream_response(
+            full_response = await self._collect_stream_response(
                 temperature=0.7,
-                metadata={'stage': 'scaffold_generation'}
-            ):
-                if chunk:
-                    full_response += chunk
-                    
-                    # 保存生成过程
-                    with process_path.open("a", encoding="utf-8") as f:
-                        f.write(chunk)
-                    
-                    # 显示流式输出内容
-                    #self.logger.info(f"\r生成框架内容: {full_response}")
-
-                    self.print_stream(chunk)
-                    
-                    # 尝试实时提取和更新HTML内容
-                    if not html_started:
-                        if '<!DOCTYPE html>' in chunk:
-                            html_started = True
-                            start_idx = chunk.find('<!DOCTYPE html>')
-                            current_html_content.append(chunk[start_idx:])
-                        elif '```html' in chunk:
-                            html_started = True
-                            in_html_block = True
-                            start_idx = chunk.find('```html') + 7
-                            if start_idx < len(chunk):
-                                current_html_content.append(chunk[start_idx:])
-                    else:
-                        if in_html_block and '```' in chunk:
-                            # 结束代码块
-                            end_idx = chunk.find('```')
-                            if end_idx >= 0:
-                                current_html_content.append(chunk[:end_idx])
-                                in_html_block = False
-                        else:
-                            current_html_content.append(chunk)
-                    
-                    # 实时更新临时HTML文件
-                    if current_html_content:
-                        combined_content = ''.join(current_html_content)
-                        temp_html_path.write_text(combined_content.strip(), encoding="utf-8")
-
+                metadata={'stage': 'scaffold_generation'},
+                process_path=process_dir / "generation_process.txt"
+            )
+            
             if not full_response:
                 raise ValueError("生成内容为空")
             
@@ -1095,8 +1058,7 @@ class ArtifactGenerator:
                 dir_path.mkdir(parents=True, exist_ok=True)
 
             # 将上下文文件复制到组件工作目录，并收集内容信息
-            context_contents, context_files_info = self._prepare_context_files(
-                search_results_files, context_dir, work_base)
+            context_contents, context_files_info = prepare_context_files(search_results_files, context_dir, work_base, self.logger)
 
             if not context_contents:
                 raise ValueError("未能成功读取任何上下文文件内容")
@@ -1189,25 +1151,12 @@ class ArtifactGenerator:
             self.reasoning_engine.add_message("user", component_info_prompt)
             
             # 收集生成的内容
-            info_response = ""
-            info_process_path = process_dir / "info_generation_process.txt"
-            
-            self.logger.info("第一步：生成组件信息...")
-            
-            async for chunk in self.reasoning_engine.get_stream_response(
+            info_response = await self._collect_stream_response(
                 temperature=0.7,
-                metadata={'stage': 'component_info_generation'}
-            ):
-                if chunk:
-                    info_response += chunk
-                    
-                    # 保存生成过程
-                    with info_process_path.open("a", encoding="utf-8") as f:
-                        f.write(chunk)
-                    
-                    # 显示流式输出内容
-                    self.print_stream(chunk)
-                    
+                metadata={'stage': 'component_info_generation'},
+                process_path=process_dir / "info_generation_process.txt"
+            )
+            
             if not info_response:
                 raise ValueError("组件信息生成为空")
             
@@ -1281,58 +1230,12 @@ class ArtifactGenerator:
             self.reasoning_engine.add_message("user", component_html_prompt)
             
             # 收集生成的内容
-            full_response = ""
-            process_path = process_dir / "html_generation_process.txt"
-            temp_html_path = process_dir / "temp_content.html"
-            current_html_content = []  # 使用列表存储HTML片段
-            
-            # 用于跟踪HTML内容的状态
-            html_started = False
-            in_html_block = False
-            
-            self.logger.info("第二步：生成组件HTML内容...")
-            
-            async for chunk in self.reasoning_engine.get_stream_response(
+            full_response = await self._collect_stream_response(
                 temperature=0.7,
-                metadata={'stage': 'component_html_generation'}
-            ):
-                if chunk:
-                    full_response += chunk
-                    
-                    # 保存生成过程
-                    with process_path.open("a", encoding="utf-8") as f:
-                        f.write(chunk)
-                    
-                    # 显示流式输出内容
-                    self.print_stream(chunk)
-                    
-                    # 尝试实时提取和更新HTML内容
-                    if not html_started:
-                        if '<!DOCTYPE html>' in chunk:
-                            html_started = True
-                            start_idx = chunk.find('<!DOCTYPE html>')
-                            current_html_content.append(chunk[start_idx:])
-                        elif '```html' in chunk:
-                            html_started = True
-                            in_html_block = True
-                            start_idx = chunk.find('```html') + 7
-                            if start_idx < len(chunk):
-                                current_html_content.append(chunk[start_idx:])
-                    else:
-                        if in_html_block and '```' in chunk:
-                            # 结束代码块
-                            end_idx = chunk.find('```')
-                            if end_idx >= 0:
-                                current_html_content.append(chunk[:end_idx])
-                                in_html_block = False
-                        else:
-                            current_html_content.append(chunk)
-                    
-                    # 实时更新临时HTML文件
-                    if current_html_content:
-                        combined_content = ''.join(current_html_content)
-                        temp_html_path.write_text(combined_content.strip(), encoding="utf-8")
-                                
+                metadata={'stage': 'component_html_generation'},
+                process_path=process_dir / "html_generation_process.txt"
+            )
+            
             if not full_response:
                 raise ValueError("生成内容为空")
             
@@ -1533,17 +1436,3 @@ class ArtifactGenerator:
             self.logger.error(f"生成组件HTML时发生错误: {str(e)}")
             traceback.print_exc()
             return None
-
-    def _prepare_context_files(self, search_results_files: List[str], context_dir: Path, work_base: Path) -> Tuple[Dict[str, str], Dict[str, Dict]]:
-        """准备上下文文件，复制文件并收集内容与元数据
-        
-        Args:
-            search_results_files: 搜索结果文件路径列表
-            context_dir: 上下文文件目标目录
-            work_base: 工作目录基础路径
-            
-        Returns:
-            Tuple[Dict[str, str], Dict[str, Dict]]: (context_contents, context_files_info)
-        """
-        # 调用封装后的函数
-        return prepare_context_files(search_results_files, context_dir, work_base, self.logger)

@@ -7,14 +7,31 @@ import time
 from .generatorLLM import GeneratorLLMEngine
 from ..config.settings import (
     DEFAULT_GENERATOR_MODEL,
-    DEFAULT_SIMILARITY_THRESHOLD,
-    QUERY_TEMPLATE,
     SEARCH_TOP_K,
-    KEYWORD_EXTRACT_PROMPT,
-    REFERENCE_TEXT_EXTRACT_PROMPT,
+    DEFAULT_SIMILARITY_THRESHOLD
 )
 from ..llms.model_manager import ModelManager, ModelConfig
 from dataclasses import dataclass
+from ..prompts import load_prompt, format_prompt
+
+
+# 查询模板
+QUERY_TEMPLATE = {
+    "structured_conditions": [{
+        "time_range": {"start": "", "end": ""},
+        "keyword": "",
+        "exclusions": []
+    }],
+    "vector_conditions": [{
+        "reference_text": "",
+        "similarity_threshold": DEFAULT_SIMILARITY_THRESHOLD,
+        "top_k": SEARCH_TOP_K
+    }],
+    "result_format": {
+        "required_fields": ["_file_name", "data"],
+        "display_preferences": ""
+    }
+}
 
 @dataclass
 class CacheEntry:
@@ -151,7 +168,10 @@ class IntentParser:
             try:
                 # 设置系统提示词
                 self.generator_engine.clear_history()
-                self.generator_engine.set_system_prompt(KEYWORD_EXTRACT_PROMPT)
+
+                # 加载关键词提取提示词
+                keyword_extract_prompt = load_prompt("parser/keyword_extract_prompt")
+                self.generator_engine.set_system_prompt(keyword_extract_prompt)
                 
                 # 添加用户消息
                 self.generator_engine.add_message("user", query)
@@ -184,7 +204,10 @@ class IntentParser:
             try:
                 # 设置系统提示词
                 self.generator_engine.clear_history()
-                self.generator_engine.set_system_prompt(REFERENCE_TEXT_EXTRACT_PROMPT)
+
+                # 加载参考文本提取提示词
+                reference_text_extract_prompt = load_prompt("parser/reference_text_extract_prompt")
+                self.generator_engine.set_system_prompt(reference_text_extract_prompt)
                 
                 # 添加用户消息
                 self.generator_engine.add_message("user", query)
