@@ -1024,7 +1024,12 @@ class ArtifactGenerator:
                             context_files=context_files_str,
                             scaffold_html=scaffold_html,
                             component_id=component_id,
-                            component_info=component_info,
+                            component_info_title=component_info.get('title'),
+                            component_info_description=component_info.get('description'),
+                            component_info_mount_point=component_info.get('mount_point'),
+                            component_info_html_type=component_info.get('html_type'),
+                            component_info_height=component_info.get('height'),
+                            component_info_width=component_info.get('width'),
                             component_info_json=component_info_json,
                             query=query)
 

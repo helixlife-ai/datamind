@@ -6,12 +6,12 @@
 
 [组件信息]
 组件ID: {{component_id}}
-标题: {{component_info.title}}
-描述: {{component_info.description}}
-挂载点: {{component_info.mount_point}}
-组件类型: {{component_info.html_type}}
-建议高度: {{component_info.height}}
-建议宽度: {{component_info.width}}
+标题: {{component_info_title}}
+描述: {{component_info_description}}
+挂载点: {{component_info_mount_point}}
+组件类型: {{component_info_html_type}}
+建议高度: {{component_info_height}}
+建议宽度: {{component_info_width}}
 
 [用户的问题]
 {{query}}
