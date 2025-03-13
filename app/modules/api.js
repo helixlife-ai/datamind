@@ -13,6 +13,11 @@ const API_CONFIGS = {
         defaultModel: 'Pro/deepseek-ai/DeepSeek-V3',
         reasoningModel: 'Pro/deepseek-ai/DeepSeek-R1',
         currentIndex: 0
+    },
+    'llmcore': {
+        defaultModel: 'claude-3-7-sonnet-20250219',
+        reasoningModel: 'claude-3-7-sonnet-20250219',
+        currentIndex: 0
     }
 };
 
@@ -80,7 +85,8 @@ function setupApiClients() {
     // 初始化API客户端
     const OPENAI_CLIENTS = {
         'deepseek': [],
-        'siliconflow': []
+        'siliconflow': [],
+        'llmcore':[]
     };
 
     // 直接从.env文件读取内容，用于调试
@@ -154,14 +160,37 @@ function setupApiClients() {
         });
     }
 
+    // 读取并解析LLMCORE API密钥
+    console.log('处理LLMCORE API密钥:');
+    console.log(`环境变量 LLMCORE_API_KEY: ${process.env.LLMCORE_API_KEY ? '存在' : '不存在'}`);
+    const llmcoreApiKeys = parseApiKeys(process.env.LLMCORE_API_KEY);
+    console.log(`解析后的LLMCORE API密钥数量: ${llmcoreApiKeys.length}`);
+
+    // 为LLMCORE初始化API客户端
+    if (llmcoreApiKeys.length === 0) {
+        console.log('警告: 未从环境变量获取到LLMCORE API密钥，无法初始化客户端');
+        console.log('请在.env文件中设置有效的LLMCORE_API_KEY');
+    } else {
+        llmcoreApiKeys.forEach((key, index) => {
+            if (key) {
+                try {
+                    OPENAI_CLIENTS.llmcore.push(new OpenAI({
+                        apiKey: key,
+                        baseURL: process.env.LLMCORE_BASE_URL || 'https://api.llmcore.com'
+                    }));
+                    console.log(`成功添加LLMCORE API客户端 #${index+1}`);
+                } catch (err) {
+                    console.error(`初始化LLMCORE API客户端 #${index+1} 失败:`, err);
+                }
+            } else {
+                console.log(`跳过空的LLMCORE API密钥 #${index+1}`);
+            }
+        });        
+    }
+    
     console.log(`已加载 ${OPENAI_CLIENTS.deepseek.length} 个 DeepSeek API 客户端`);
     console.log(`已加载 ${OPENAI_CLIENTS.siliconflow.length} 个 SiliconFlow API 客户端`);
-
-    // 打印环境变量原始值（隐藏实际密钥）
-    console.log(`环境变量 DEEPSEEK_API_KEY 是否存在: ${!!process.env.DEEPSEEK_API_KEY}`);
-    console.log(`环境变量 SILICONFLOW_API_KEY 是否存在: ${!!process.env.SILICONFLOW_API_KEY}`);
-    console.log(`环境变量 DEEPSEEK_BASE_URL: ${process.env.DEEPSEEK_BASE_URL}`);
-    console.log(`环境变量 SILICONFLOW_BASE_URL: ${process.env.SILICONFLOW_BASE_URL}`);
+    console.log(`已加载 ${OPENAI_CLIENTS.llmcore.length} 个 LLMCORE API 客户端`);
 
     return {
         clients: OPENAI_CLIENTS,
