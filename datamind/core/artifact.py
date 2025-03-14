@@ -8,6 +8,7 @@ from ..utils.stream_logger import StreamLineHandler
 from ..core.reasoningLLM import ReasoningLLMEngine
 from ..llms.model_manager import ModelManager, ModelConfig
 from ..config.settings import (
+    parse_api_keys,
     DEFAULT_REASONING_MODEL,
     DEFAULT_LLM_API_KEY,
     DEFAULT_LLM_API_BASE
@@ -17,6 +18,14 @@ import re
 from bs4 import BeautifulSoup
 from ..core.context_preparation import prepare_context_files
 from ..prompts import load_prompt, format_prompt
+import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
+LLMCORE_LLM_API_KEY = parse_api_keys(os.getenv("LLMCORE_API_KEY", ""))
+LLMCORE_LLM_API_BASE = os.getenv("LLMCORE_BASE_URL") 
+LLMCORE_GENERATOR_MODEL = os.getenv("LLMCORE_GENERATOR_MODEL") 
+LLMCORE_REASONING_MODEL = os.getenv("LLMCORE_REASONING_MODEL") 
 
 class ComponentManager:
     """组件管理器类，负责处理所有与组件相关的操作"""
@@ -288,7 +297,13 @@ class ArtifactGenerator:
             api_base=DEFAULT_LLM_API_BASE,
             api_key=DEFAULT_LLM_API_KEY
         ))
-        return ReasoningLLMEngine(model_manager, model_name=DEFAULT_REASONING_MODEL)
+        model_manager.register_model(ModelConfig(
+            name=LLMCORE_REASONING_MODEL,
+            model_type="api",
+            api_base=LLMCORE_LLM_API_BASE,
+            api_key=LLMCORE_LLM_API_KEY
+        ))
+        return ReasoningLLMEngine(model_manager, model_name=LLMCORE_REASONING_MODEL)
        
     def _generate_error_html(self, error_message: str, title: str) -> str:
         """生成错误提示页面
