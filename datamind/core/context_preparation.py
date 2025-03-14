@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from docling.document_converter import DocumentConverter
 
 
 def prepare_context_files(context_files: List[str], 
@@ -108,28 +109,59 @@ def read_file_content(file_path: str, encoding: str = 'utf-8', logger: Optional[
     if logger is None:
         logger = logging.getLogger(__name__)
         
-    try:
-        path = Path(file_path)
-        if not path.exists():
-            logger.warning(f"文件不存在: {file_path}")
-            return None
-        
-        with path.open('r', encoding=encoding) as f:
-            content = f.read()
-        
-        logger.info(f"成功读取文件: {file_path}")
-        return content
+    path = Path(file_path)
+    if not path.exists():
+        logger.warning(f"文件不存在: {file_path}")
+        return None
     
-    except UnicodeDecodeError:
-        # 如果UTF-8解码失败，尝试使用latin-1
+    # 获取文件扩展名（小写）
+    suffix = path.suffix.lower()
+    
+    # 对docx、doc文件使用docling进行处理
+    if suffix in ['.docx', '.doc']:
         try:
-            logger.warning(f"UTF-8解码失败，尝试使用latin-1解码: {file_path}")
-            with open(file_path, 'r', encoding='latin-1') as f:
-                return f.read()
+            logger.info(f"使用DocumentConverter处理Word文档: {file_path}")
+            converter = DocumentConverter()
+            result = converter.convert(str(path))
+            content = result.document.export_to_markdown()
+            logger.info(f"成功读取Word文档: {file_path}")
+            return content
+        except Exception as e:
+            logger.error(f"读取Word文档 {file_path} 时发生错误: {str(e)}")
+            return None
+    
+    # 对PDF文件使用docling处理
+    elif suffix in ['.pdf']:
+        try:
+            logger.info(f"使用DocumentConverter处理PDF文档: {file_path}")
+            converter = DocumentConverter()
+            result = converter.convert(str(path))
+            content = result.document.export_to_markdown()
+            logger.info(f"成功读取PDF文档: {file_path}")
+            return content
+        except Exception as e:
+            logger.error(f"读取PDF文档 {file_path} 时发生错误: {str(e)}")
+            return None
+    
+    # 对文本文件使用原有的方法
+    else:
+        try:
+            with path.open('r', encoding=encoding) as f:
+                content = f.read()
+            
+            logger.info(f"成功读取文件: {file_path}")
+            return content
+        
+        except UnicodeDecodeError:
+            # 如果UTF-8解码失败，尝试使用latin-1
+            try:
+                logger.warning(f"UTF-8解码失败，尝试使用latin-1解码: {file_path}")
+                with open(file_path, 'r', encoding='latin-1') as f:
+                    return f.read()
+            except Exception as e:
+                logger.error(f"读取文件 {file_path} 时发生错误: {str(e)}")
+                return None
+                
         except Exception as e:
             logger.error(f"读取文件 {file_path} 时发生错误: {str(e)}")
-            return None
-            
-    except Exception as e:
-        logger.error(f"读取文件 {file_path} 时发生错误: {str(e)}")
-        return None 
+            return None 
