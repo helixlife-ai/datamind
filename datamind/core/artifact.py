@@ -977,7 +977,7 @@ class ArtifactGenerator:
     def _build_component_html_from_info_prompt(self, 
                                         context_files: Dict[str, str], 
                                         query: str, 
-                                        scaffold_html: str,
+                                        scaffold_html_css: str,
                                         component_info: Dict,
                                         component_id: str) -> str:
         """基于组件信息构建生成HTML内容的提示词
@@ -985,7 +985,7 @@ class ArtifactGenerator:
         Args:
             context_files: 文件内容字典，key为文件名，value为文件内容
             query: 用户的查询内容
-            scaffold_html: 框架HTML内容
+            scaffold_html_css: 框架HTML样式
             component_info: 组件信息
             component_id: 当前组件ID
             
@@ -1003,7 +1003,7 @@ class ArtifactGenerator:
         # 加载提示词模板并替换占位符
         return format_prompt("artifact/component_html_prompt",
                             context_files=context_files_str,
-                            scaffold_html=scaffold_html,
+                            scaffold_html_css=scaffold_html_css,
                             component_id=component_id,
                             component_info_title=component_info.get('title'),
                             component_info_description=component_info.get('description'),
@@ -1204,11 +1204,14 @@ class ArtifactGenerator:
             artifact_html = self._add_placeholder_to_artifact(artifact_html, mount_point, placeholder)
             
             # 第二步：基于组件信息生成组件HTML
+            # 提取框架HTML中的CSS样式
+            scaffold_html_css = self._extract_css_from_scaffold(scaffold_html)
+                        
             # 构建组件HTML提示词
             component_html_prompt = self._build_component_html_from_info_prompt(
                 context_contents, 
                 query, 
-                scaffold_html,
+                scaffold_html_css,
                 component_info,
                 component_id
             )
@@ -1241,29 +1244,6 @@ class ArtifactGenerator:
                     "无法从AI响应中提取有效的组件HTML内容",
                     query
                 )
-            
-            # 确保HTML中包含组件信息
-            if "component_info" not in component_html:
-                # 将组件信息添加到HTML中
-                component_info_json = json.dumps(component_info, ensure_ascii=False, indent=2)
-                component_info_html = f"""<!-- 
-<component_info>
-{component_info_json}
-</component_info>
--->"""
-                
-                # 检查HTML是否有头部
-                if "<!DOCTYPE html>" in component_html:
-                    # 在DOCTYPE后添加组件信息
-                    doctype_end = component_html.find("<!DOCTYPE html>") + len("<!DOCTYPE html>")
-                    component_html = component_html[:doctype_end] + "\n" + component_info_html + component_html[doctype_end:]
-                elif "<html" in component_html:
-                    # 在html标签前添加组件信息
-                    html_start = component_html.find("<html")
-                    component_html = component_html[:html_start] + component_info_html + "\n" + component_html[html_start:]
-                else:
-                    # 添加到开头
-                    component_html = component_info_html + "\n" + component_html
             
             # 保存组件HTML文件
             components_dir = self.artifacts_dir / "components"
@@ -1500,3 +1480,40 @@ class ArtifactGenerator:
             self.logger.error(f"提取组件内容时发生错误: {str(e)}")
             # 发生错误时返回一个基本的错误提示容器，使用组件ID前缀命名
             return f'<div id="{container_id}-error" class="component-error">组件内容提取失败: {str(e)}</div>'
+
+    def _extract_scaffold_css(self, scaffold_html: str) -> str:
+        """从框架HTML中提取所有CSS样式内容
+        
+        Args:
+            scaffold_html: 框架的完整HTML内容
+            
+        Returns:
+            str: 提取的CSS样式内容
+        """
+        try:
+            # 使用BeautifulSoup解析HTML
+            soup = BeautifulSoup(scaffold_html, 'html.parser')
+            
+            # 提取所有内联CSS样式
+            inline_css = ""
+            for style_tag in soup.find_all('style'):
+                style_content = style_tag.string or ""
+                if style_content:
+                    inline_css += f"{style_content}\n"
+            
+            # 提取所有外部CSS文件链接
+            external_css_links = []
+            for link_tag in soup.find_all('link', rel='stylesheet'):
+                href = link_tag.get('href')
+                if href:
+                    external_css_links.append(f'<link rel="stylesheet" href="{href}">')
+            
+            # 组合内联和外部CSS
+            all_css = "\n".join(external_css_links) + "\n<style>\n" + inline_css + "\n</style>" if inline_css else "\n".join(external_css_links)
+            
+            self.logger.info(f"已从框架HTML中提取CSS样式：内联样式{len(inline_css)}字节，外部链接{len(external_css_links)}个")
+            return all_css.strip()
+            
+        except Exception as e:
+            self.logger.error(f"提取框架CSS样式时发生错误: {str(e)}")
+            return f"<!-- 提取CSS样式失败: {str(e)} -->"

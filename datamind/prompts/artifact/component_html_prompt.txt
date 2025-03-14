@@ -1,8 +1,8 @@
 [文件]
 {{context_files}}
 
-[框架HTML]
-{{scaffold_html}}
+[框架HTML样式]
+{{scaffold_html_css}}
 
 [组件信息]
 组件ID: {{component_id}}
@@ -31,12 +31,4 @@
    b. JS函数和变量：component_{{component_id}}_handleClick(), component_{{component_id}}_data 等
    c. HTML元素ID：id="component_{{component_id}}-main", id="component_{{component_id}}-form" 等
    这样可以避免在整合到其他HTML页面时产生命名冲突
-
-生成HTML时，请在HTML注释中包含组件信息，格式如下：
-<!-- 
-<component_info>
-{{component_info_json}}
-</component_info>
--->
-
 请直接生成HTML代码，不要添加任何解释或说明文本。 
