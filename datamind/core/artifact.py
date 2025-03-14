@@ -373,75 +373,6 @@ class ArtifactGenerator:
                                     code_part = code_part[first_tag_match.start():]
                                 return code_part
             
-            # 3. 尝试从多个代码块中提取最符合条件的HTML
-            code_blocks = re.findall(r'```(?:html|HTML)?\s*(.*?)```', full_response, re.DOTALL)
-            valid_html_blocks = []
-            
-            for block in code_blocks:
-                block = block.strip()
-                # 如果第一行是语言标识符，去掉它
-                if block.startswith('html') or block.startswith('HTML'):
-                    block = block[4:].lstrip()
-                    
-                if block.startswith('<!DOCTYPE html>') or block.startswith('<html'):
-                    valid_html_blocks.append((block, 3))  # 优先级3：完整HTML文档
-                elif re.search(r'<(?!!)([a-z]+)[^>]*>.*?</\1>', block, re.DOTALL):
-                    # 确保提取的是HTML片段，而不是其他内容
-                    first_tag_match = re.search(r'<(?!!)([a-z]+)[^>]*>', block)
-                    if first_tag_match:
-                        # 从第一个HTML标签开始
-                        clean_block = block[first_tag_match.start():]
-                        valid_html_blocks.append((clean_block, 2))  # 优先级2：有效HTML片段
-            
-            # 返回优先级最高的HTML块
-            if valid_html_blocks:
-                valid_html_blocks.sort(key=lambda x: x[1], reverse=True)
-                return valid_html_blocks[0][0]
-            
-            # 4. 如果响应包含HTML基本结构但没有代码块标记
-            if '<html' in full_response and '</html>' in full_response:
-                html_start = full_response.find('<html')
-                html_end = full_response.rfind('</html>') + 7
-                if html_start < html_end:
-                    return full_response[html_start:html_end].strip()
-            
-            # 5. 尝试从响应中提取DOCTYPE到结束的完整HTML
-            if '<!DOCTYPE html>' in full_response:
-                doctype_start = full_response.find('<!DOCTYPE html>')
-                # 查找最后一个</html>标签
-                end_html_matches = list(re.finditer(r'</html>', full_response))
-                if end_html_matches:
-                    end_idx = end_html_matches[-1].end()
-                    return full_response[doctype_start:end_idx].strip()
-            
-            # 6. 尝试提取任何具有HTML结构的内容
-            html_fragment_pattern = r'<(?!!)([a-z]+)[^>]*>.*?</\1>'
-            html_fragments = re.findall(html_fragment_pattern, full_response, re.DOTALL)
-            
-            if html_fragments:
-                # 找到最长的HTML片段
-                longest_fragment = ''
-                for match in re.finditer(html_fragment_pattern, full_response, re.DOTALL):
-                    fragment = match.group(0)
-                    if len(fragment) > len(longest_fragment):
-                        longest_fragment = fragment
-                
-                if longest_fragment:
-                    return longest_fragment
-            
-            # 7. 最后尝试从响应中提取任何包含尖括号的部分
-            if '<' in full_response and '>' in full_response:
-                # 找到第一个<标签
-                start_idx = full_response.find('<')
-                # 找到最后一个>标签
-                last_close_bracket = full_response.rfind('>')
-                
-                if start_idx < last_close_bracket:
-                    potential_html = full_response[start_idx:last_close_bracket+1].strip()
-                    # 验证是否包含成对的标签
-                    if re.search(r'<([a-z]+)[^>]*>.*?</\1>', potential_html, re.DOTALL):
-                        return potential_html
-            
             return None
         
         except Exception as e:
@@ -460,12 +391,14 @@ class ArtifactGenerator:
 
     async def _collect_stream_response(self, 
                                  temperature=0.7, 
+                                 max_tokens=30000,
                                  metadata=None, 
                                  process_path=None):
         """收集流式响应并显示
         
         Args:
             temperature: 温度参数
+            max_tokens: 最大令牌数
             metadata: 元数据字典
             process_path: 可选，保存生成过程的文件路径
             
@@ -476,6 +409,7 @@ class ArtifactGenerator:
         
         async for chunk in self.reasoning_engine.get_stream_response(
             temperature=temperature,
+            max_tokens=max_tokens,
             metadata=metadata or {}
         ):
             if chunk:
