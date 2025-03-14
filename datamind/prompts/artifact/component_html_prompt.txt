@@ -15,7 +15,7 @@
 [用户的问题]
 {{query}}
 
-请根据上述信息，生成一个完整的HTML组件。
+请根据上述信息，生成一个完整的HTML组件, 并使用框架HTML样式的风格。
 
 要求：
 1. 生成一个独立的HTML组件，实现上述组件信息中描述的功能
@@ -32,3 +32,4 @@
    c. HTML元素ID：id="component_{{component_id}}-main", id="component_{{component_id}}-form" 等
    这样可以避免在整合到其他HTML页面时产生命名冲突
 请直接生成HTML代码，不要添加任何解释或说明文本。 
+输出结果放在```html```标签中。
