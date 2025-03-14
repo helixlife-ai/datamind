@@ -8,7 +8,6 @@
 组件ID: {{component_id}}
 标题: {{component_info_title}}
 描述: {{component_info_description}}
-挂载点: {{component_info_mount_point}}
 组件类型: {{component_info_html_type}}
 建议高度: {{component_info_height}}
 建议宽度: {{component_info_width}}
@@ -27,6 +26,11 @@
    a. 专注于解决用户问题的特定方面
    b. 内容丰富、结构清晰
    c. 如有必要，可以包含交互元素
+6. 所有CSS类名、JS函数名和核心HTML元素的id/class前缀必须使用组件ID(component_{{component_id}})作为前缀，例如：
+   a. CSS类：.component_{{component_id}}-container, .component_{{component_id}}-button 等
+   b. JS函数和变量：component_{{component_id}}_handleClick(), component_{{component_id}}_data 等
+   c. HTML元素ID：id="component_{{component_id}}-main", id="component_{{component_id}}-form" 等
+   这样可以避免在整合到其他HTML页面时产生命名冲突
 
 生成HTML时，请在HTML注释中包含组件信息，格式如下：
 <!-- 

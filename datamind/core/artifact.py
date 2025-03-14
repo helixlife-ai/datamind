@@ -172,28 +172,18 @@ class ComponentManager:
         Returns:
             str: 更新后的工件HTML
         """
-        # 直接将placeholder替换为component_html
-        if placeholder in artifact_html:
-            updated_html = artifact_html.replace(placeholder, component_html, 1)
+        # 使用统一的占位符格式
+        standard_placeholder = f"<!-- COMPONENT:{placeholder} -->"
+        
+        # 首先尝试直接替换统一格式的占位符
+        if standard_placeholder in artifact_html:
+            updated_html = artifact_html.replace(standard_placeholder, f"{component_html}", 1)
             return updated_html
-        else:
-            # 尝试查找可能的挂载点模式
-            possible_markers = [
-                f'id="{placeholder}"',  # id="mount_point"
-                f'id=\'{placeholder}\'',  # id='mount_point'
-                f'id={placeholder}',     # id=mount_point
-                f'<!-- {placeholder} -->',  # <!-- mount_point -->
-                f'<!-- COMPONENT:{placeholder} -->'  # <!-- COMPONENT:mount_point -->
-            ]
-            
-            for marker in possible_markers:
-                if marker in artifact_html:
-                    self.logger.info(f"找到替代挂载点标记: {marker}")
-                    updated_html = artifact_html.replace(marker, f'{marker}\n{component_html}', 1)
-                    return updated_html
-            
-            self.logger.warning(f"在工件HTML中未找到占位符: {placeholder}")
-            return artifact_html
+        
+
+        
+        self.logger.warning(f"在工件HTML中未找到占位符: {placeholder}")
+        return artifact_html
 
 
 class ArtifactGenerator:
@@ -616,120 +606,13 @@ class ArtifactGenerator:
         """
         return self.component_manager.get_next_component_id()
 
-    async def _analyze_component_container(self, scaffold_html: str) -> str:
-        """分析scaffold.html文件，找出最适合作为组件容器的标签的class值
-        
-        Args:
-            scaffold_html: scaffold.html的内容
-            
-        Returns:
-            str: 容器标签的class值，未找到则返回空字符串
-        """
-        try:
-            # 清除历史对话记录
-            self.reasoning_engine.clear_history()
-            
-            # 构建分析提示词
-            try:
-                analyze_prompt = format_prompt("artifact/analyze_container_prompt",
-                                             scaffold_html=scaffold_html)
-            except Exception as e:
-                self.logger.warning(f"获取分析提示词模板失败: {str(e)}，将使用默认提示词")
-                
-                # 直接构建默认的分析提示词
-                analyze_prompt = f"""
-请分析以下HTML代码，找出最适合作为组件容器的元素标签的class值。
 
-组件容器应该满足以下条件：
-1. 通常是一个div元素
-2. 通常具有类似'content'、'container'、'main'或'components'等class名称
-3. 通常位于HTML文档的主体部分
-4. 具有足够的空间容纳新的组件
-
-请仔细分析并只返回最合适的容器元素的class值。不要返回分析过程，只返回一个class名称。
-
-HTML代码：
-```html
-{scaffold_html}
-```
-
-请在<class></class>标签中返回最合适的容器class值。例如：<class>content</class>
-"""
-            
-            # 添加用户消息
-            self.reasoning_engine.add_message("user", analyze_prompt)
-            
-            # 收集分析结果
-            response = await self._collect_stream_response(
-                temperature=0.3,  # 使用较低的温度以获得更确定的分析
-                metadata={'stage': 'container_analysis'}
-            )
-            
-            if not response:
-                self.logger.warning("分析组件容器返回空响应")
-                return ""
-                
-            # 尝试从响应中提取class值
-            # 先尝试获取<class></class>标签中的内容
-            if "<class>" in response and "</class>" in response:
-                start_idx = response.find("<class>") + len("<class>")
-                end_idx = response.find("</class>")
-                if start_idx < end_idx:
-                    container_class = response[start_idx:end_idx].strip()
-                    self.logger.info(f"找到组件容器class: {container_class}")
-                    return container_class
-            
-            # 如果没有找到标签，尝试直接从文本中提取
-            # 查找类似"最合适的容器class是: xxx"这样的模式
-            class_patterns = [
-                r"最合适的容器class[\s是:]+['\"](.*?)['\"]",
-                r"容器class[\s是:]+['\"](.*?)['\"]", 
-                r"组件容器[\s是:]+['\"](.*?)['\"]",
-                r"class[\s值是:]+['\"](.*?)['\"]",
-                r"['\"](content|container|main|components?|wrapper)['\"]"
-            ]
-            
-            for pattern in class_patterns:
-                matches = re.search(pattern, response, re.IGNORECASE)
-                if matches:
-                    container_class = matches.group(1).strip()
-                    self.logger.info(f"通过模式匹配找到组件容器class: {container_class}")
-                    return container_class
-            
-            # 仍未找到，尝试使用BeautifulSoup分析HTML并寻找可能的容器元素
-            try:
-                soup = BeautifulSoup(scaffold_html, 'html.parser')
-                
-                # 查找可能的容器元素（按优先级排序）
-                container_candidates = [
-                    soup.find('div', class_=lambda c: c and ('content' in c or 'container' in c or 'main' in c or 'components' in c)),
-                    soup.find('main'),
-                    soup.find('div', id=lambda i: i and ('content' in i or 'container' in i or 'main' in i or 'components' in i)),
-                    soup.find('div', class_=True)  # 任何带class的div
-                ]
-                
-                for candidate in container_candidates:
-                    if candidate and candidate.get('class'):
-                        container_class = ' '.join(candidate['class'])
-                        self.logger.info(f"通过HTML分析找到组件容器class: {container_class}")
-                        return container_class
-            except Exception as e:
-                self.logger.warning(f"使用BeautifulSoup分析HTML时出错: {str(e)}")
-            
-            # 最后返回默认值
-            self.logger.warning("未能找到组件容器class，将使用默认值'content'")
-            return "content"
-            
-        except Exception as e:
-            self.logger.error(f"分析组件容器时出错: {str(e)}")
-            return ""  # 出错时返回空字符串
-
-    def _add_placeholder_to_artifact(self, artifact_html: str, target: str, placeholder: str) -> str:
+    def _add_placeholder_to_artifact(self, artifact_html: str, mount_point: str, placeholder: str) -> str:
         """向artifact.html添加单个组件占位符，插入到指定target元素之后
         
         Args:
             artifact_html: 制品HTML内容
-            target: 目标元素的CSS选择器、ID或标签名
+            mount_point: 挂载点ID
             placeholder: 要添加的占位符
             
         Returns:
@@ -744,29 +627,29 @@ HTML代码：
             
             # 尝试不同的查找方式
             # 1. 作为CSS选择器
-            target_elements = soup.select(target)
+            target_elements = soup.select(mount_point)
             if target_elements:
                 target_element = target_elements[0]
             
             # 2. 如果未找到，尝试作为ID查找
-            if not target_element and not target.startswith('#'):
-                target_element = soup.find(id=target)
+            if not target_element and not mount_point.startswith('#'):
+                target_element = soup.find(id=mount_point)
                 
             # 3. 如果仍未找到，尝试作为标签名查找
             if not target_element:
-                target_element = soup.find(target)
+                target_element = soup.find(mount_point)
                 
             # 如果未找到目标元素，记录警告并使用body或html作为后备
             if not target_element:
-                self.logger.warning(f"未找到目标元素: {target}，将使用body作为默认容器")
+                self.logger.warning(f"未找到目标元素: {mount_point}，将使用body作为默认容器")
                 target_element = soup.body or soup.html
                 
             if not target_element:
                 self.logger.warning("无法找到任何适合添加占位符的元素")
                 return artifact_html
             
-            # 创建挂载点注释
-            placeholder_comment = soup.new_string(f"<!-- {placeholder} -->")
+            # 创建统一格式的挂载点注释
+            placeholder_comment = soup.new_string(f"<!-- COMPONENT:{placeholder} -->")
             
             # 先添加注释
             target_element.append(placeholder_comment)
@@ -875,10 +758,6 @@ HTML代码：
             scaffold_path.write_text(scaffold_html, encoding="utf-8")
             self.logger.info(f"已保存框架HTML: {scaffold_path}")
             
-            # 分析scaffold.html，找出组件容器class
-            container_class = await self._analyze_component_container(scaffold_html)
-            self.logger.info(f"组件容器分析结果: class='{container_class}'")
-            
             # 同时创建artifact.html作为初始版本（后续会随组件添加而更新）
             artifact_path = self.artifacts_dir / "artifact.html"
             
@@ -974,10 +853,7 @@ HTML代码：
                     "components": [],
                     "iterations": []
                 }
-            
-            # 保存容器class到status.json
-            status_info["container_class"] = container_class
-            
+                       
             # 确保iterations字段存在
             if "iterations" not in status_info:
                 status_info["iterations"] = []
@@ -1032,7 +908,7 @@ HTML代码：
     def _build_component_info_prompt(self, 
                                 context_files: Dict[str, str], 
                                 query: str, 
-                                scaffold_html: str,
+                                artifact_html: str,
                                 existing_components: List[Dict],
                                 component_id: str) -> str:
         """构建生成组件信息的提示词
@@ -1040,7 +916,7 @@ HTML代码：
         Args:
             context_files: 文件内容字典，key为文件名，value为文件内容
             query: 用户的查询内容
-            scaffold_html: 框架HTML内容
+            artifact_html: 当前制品HTML内容
             existing_components: 已有组件信息列表
             component_id: 当前组件ID
             
@@ -1065,7 +941,7 @@ HTML代码：
         # 提取可用的挂载点信息
         mount_points_text = ""
         try:
-            soup = BeautifulSoup(scaffold_html, 'html.parser')
+            soup = BeautifulSoup(artifact_html, 'html.parser')
             mount_points = []
             for element in soup.find_all(id=True):
                 mount_points.append({
@@ -1091,7 +967,7 @@ HTML代码：
         # 加载提示词模板并替换占位符
         return format_prompt("artifact/component_info_prompt",
                             context_files=context_files_str,
-                            scaffold_html=scaffold_html,
+                            artifact_html=artifact_html,
                             existing_components=existing_components_str,
                             mount_points_text=mount_points_text,
                             query=query,
@@ -1131,7 +1007,6 @@ HTML代码：
                             component_id=component_id,
                             component_info_title=component_info.get('title'),
                             component_info_description=component_info.get('description'),
-                            component_info_mount_point=component_info.get('mount_point'),
                             component_info_html_type=component_info.get('html_type'),
                             component_info_height=component_info.get('height'),
                             component_info_width=component_info.get('width'),
@@ -1246,7 +1121,7 @@ HTML代码：
             component_info_prompt = self._build_component_info_prompt(
                 context_contents, 
                 query, 
-                scaffold_html,
+                artifact_html,
                 status_info.get("components", []),
                 component_id
             )
@@ -1319,6 +1194,14 @@ HTML代码：
                 json.dump(component_info, f, ensure_ascii=False, indent=2)
                     
             self.logger.info(f"组件信息生成成功: {component_info['title']}")
+            
+            # 新增步骤：根据component_info的挂载点，在artifact_html中添加占位符
+            mount_point = component_info.get("mount_point")
+            placeholder = "component_"+component_info.get("id")+"_placeholder"
+            
+            # 在artifact_html中添加占位符
+            self.logger.info(f"正在为组件 {component_id} 在 {mount_point} 添加占位符")
+            artifact_html = self._add_placeholder_to_artifact(artifact_html, mount_point, placeholder)
             
             # 第二步：基于组件信息生成组件HTML
             # 构建组件HTML提示词
@@ -1396,13 +1279,12 @@ HTML代码：
                 "id": component_id,
                 "title": component_info.get("title", f"组件 {component_number}"),
                 "description": component_info.get("description", ""),
-                "mount_point": component_info.get("mount_point", f"component_{component_number}"),
+                "mount_point": mount_point,
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "iteration": iteration,
                 "query": query,
-                "html_path": f"components/{component_id}.html",
-                "component_url": f"components/{component_id}.html",  # 明确设置用于iframe的URL
+                "component_path": f"components/{component_id}.html",  
                 "status": "active",
                 "component_number": component_number,
                 "version": 1,
@@ -1411,14 +1293,6 @@ HTML代码：
                 "height": component_info.get("height", 300),
                 "width": component_info.get("width", "100%")
             }
-            
-            # 额外检查并修正mount_point，确保它是ID而不是路径
-            if "/" in component_metadata["mount_point"] or "." in component_metadata["mount_point"]:
-                self.logger.warning(f"挂载点 {component_metadata['mount_point']} 格式异常，尝试修正")
-                # 提取ID部分
-                mount_id = component_metadata["mount_point"].split("/")[-1].replace(".html", "")
-                component_metadata["mount_point"] = mount_id
-                self.logger.info(f"修正后的挂载点: {mount_id}")
             
             # 读取或创建组件元数据文件
             metadata_file = components_dir / "component_metadata.json"
@@ -1450,18 +1324,17 @@ HTML代码：
             # 从组件元数据中提取挂载点作为占位符
             mount_point = component_metadata["mount_point"]
             
-            # 使用内部方法提取组件内容，而不是使用iframe
+            # 使用内部方法提取组件内容
             component_content_html = self._extract_component_content(
                 component_html,
-                component_id,
-                mount_point
+                component_id
             )
             
-            # 更新artifact HTML，使用挂载点作为占位符
+            # 更新artifact HTML
             updated_artifact = self.component_manager.update_artifact_with_component(
                 artifact_html,
                 component_content_html,
-                mount_point
+                placeholder
             )
             
             # 更新artifact.html（作为最新版本的完整制品）
@@ -1558,13 +1431,12 @@ HTML代码：
             traceback.print_exc()
             return None
 
-    def _extract_component_content(self, component_html: str, component_id: str, mount_point: str) -> str:
+    def _extract_component_content(self, component_html: str, component_id: str) -> str:
         """从组件HTML中提取CSS、JS和主要内容并整合
         
         Args:
             component_html: 组件的完整HTML内容
             component_id: 组件ID
-            mount_point: 挂载点ID
             
         Returns:
             str: 整合后的HTML内容
@@ -1579,9 +1451,9 @@ HTML代码：
                 # 为样式添加作用域，防止样式冲突
                 style_content = style_tag.string or ""
                 if style_content:
-                    # 添加样式作用域，限定在组件容器内
-                    scoped_style = style_content.replace(
-                        '}', f'}}#{mount_point}_container ')
+                    # 添加样式作用域，使用组件ID前缀作为限定范围
+                    scoped_style = style_content
+                    # 不再使用mount_point作为选择器前缀，使用组件ID符合命名规则
                     css_content += f"<style>{scoped_style}</style>\n"
                     # 移除原始样式标签，避免重复
                     style_tag.decompose()
@@ -1611,8 +1483,11 @@ HTML代码：
                         soup.head.decompose()
                     body_content = str(soup)
             
+            # 使用组件ID作为前缀来命名容器，符合命名规则
+            container_id = f"component_{component_id}-container"
+            
             # 组合所有内容到一个容器中
-            combined_content = f'''<div id="{mount_point}_container" class="component-container" data-component-id="{component_id}">
+            combined_content = f'''<div id="{container_id}" class="component-container" data-component-id="{component_id}">
 {css_content}
 {body_content}
 {js_content}
@@ -1623,5 +1498,5 @@ HTML代码：
             
         except Exception as e:
             self.logger.error(f"提取组件内容时发生错误: {str(e)}")
-            # 发生错误时返回一个基本的错误提示容器
-            return f'<div id="{mount_point}_container" class="component-error">组件内容提取失败: {str(e)}</div>'
+            # 发生错误时返回一个基本的错误提示容器，使用组件ID前缀命名
+            return f'<div id="{container_id}-error" class="component-error">组件内容提取失败: {str(e)}</div>'

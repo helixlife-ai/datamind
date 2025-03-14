@@ -1,5 +1,5 @@
-[框架HTML]
-{{scaffold_html}}
+[当前HTML]
+{{artifact_html}}
 
 [已有组件]
 {{existing_components}}
@@ -24,12 +24,13 @@
 3. 组件应该提供以下信息：
    a. 组件标题（title）：简短描述组件的主要内容
    b. 组件描述（description）：详细说明组件的功能和内容
-   c. 挂载点（mount_point）：建议在框架HTML中的哪个位置挂载该组件，必须使用上述可用挂载点中的ID
+   c. 挂载点（mount_point）：建议在当前HTML中的哪个位置的后面挂载该组件，必须使用上述可用挂载点中的ID
 
 只需返回JSON格式的组件信息，不要添加其他解释，格式如下：
 
 ```json
 {
+  "id": "组件ID",
   "title": "组件标题",
   "description": "组件详细描述",
   "html_type": "图表/表格/文本/交互式控件/其他类型",
