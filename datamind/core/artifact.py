@@ -159,31 +159,38 @@ class ComponentManager:
             raise
     
     def update_artifact_with_component(self, 
-                          artifact_html: str, 
-                          component_html: str, 
-                          placeholder: str) -> str:
-        """使用组件更新工件HTML
+                         artifact_html: str, 
+                         component_html: str, 
+                         placeholder: str) -> str:
+        """
+        用组件HTML内容更新制品HTML中的占位符
         
         Args:
-            artifact_html: 工件HTML内容
-            component_html: 组件HTML内容
-            placeholder: 挂载点的替代符
+            artifact_html: 完整的制品HTML
+            component_html: 组件的HTML内容
+            placeholder: 需要替换的占位符标识
             
         Returns:
-            str: 更新后的工件HTML
+            str: 更新后的制品HTML
         """
-        # 使用统一的占位符格式
-        standard_placeholder = f"<!-- COMPONENT:{placeholder} -->"
-        
-        # 首先尝试直接替换统一格式的占位符
-        if standard_placeholder in artifact_html:
-            updated_html = artifact_html.replace(standard_placeholder, f"{component_html}", 1)
-            return updated_html
-        
-
-        
-        self.logger.warning(f"在工件HTML中未找到占位符: {placeholder}")
-        return artifact_html
+        try:
+            # 尝试查找并替换两种可能的占位符格式
+            # 1. 原始格式: <!-- COMPONENT:placeholder -->
+            component_placeholder = f"<!-- COMPONENT:{placeholder} -->"
+            
+            self.logger.info(f"查找占位符: '{component_placeholder}'")
+            
+            # 检查占位符是否存在
+            if component_placeholder in artifact_html:
+                self.logger.info(f"使用原始格式替换占位符: '{component_placeholder}'")
+                updated_html = artifact_html.replace(component_placeholder, component_html)
+                return updated_html
+            else:                
+                self.logger.warning(f"未找到占位符 '{placeholder}' 或其替代格式")
+                return artifact_html  # 未找到占位符，返回原始HTML
+        except Exception as e:
+            self.logger.error(f"更新组件时出错: {str(e)}")
+            return artifact_html  # 出错时返回原始HTML
 
 
 class ArtifactGenerator:
@@ -608,57 +615,33 @@ class ArtifactGenerator:
 
 
     def _add_placeholder_to_artifact(self, artifact_html: str, mount_point: str, placeholder: str) -> str:
-        """向artifact.html添加单个组件占位符，插入到指定target元素之后
+        """
+        在制品HTML中添加组件占位符
         
         Args:
-            artifact_html: 制品HTML内容
-            mount_point: 挂载点ID
-            placeholder: 要添加的占位符
+            artifact_html: 完整的制品HTML
+            mount_point: 占位符插入位置的标识
+            placeholder: 占位符标识
             
         Returns:
-            str: 添加了占位符的HTML内容
+            str: 添加了占位符的制品HTML
         """
         try:
-            # 使用BeautifulSoup解析HTML
-            soup = BeautifulSoup(artifact_html, 'html.parser')
+            # 确保占位符格式一致
+            # 统一使用格式: <!-- COMPONENT:{placeholder} -->
+            component_placeholder = f"<!-- COMPONENT:{placeholder} -->"
             
-            # 查找目标元素
-            target_element = None
-            
-            # 尝试不同的查找方式
-            # 1. 作为CSS选择器
-            target_elements = soup.select(mount_point)
-            if target_elements:
-                target_element = target_elements[0]
-            
-            # 2. 如果未找到，尝试作为ID查找
-            if not target_element and not mount_point.startswith('#'):
-                target_element = soup.find(id=mount_point)
-                
-            # 3. 如果仍未找到，尝试作为标签名查找
-            if not target_element:
-                target_element = soup.find(mount_point)
-                
-            # 如果未找到目标元素，记录警告并使用body或html作为后备
-            if not target_element:
-                self.logger.warning(f"未找到目标元素: {mount_point}，将使用body作为默认容器")
-                target_element = soup.body or soup.html
-                
-            if not target_element:
-                self.logger.warning("无法找到任何适合添加占位符的元素")
+            # 在指定位置添加占位符
+            if mount_point in artifact_html:
+                # 在mount_point后插入占位符
+                updated_html = artifact_html.replace(mount_point, f"{mount_point}\n{component_placeholder}")
+                self.logger.info(f"在 {mount_point} 后添加了占位符: {component_placeholder}")
+                return updated_html
+            else:
+                self.logger.warning(f"未找到挂载点 '{mount_point}'")
                 return artifact_html
-            
-            # 创建统一格式的挂载点注释
-            placeholder_comment = soup.new_string(f"<!-- COMPONENT:{placeholder} -->")
-            
-            # 先添加注释
-            target_element.append(placeholder_comment)
-            
-            # 返回修改后的HTML
-            return str(soup)
-            
         except Exception as e:
-            self.logger.error(f"向artifact添加占位符时出错: {str(e)}")
+            self.logger.error(f"添加占位符时出错: {str(e)}")
             return artifact_html
 
     async def _generate_scaffold_html(self, 
@@ -1197,7 +1180,7 @@ class ArtifactGenerator:
             
             # 新增步骤：根据component_info的挂载点，在artifact_html中添加占位符
             mount_point = component_info.get("mount_point")
-            placeholder = "component_"+component_info.get("id")+"_placeholder"
+            placeholder = component_info.get("id")+"_placeholder"
             
             # 在artifact_html中添加占位符
             self.logger.info(f"正在为组件 {component_id} 在 {mount_point} 添加占位符")
