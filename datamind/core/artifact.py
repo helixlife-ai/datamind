@@ -1206,7 +1206,7 @@ class ArtifactGenerator:
             # 第二步：基于组件信息生成组件HTML
             # 提取框架HTML中的CSS样式
             scaffold_html_css = self._extract_css_from_scaffold(scaffold_html)
-                        
+
             # 构建组件HTML提示词
             component_html_prompt = self._build_component_html_from_info_prompt(
                 context_contents, 
@@ -1481,7 +1481,7 @@ class ArtifactGenerator:
             # 发生错误时返回一个基本的错误提示容器，使用组件ID前缀命名
             return f'<div id="{container_id}-error" class="component-error">组件内容提取失败: {str(e)}</div>'
 
-    def _extract_scaffold_css(self, scaffold_html: str) -> str:
+    def _extract_css_from_scaffold(self, scaffold_html: str) -> str:
         """从框架HTML中提取所有CSS样式内容
         
         Args:
