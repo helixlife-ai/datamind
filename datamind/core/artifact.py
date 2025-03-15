@@ -49,7 +49,7 @@ class ArtifactGenerator:
         
         # 每个制品的目录结构
         self.artifacts_dir = self.artifacts_base 
-        self.iterations_dir = self.artifacts_dir / "iterations"  # 存放迭代版本
+        self.iterations_dir = self.alchemy_dir / "iterations"  # 存放迭代版本
         
         # 创建所需目录
         for dir_path in [self.artifacts_base, self.artifacts_dir, self.iterations_dir]:
@@ -161,7 +161,7 @@ class ArtifactGenerator:
         existing_iterations = [int(v.name.split('iter')[-1]) 
                              for v in self.iterations_dir.glob("iter*") 
                              if v.name.startswith('iter')]
-        return max(existing_iterations, default=0) + 1
+        return max(existing_iterations, default=0)
 
     async def _collect_stream_response(self, 
                                  temperature=0.7, 
@@ -274,7 +274,7 @@ class ArtifactGenerator:
             self.logger.error(f"生成HTML制品时发生错误: {str(e)}")
             
             # 错误处理和记录
-            work_base = self.iterations_dir / f"iter{iteration}"
+            work_base = self.iterations_dir / f"iter{iteration}" / "artifact"
             process_dir = work_base / "process"
             output_dir = work_base / "output"
             
@@ -317,7 +317,7 @@ class ArtifactGenerator:
         """
         try:
             # 确定生成目录
-            work_base = self.iterations_dir / f"iter{iteration}"
+            work_base = self.iterations_dir / f"iter{iteration}" / "artifact"
             artifact_name = f"artifact_iter{iteration}"
             
             # 创建工作目录
@@ -403,7 +403,7 @@ class ArtifactGenerator:
                 "iteration": iteration,
                 "timestamp": datetime.now().isoformat(),
                 "input_query": query,
-                "output_file": str(output_path.relative_to(self.artifacts_base)),
+                "output_file": str(output_path.relative_to(self.alchemy_dir)),
                 "optimization_suggestion": optimization_suggestion,
                 "generation_stats": {
                     "html_size": len(html_content)
@@ -457,10 +457,10 @@ class ArtifactGenerator:
             iteration_info = {
                 "iteration": iteration,
                 "timestamp": datetime.now().isoformat(),
-                "path": str(work_base.relative_to(self.artifacts_base)),
+                "path": str(work_base.relative_to(self.alchemy_dir)),
                 "query": query,
                 "type": "html",
-                "output": str(output_path.relative_to(self.artifacts_base)),
+                "output": str(output_path.relative_to(self.alchemy_dir)),
                 "optimization_suggestion": optimization_suggestion
             }
 
