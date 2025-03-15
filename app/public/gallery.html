@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataMind - 作品展示</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc;
+            min-height: 100vh;
+            color: #1e293b;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        h1 {
+            color: #333;
+            margin: 0;
+            padding: 20px 0;
+            font-weight: 600;
+            background: linear-gradient(135deg, #1e293b, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .card {
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s, transform 0.2s;
+            margin-bottom: 20px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .card:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
+            transform: translateY(-5px);
+        }
+        
+        .card-img-container {
+            position: relative;
+            width: 100%;
+            padding-top: 66.67%; /* 2:3 宽高比 */
+            overflow: hidden;
+        }
+        
+        .card-img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+        }
+        
+        .card-body {
+            padding: 16px;
+            flex: 1;
+        }
+        
+        .card-title {
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 10px;
+            font-size: 1.25rem;
+        }
+        
+        .card-text {
+            color: #64748b;
+            margin-bottom: 15px;
+            font-size: calc(0.75rem + 0.3vw);
+            line-height: 1.5;
+        }
+        
+        .card-footer {
+            padding: 0 16px 16px;
+        }
+        
+        .card-footer .btn {
+            padding: 8px 16px;
+            font-size: calc(0.75rem + 0.2vw);
+        }
+        
+        .header {
+            display: flex;
+            align-items: center;
+            padding: 8px 4%;
+            background: linear-gradient(to right, #ffffff, #f1f5f9);
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            height: 60px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+            flex-shrink: 0;
+            width: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        
+        .title-container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .main-title {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        
+        .product-name {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 0;
+            background: linear-gradient(135deg, #1e293b, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .product-subtitle {
+            font-family: 'Crimson Text', Georgia, serif;
+            font-size: 14px;
+            font-style: italic;
+            color: #64748b;
+            margin: 0;
+            padding-left: 28px;
+            position: relative;
+        }
+        
+        .product-subtitle::before {
+            content: "⚗️";
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 16px;
+        }
+        
+        .product-tagline {
+            font-size: 13px;
+            font-weight: 600;
+            color: #3b82f6;
+            margin: 0;
+            padding: 4px 12px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.08);
+            white-space: nowrap;
+            letter-spacing: -0.2px;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+        }
+        
+        .product-tagline::before {
+            content: "✨";
+            margin-right: 8px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+        }
+        
+        .btn-primary:hover {
+            background-color: #2563eb;
+            border-color: #2563eb;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .social-icon {
+            color: #64748b;
+            font-size: 1.25rem;
+            margin: 0 8px;
+            transition: color 0.2s;
+        }
+        
+        .social-icon:hover {
+            color: #3b82f6;
+        }
+        
+        .nav-link {
+            color: #64748b;
+            font-weight: 500;
+            padding: 8px 16px;
+            transition: color 0.2s;
+        }
+        
+        .nav-link:hover {
+            color: #3b82f6;
+        }
+        
+        .section-title {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: #334155;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            padding-bottom: 0.5rem;
+        }
+        
+        main {
+            padding: 2rem 4%;
+            margin-top: 60px; /* 添加与header高度相同的上边距 */
+        }
+                
+        @media (max-width: 768px) {
+            .header {
+                padding: 16px;
+            }
+            
+            .product-name {
+                font-size: 20px;
+            }
+            
+            .product-tagline {
+                font-size: 12px;
+                margin-left: 10px;
+            }
+            
+            .product-subtitle {
+                font-size: 12px;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .card-title {
+                font-size: 1.1rem;
+            }
+            
+            .card-text {
+                font-size: 0.85rem;
+            }
+            
+            .card-footer .btn {
+                padding: 6px 12px;
+                font-size: 0.85rem;
+            }
+        }
+        
+        #mobile-menu {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        
+        #mobile-menu .nav-link {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+            font-weight: 500;
+        }
+        
+        #mobile-menu .nav-link:last-child {
+            border-bottom: none;
+        }
+        
+        #mobile-menu .nav-link:hover {
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+        
+        .mobile-menu-button {
+            border: none;
+            background: transparent;
+            padding: 8px;
+            color: #64748b;
+            font-size: 1.25rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .mobile-menu-button:hover {
+            color: #3b82f6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-container">
+                <div class="main-title">
+                    <h1 class="product-name">DataMind</h1>
+                    <p class="product-subtitle">The Alchemy Cauldron</p>
+                    <p class="product-tagline">Data in, Surprise out!</p>
+                </div>
+            </div>
+            <div class="ms-auto">
+                <nav class="d-none d-md-flex">
+                    <a href="#projects" class="nav-link">作品</a>
+                    <a href="#about" class="nav-link">关于</a>
+                    <a href="#contact" class="nav-link">联系</a>
+                </nav>
+                <button id="mobile-menu-button" class="mobile-menu-button d-md-none">
+                    <i class="bi bi-list"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="mobile-menu" class="d-md-none d-none bg-white shadow-sm">
+            <div class="d-flex flex-column">
+                <a href="#projects" class="nav-link">作品</a>
+                <a href="#about" class="nav-link">关于</a>
+                <a href="#contact" class="nav-link">联系</a>
+            </div>
+        </div>
+
+        <main class="flex-grow-1">
+            <section class="text-center mb-5 px-4">
+                <h2 class="mb-3 fw-bold">精选作品展示</h2>
+                <p class="text-muted mx-auto" style="max-width: 700px;">
+                    探索我们精心设计的作品集，每一个项目都代表着独特的创意和专业的执行力
+                </p>
+            </section>
+
+            <section id="projects" class="mb-5 px-4">
+                <h3 class="section-title">作品集</h3>
+                
+                <div class="row g-4">
+                    <!-- 作品卡片 1 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1547658719-da2b51169166?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="现代网站设计" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">现代网站设计</h4>
+                                <p class="card-text">采用最新的设计趋势和技术，打造响应式、高性能的现代网站。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 2 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1551650975-87deedd944c3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="移动应用界面" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">移动应用界面</h4>
+                                <p class="card-text">专注于用户体验的移动应用界面设计，简洁直观且功能强大。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 3 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1626785774573-4b799315345d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="品牌标识设计" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">品牌标识设计</h4>
+                                <p class="card-text">创造独特且有记忆点的品牌标识，帮助企业在市场中脱颖而出。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 4 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="数据可视化" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">数据可视化</h4>
+                                <p class="card-text">将复杂数据转化为直观易懂的视觉呈现，帮助用户快速理解信息。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 5 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1523206489230-c012c64b2b48?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="电子商务平台" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">电子商务平台</h4>
+                                <p class="card-text">设计用户友好的电子商务界面，提升转化率和用户满意度。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 6 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1593720213428-28a5b9e94613?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="文档主题设计" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">文档主题设计</h4>
+                                <p class="card-text">为技术文档和知识库创建清晰、易于导航的主题设计。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 7 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="人工智能应用" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">人工智能应用</h4>
+                                <p class="card-text">结合AI技术的智能应用界面设计，提供个性化用户体验。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 8 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="游戏UI设计" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">游戏UI设计</h4>
+                                <p class="card-text">为游戏打造沉浸式界面体验，平衡美观与功能性。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 9 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="AR/VR体验" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">AR/VR体验</h4>
+                                <p class="card-text">设计增强现实和虚拟现实应用的交互界面，创造未来感体验。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 10 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1499951360447-b19be8fe80f5?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="响应式仪表盘" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">响应式仪表盘</h4>
+                                <p class="card-text">为企业管理系统设计直观、高效的数据仪表盘界面。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 11 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1542744173-8e7e53415bb0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="企业品牌重塑" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">企业品牌重塑</h4>
+                                <p class="card-text">为成熟企业提供品牌更新服务，注入现代元素保持市场竞争力。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 作品卡片 12 -->
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card h-100">
+                            <div class="card-img-container">
+                                <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="金融科技界面" class="card-img">
+                            </div>
+                            <div class="card-body">
+                                <h4 class="card-title">金融科技界面</h4>
+                                <p class="card-text">为金融应用设计安全、可靠且易用的用户界面，提升用户信任感。</p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="#" class="btn btn-primary">查看详情</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 设置当前年份
+        document.getElementById('current-year').textContent = new Date().getFullYear();
+        
+        // 移动端菜单
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+        
+        mobileMenuButton.addEventListener('click', () => {
+            mobileMenu.classList.toggle('d-none');
+        });
+        
+        // 点击移动端菜单项后关闭菜单
+        const mobileMenuItems = mobileMenu.querySelectorAll('a');
+        mobileMenuItems.forEach(item => {
+            item.addEventListener('click', () => {
+                mobileMenu.classList.add('d-none');
+            });
+        });
+        
+        // 滚动动画
+        const animateOnScroll = () => {
+            const elements = document.querySelectorAll('.card');
+            
+            elements.forEach((element, index) => {
+                const elementTop = element.getBoundingClientRect().top;
+                const elementVisible = 150;
+                
+                if (elementTop < window.innerHeight - elementVisible) {
+                    setTimeout(() => {
+                        element.style.opacity = '1';
+                        element.style.transform = 'translateY(0)';
+                    }, index * 100);
+                }
+            });
+        };
+        
+        // 初始设置卡片样式
+        document.querySelectorAll('.card').forEach(card => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+        });
+        
+        // 初始加载时执行一次
+        window.addEventListener('load', animateOnScroll);
+        // 滚动时执行
+        window.addEventListener('scroll', animateOnScroll);
+    </script>
+</body>
+</html> 
