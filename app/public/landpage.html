@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataMind展示画廊 | AI文档智能助手</title>
+    <meta name="description" content="探索DataMind智能文档助手，基于DeepSeek R1推理模型，深度理解文档并生成洞察">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        // 初始化tailwind主题配置
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                        'bounce-slow': 'bounce 3s infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: 0 },
+                            '100%': { opacity: 1 },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        /* 基础样式 */
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        .dark ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        
+        .dark ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        
+        /* 卡片悬停效果 */
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        
+        .card-hover:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        /* 按钮效果 */
+        .btn-effect {
+            transition: all 0.2s ease;
+        }
+        
+        .btn-effect:hover {
+            transform: scale(1.05);
+        }
+        
+        /* 渐入动画 */
+        .section-animate {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        
+        .section-animate.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* 卡片标签 */
+        .card-tag {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        /* 图片遮罩 */
+        .img-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.7) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .card-hover:hover .img-overlay {
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body class="font-sans bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-200 transition-colors duration-200">
+    <!-- 导航栏 -->
+    <header class="sticky top-0 z-50 bg-white dark:bg-gray-800 shadow-sm">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center space-x-2">
+                    <svg class="h-8 w-8 text-primary-600 dark:text-primary-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                    </svg>
+                    <span class="text-xl font-semibold">DataMind 文档智能助手</span>
+                </div>
+                
+                <nav class="hidden md:flex space-x-8">
+                    <a href="#featured" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">核心功能</a>
+                    <a href="#categories" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">应用场景</a>
+                    <a href="#recent" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">最新特性</a>
+                    <a href="#about" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">关于我们</a>
+                </nav>
+                
+                <div class="flex items-center space-x-4">
+                    <!-- 搜索按钮 -->
+                    <button id="search-button" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </button>
+                    
+                    <!-- 深色模式切换按钮 -->
+                    <button id="theme-toggle" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none transition-colors">
+                        <svg id="dark-icon" class="w-5 h-5 hidden dark:block" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path>
+                        </svg>
+                        <svg id="light-icon" class="w-5 h-5 block dark:hidden" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+                        </svg>
+                    </button>
+                    
+                    <!-- 移动端菜单按钮 -->
+                    <button id="mobile-menu-button" class="md:hidden p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 移动端导航菜单 -->
+            <div id="mobile-menu" class="md:hidden hidden pb-4 animate-fade-in">
+                <div class="flex flex-col space-y-3">
+                    <a href="#featured" class="px-4 py-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">核心功能</a>
+                    <a href="#categories" class="px-4 py-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">应用场景</a>
+                    <a href="#recent" class="px-4 py-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">最新特性</a>
+                    <a href="#about" class="px-4 py-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">关于我们</a>
+                </div>
+            </div>
+            
+            <!-- 搜索框 -->
+            <div id="search-container" class="hidden py-4 animate-fade-in">
+                <div class="relative">
+                    <input type="text" placeholder="搜索功能或应用场景..." class="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    <button class="absolute right-3 top-2">
+                        <svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区域 -->
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <!-- 英雄区域 -->
+        <section id="hero" class="mb-16 section-animate">
+            <div class="bg-gradient-to-br from-primary-600 via-blue-700 to-purple-800 dark:from-primary-800 dark:via-blue-900 dark:to-purple-900 rounded-2xl p-10 md:p-16 shadow-xl text-white overflow-hidden relative">
+                <!-- 背景装饰元素 -->
+                <div class="absolute top-0 left-0 w-full h-full overflow-hidden opacity-20">
+                    <div class="absolute top-10 left-10 w-40 h-40 rounded-full bg-white blur-3xl"></div>
+                    <div class="absolute bottom-10 right-10 w-60 h-60 rounded-full bg-blue-300 blur-3xl"></div>
+                    <div class="absolute top-1/2 left-1/3 w-40 h-40 rounded-full bg-purple-300 blur-3xl"></div>
+                </div>
+                
+                <div class="max-w-4xl relative z-10">
+                    <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight">您的<span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-200">AI文档智能助手</span></h1>
+                    <p class="text-xl md:text-2xl opacity-90 mb-10 leading-relaxed">DataMind基于DeepSeek R1推理模型，深度理解您的文档，生成精准洞察，彻底改变您与知识库的交互方式</p>
+                    <div class="flex flex-wrap gap-5">
+                        <a href="#featured" class="inline-block bg-white text-primary-700 hover:bg-gray-100 px-8 py-4 rounded-lg font-medium shadow-lg btn-effect transition-all duration-300 text-lg">
+                            <i class="fas fa-th-large mr-2"></i>探索功能
+                        </a>
+                        <a href="#categories" class="inline-block bg-transparent border-2 border-white hover:bg-white/10 px-8 py-4 rounded-lg font-medium btn-effect transition-all duration-300 text-lg">
+                            <i class="fas fa-tags mr-2"></i>应用场景
+                        </a>
+                    </div>
+                    
+                    <!-- 装饰性图标 -->
+                    <div class="hidden md:flex absolute bottom-8 right-8 gap-6 opacity-80">
+                        <i class="fas fa-file-alt text-4xl"></i>
+                        <i class="fas fa-brain text-4xl"></i>
+                        <i class="fas fa-chart-network text-4xl"></i>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 核心功能部分 -->
+        <section id="featured" class="mb-16 section-animate">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 md:p-8 shadow-md">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 flex items-center">
+                    <i class="fas fa-star text-amber-400 mr-3"></i>
+                    核心功能
+                </h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- 功能卡片1 -->
+                    <div class="relative rounded-xl overflow-hidden shadow-md card-hover bg-white dark:bg-gray-700">
+                        <div class="relative">
+                            <img src="https://via.placeholder.com/600x340/0ea5e9/ffffff?text=智能文档处理" alt="智能文档处理" class="w-full h-48 object-cover">
+                            <div class="img-overlay rounded-t-xl flex items-end">
+                                <div class="p-4 text-white">
+                                    <p class="font-medium">点击查看详情</p>
+                                </div>
+                            </div>
+                            <span class="card-tag bg-amber-100 text-amber-800 dark:bg-amber-800 dark:text-amber-100">核心功能</span>
+                        </div>
+                        <div class="p-5">
+                            <h3 class="text-xl font-semibold mb-2">智能文档处理</h3>
+                            <p class="text-gray-600 dark:text-gray-300 mb-4">支持多种格式文件，自动检测编码和类型，提取文档结构，实现高效向量化处理</p>
+                            <div class="flex justify-between items-center">
+                                <div class="flex space-x-2">
+                                    <span class="px-2 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 rounded text-xs">多格式</span>
+                                    <span class="px-2 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100 rounded text-xs">向量化</span>
+                                </div>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline">
+                                    查看 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 功能卡片2 -->
+                    <div class="relative rounded-xl overflow-hidden shadow-md card-hover bg-white dark:bg-gray-700">
+                        <div class="relative">
+                            <img src="https://via.placeholder.com/600x340/10b981/ffffff?text=混合搜索引擎" alt="混合搜索引擎" class="w-full h-48 object-cover">
+                            <div class="img-overlay rounded-t-xl flex items-end">
+                                <div class="p-4 text-white">
+                                    <p class="font-medium">点击查看详情</p>
+                                </div>
+                            </div>
+                            <span class="card-tag bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">高性能</span>
+                        </div>
+                        <div class="p-5">
+                            <h3 class="text-xl font-semibold mb-2">混合搜索引擎</h3>
+                            <p class="text-gray-600 dark:text-gray-300 mb-4">基于FAISS的高性能向量相似度搜索，支持结构化查询和智能融合排序</p>
+                            <div class="flex justify-between items-center">
+                                <div class="flex space-x-2">
+                                    <span class="px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 rounded text-xs">语义搜索</span>
+                                    <span class="px-2 py-1 bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-100 rounded text-xs">结构化</span>
+                                </div>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline">
+                                    查看 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 功能卡片3 -->
+                    <div class="relative rounded-xl overflow-hidden shadow-md card-hover bg-white dark:bg-gray-700">
+                        <div class="relative">
+                            <img src="https://via.placeholder.com/600x340/8b5cf6/ffffff?text=智能交付系统" alt="智能交付系统" class="w-full h-48 object-cover">
+                            <div class="img-overlay rounded-t-xl flex items-end">
+                                <div class="p-4 text-white">
+                                    <p class="font-medium">点击查看详情</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-5">
+                            <h3 class="text-xl font-semibold mb-2">智能交付系统</h3>
+                            <p class="text-gray-600 dark:text-gray-300 mb-4">高级交付规划，自动内容组织和结构化，智能模板选择和适配，上下文感知内容生成</p>
+                            <div class="flex justify-between items-center">
+                                <div class="flex space-x-2">
+                                    <span class="px-2 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100 rounded text-xs">自动化</span>
+                                    <span class="px-2 py-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100 rounded text-xs">多格式</span>
+                                </div>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline">
+                                    查看 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-8 text-center">
+                    <a href="#categories" class="inline-block bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-800 px-6 py-3 rounded-lg font-medium btn-effect">
+                        查看应用场景 <i class="fas fa-chevron-down ml-2"></i>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- 应用场景部分 -->
+        <section id="categories" class="mb-16 section-animate">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 md:p-8 shadow-md">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 flex items-center">
+                    <i class="fas fa-folder-open text-primary-600 dark:text-primary-400 mr-3"></i>
+                    应用场景
+                </h2>
+                
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+                    <a href="#" class="flex flex-col items-center p-4 rounded-lg bg-gray-50 hover:bg-primary-50 dark:bg-gray-700 dark:hover:bg-primary-900/30 transition-colors">
+                        <i class="fas fa-search text-3xl mb-3 text-blue-500"></i>
+                        <span class="font-medium">AI研究分析</span>
+                        <span class="text-sm text-gray-500 dark:text-gray-400">深度语义理解</span>
+                    </a>
+                    
+                    <a href="#" class="flex flex-col items-center p-4 rounded-lg bg-gray-50 hover:bg-primary-50 dark:bg-gray-700 dark:hover:bg-primary-900/30 transition-colors">
+                        <i class="fas fa-database text-3xl mb-3 text-green-500"></i>
+                        <span class="font-medium">知识库智能</span>
+                        <span class="text-sm text-gray-500 dark:text-gray-400">交互式知识库</span>
+                    </a>
+                    
+                    <a href="#" class="flex flex-col items-center p-4 rounded-lg bg-gray-50 hover:bg-primary-50 dark:bg-gray-700 dark:hover:bg-primary-900/30 transition-colors">
+                        <i class="fas fa-file-alt text-3xl mb-3 text-purple-500"></i>
+                        <span class="font-medium">智能内容交付</span>
+                        <span class="text-sm text-gray-500 dark:text-gray-400">多格式报告生成</span>
+                    </a>
+                    
+                    <a href="#" class="flex flex-col items-center p-4 rounded-lg bg-gray-50 hover:bg-primary-50 dark:bg-gray-700 dark:hover:bg-primary-900/30 transition-colors">
+                        <i class="fas fa-chart-line text-3xl mb-3 text-amber-500"></i>
+                        <span class="font-medium">文档分析</span>
+                        <span class="text-sm text-gray-500 dark:text-gray-400">知识图谱分析</span>
+                    </a>
+                    
+                    <a href="#" class="flex flex-col items-center p-4 rounded-lg bg-gray-50 hover:bg-primary-50 dark:bg-gray-700 dark:hover:bg-primary-900/30 transition-colors">
+                        <i class="fas fa-building text-3xl mb-3 text-red-500"></i>
+                        <span class="font-medium">企业文档</span>
+                        <span class="text-sm text-gray-500 dark:text-gray-400">技术文档工作流</span>
+                    </a>
+                </div>
+                
+                <div class="bg-gray-50 dark:bg-gray-700 p-6 rounded-lg">
+                    <h3 class="text-xl font-semibold mb-4">AI研究分析应用</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- 应用卡片1 -->
+                        <div class="relative rounded-xl overflow-hidden shadow-sm card-hover bg-white dark:bg-gray-800">
+                            <div class="p-5">
+                                <div class="flex justify-between items-start mb-3">
+                                    <h3 class="text-lg font-semibold">研究报告生成</h3>
+                                    <span class="bg-amber-100 text-amber-800 dark:bg-amber-800 dark:text-amber-100 px-2 py-1 rounded text-xs">热门</span>
+                                </div>
+                                <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">通过深度语义理解生成全面的研究报告，提取洞察和模式</p>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline text-sm font-medium">
+                                    了解更多 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <!-- 应用卡片2 -->
+                        <div class="relative rounded-xl overflow-hidden shadow-sm card-hover bg-white dark:bg-gray-800">
+                            <div class="p-5">
+                                <div class="flex justify-between items-start mb-3">
+                                    <h3 class="text-lg font-semibold">时间线分析</h3>
+                                    <span class="bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100 px-2 py-1 rounded text-xs">推荐</span>
+                                </div>
+                                <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">创建基于时间线的分析，通过AI推理建立逻辑连接</p>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline text-sm font-medium">
+                                    了解更多 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <!-- 应用卡片3 -->
+                        <div class="relative rounded-xl overflow-hidden shadow-sm card-hover bg-white dark:bg-gray-800">
+                            <div class="p-5">
+                                <div class="flex justify-between items-start mb-3">
+                                    <h3 class="text-lg font-semibold">事实准确性验证</h3>
+                                    <span class="bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100 px-2 py-1 rounded text-xs">新增</span>
+                                </div>
+                                <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">通过AI验证确保事实准确性，提供可靠的研究结果</p>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline text-sm font-medium">
+                                    了解更多 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 text-center">
+                        <a href="#" class="inline-block text-primary-600 dark:text-primary-400 hover:underline font-medium">
+                            查看全部AI研究分析应用 <i class="fas fa-chevron-right ml-1"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 最新特性部分 -->
+        <section id="recent" class="mb-16 section-animate">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 md:p-8 shadow-md">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 flex items-center">
+                    <i class="fas fa-clock text-green-500 mr-3"></i>
+                    最新特性 (v0.2.2)
+                </h2>
+                
+                <div class="overflow-hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <!-- 最新特性1 -->
+                        <div class="relative rounded-xl overflow-hidden shadow-md card-hover bg-white dark:bg-gray-700">
+                            <div class="relative">
+                                <img src="https://via.placeholder.com/400x225/10b981/ffffff?text=智能搜索管道" alt="智能搜索管道" class="w-full h-40 object-cover">
+                                <div class="img-overlay rounded-t-xl flex items-end">
+                                    <div class="p-4 text-white">
+                                        <p class="font-medium text-sm">点击查看详情</p>
+                                    </div>
+                                </div>
+                                <span class="card-tag bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">新特性</span>
+                            </div>
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold mb-2">智能搜索管道</h3>
+                                <p class="text-gray-600 dark:text-gray-300 text-sm mb-3">增强的搜索规划和执行流程，改进的查询意图解析和理解</p>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline text-sm">
+                                    查看 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <!-- 最新特性2 -->
+                        <div class="relative rounded-xl overflow-hidden shadow-md card-hover bg-white dark:bg-gray-700">
+                            <div class="relative">
+                                <img src="https://via.placeholder.com/400x225/8b5cf6/ffffff?text=智能交付系统" alt="智能交付系统" class="w-full h-40 object-cover">
+                                <div class="img-overlay rounded-t-xl flex items-end">
+                                    <div class="p-4 text-white">
+                                        <p class="font-medium text-sm">点击查看详情</p>
+                                    </div>
+                                </div>
+                                <span class="card-tag bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">新特性</span>
+                            </div>
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold mb-2">智能交付系统</h3>
+                                <p class="text-gray-600 dark:text-gray-300 text-sm mb-3">使用DeliveryPlanner进行高级交付规划，自动内容组织和结构化</p>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline text-sm">
+                                    查看 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <!-- 最新特性3 -->
+                        <div class="relative rounded-xl overflow-hidden shadow-md card-hover bg-white dark:bg-gray-700">
+                            <div class="relative">
+                                <img src="https://via.placeholder.com/400x225/ef4444/ffffff?text=文档分析" alt="文档分析" class="w-full h-40 object-cover">
+                                <div class="img-overlay rounded-t-xl flex items-end">
+                                    <div class="p-4 text-white">
+                                        <p class="font-medium text-sm">点击查看详情</p>
+                                    </div>
+                                </div>
+                                <span class="card-tag bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">新特性</span>
+                            </div>
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold mb-2">文档分析</h3>
+                                <p class="text-gray-600 dark:text-gray-300 text-sm mb-3">高级文档结构分析，多维数据洞察，自动报告生成</p>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline text-sm">
+                                    查看 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <!-- 最新特性4 -->
+                        <div class="relative rounded-xl overflow-hidden shadow-md card-hover bg-white dark:bg-gray-700">
+                            <div class="relative">
+                                <img src="https://via.placeholder.com/400x225/f59e0b/ffffff?text=结果处理" alt="结果处理" class="w-full h-40 object-cover">
+                                <div class="img-overlay rounded-t-xl flex items-end">
+                                    <div class="p-4 text-white">
+                                        <p class="font-medium text-sm">点击查看详情</p>
+                                    </div>
+                                </div>
+                                <span class="card-tag bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">新特性</span>
+                            </div>
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold mb-2">结果处理</h3>
+                                <p class="text-gray-600 dark:text-gray-300 text-sm mb-3">灵活的结果保存机制，多种输出格式支持（Markdown、CSV、JSON）</p>
+                                <a href="#" class="text-primary-600 dark:text-primary-400 hover:underline text-sm">
+                                    查看 <i class="fas fa-arrow-right text-xs ml-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-8 text-center">
+                    <a href="#" class="inline-block bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 px-6 py-3 rounded-lg font-medium btn-effect">
+                        查看更多特性 <i class="fas fa-sync-alt ml-2"></i>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- 统计数据部分 -->
+        <section class="mb-16 section-animate">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md text-center">
+                    <div class="text-4xl font-bold text-primary-600 dark:text-primary-400 mb-2">~150</div>
+                    <p class="text-gray-600 dark:text-gray-300">文档处理速度(文档/秒)</p>
+                </div>
+                
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md text-center">
+                    <div class="text-4xl font-bold text-green-600 dark:text-green-400 mb-2"><30ms</div>
+                    <p class="text-gray-600 dark:text-gray-300">向量搜索延迟</p>
+                </div>
+                
+                <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-md text-center">
+                    <div class="text-4xl font-bold text-purple-600 dark:text-purple-400 mb-2">百万级</div>
+                    <p class="text-gray-600 dark:text-gray-300">文档规模支持</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 关于我们部分 -->
+        <section id="about" class="mb-16 section-animate">
+            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 md:p-8 shadow-md">
+                <h2 class="text-2xl md:text-3xl font-bold mb-6 flex items-center">
+                    <i class="fas fa-info-circle text-blue-500 mr-3"></i>
+                    关于我们
+                </h2>
+                
+                <div class="md:flex items-start space-y-6 md:space-y-0 md:space-x-8">
+                    <div class="md:w-2/3">
+                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                            DataMind是您的智能文档助手，彻底改变您与知识库的交互方式。由DeepSeek R1推理模型提供支持，它能够深入理解文档的语义层次，并生成令人惊叹的精准洞察。
+                        </p>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                            将DataMind视为您的知识炼金术大锅 - 只需投入您的文档、数据和文件，表达您的需求，然后观察它如何自动将它们提炼为有价值的成果。
+                        </p>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                            我们的团队由HelixLife AI研究所开发，致力于提供最先进的文档智能解决方案，帮助用户从海量信息中提取价值。
+                        </p>
+                        
+                        <div class="mt-6">
+                            <a href="https://github.com/helixlife-ai" class="inline-block bg-primary-600 text-white hover:bg-primary-700 px-6 py-3 rounded-lg font-medium shadow-md btn-effect">
+                                <i class="fab fa-github mr-2"></i>访问GitHub
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="md:w-1/3 bg-gray-50 dark:bg-gray-700 p-5 rounded-lg">
+                        <h3 class="font-semibold text-lg mb-4">为什么选择DataMind？</h3>
+                        <ul class="space-y-3">
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-green-500 mt-1 mr-2"></i>
+                                <span>深度语义理解，提取精准洞察</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-green-500 mt-1 mr-2"></i>
+                                <span>多格式文档支持，统一处理</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-green-500 mt-1 mr-2"></i>
+                                <span>高性能向量搜索，毫秒级响应</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-green-500 mt-1 mr-2"></i>
+                                <span>智能交付系统，多格式输出</span>
+                            </li>
+                            <li class="flex items-start">
+                                <i class="fas fa-check-circle text-green-500 mt-1 mr-2"></i>
+                                <span>百万级文档支持，可扩展架构</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 订阅部分 -->
+        <section class="mb-16 section-animate">
+            <div class="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-800 dark:to-purple-800 rounded-2xl p-8 md:p-12 shadow-lg text-white">
+                <div class="max-w-3xl mx-auto text-center">
+                    <h2 class="text-2xl md:text-3xl font-bold mb-4">订阅DataMind更新</h2>
+                    <p class="text-lg opacity-90 mb-8">第一时间获取新功能通知和独家使用技巧</p>
+                    
+                    <div class="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+                        <input type="email" placeholder="输入您的邮箱地址" class="px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/50 text-gray-800 w-full sm:w-auto sm:min-w-[300px]">
+                        <button class="bg-white text-purple-700 hover:bg-gray-100 px-6 py-3 rounded-lg font-medium shadow-md btn-effect">
+                            <i class="fas fa-paper-plane mr-2"></i>订阅
+                        </button>
+                    </div>
+                    
+                    <p class="text-sm mt-4 opacity-80">我们尊重您的隐私，不会发送垃圾邮件</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-gray-100 dark:bg-gray-800 py-12">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid md:grid-cols-4 gap-8">
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <svg class="h-8 w-8 text-primary-600 dark:text-primary-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                        </svg>
+                        <span class="text-xl font-semibold">DataMind</span>
+                    </div>
+                    <p class="text-gray-600 dark:text-gray-300 mb-4">
+                        您的AI文档智能助手，深度理解文档，生成精准洞察，改变知识库交互方式。
+                    </p>
+                    <div class="flex space-x-4">
+                        <a href="#" class="text-gray-400 hover:text-primary-500 dark:hover:text-primary-400">
+                            <i class="fab fa-twitter text-xl"></i>
+                        </a>
+                        <a href="https://github.com/helixlife-ai/datamind" class="text-gray-400 hover:text-primary-500 dark:hover:text-primary-400">
+                            <i class="fab fa-github text-xl"></i>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-primary-500 dark:hover:text-primary-400">
+                            <i class="fab fa-linkedin text-xl"></i>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-primary-500 dark:hover:text-primary-400">
+                            <i class="fab fa-weixin text-xl"></i>
+                        </a>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">快速导航</h3>
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="#featured" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">核心功能</a>
+                        </li>
+                        <li>
+                            <a href="#categories" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">应用场景</a>
+                        </li>
+                        <li>
+                            <a href="#recent" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">最新特性</a>
+                        </li>
+                        <li>
+                            <a href="#about" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">关于我们</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">应用场景</h3>
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="#" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">AI研究分析</a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">知识库智能</a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">智能内容交付</a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">文档分析</a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-600 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400 transition-colors">企业文档</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">联系我们</h3>
+                    <ul class="space-y-3">
+                        <li class="flex items-start">
+                            <i class="fas fa-envelope text-primary-500 mt-1 mr-2"></i>
+                            <span>zhangjingsong@helixlife.cn</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-map-marker-alt text-primary-500 mt-1 mr-2"></i>
+                            <span>HelixLife AI研究所</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fab fa-github text-primary-500 mt-1 mr-2"></i>
+                            <span>github.com/helixlife-ai</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-200 dark:border-gray-700 mt-8 pt-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+                <p>&copy; 2024 DataMind. 基于MIT许可证开源。</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // 主题切换功能
+        const themeToggle = document.getElementById('theme-toggle');
+        const htmlElement = document.documentElement;
+        
+        // 检查系统偏好或本地存储的主题
+        function getThemePreference() {
+            if (localStorage.getItem('theme') === 'dark' || 
+                (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                return 'dark';
+            }
+            return 'light';
+        }
+        
+        // 应用主题
+        function applyTheme(theme) {
+            if (theme === 'dark') {
+                htmlElement.classList.add('dark');
+            } else {
+                htmlElement.classList.remove('dark');
+            }
+        }
+        
+        // 初始化主题
+        applyTheme(getThemePreference());
+        
+        // 切换主题
+        themeToggle.addEventListener('click', () => {
+            const isDark = htmlElement.classList.contains('dark');
+            const newTheme = isDark ? 'light' : 'dark';
+            
+            localStorage.setItem('theme', newTheme);
+            applyTheme(newTheme);
+        });
+        
+        // 移动端菜单功能
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+        
+        mobileMenuButton.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+        });
+        
+        // 点击移动端菜单项后关闭菜单
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.add('hidden');
+            });
+        });
+        
+        // 搜索框功能
+        const searchButton = document.getElementById('search-button');
+        const searchContainer = document.getElementById('search-container');
+        
+        searchButton.addEventListener('click', () => {
+            searchContainer.classList.toggle('hidden');
+        });
+        
+        // 滚动动画
+        const animatedSections = document.querySelectorAll('.section-animate');
+        
+        function checkScroll() {
+            animatedSections.forEach(section => {
+                const sectionTop = section.getBoundingClientRect().top;
+                const windowHeight = window.innerHeight;
+                
+                if (sectionTop < windowHeight * 0.85) {
+                    section.classList.add('show');
+                }
+            });
+        }
+        
+        // 初始检查
+        checkScroll();
+        
+        // 滚动时检查
+        window.addEventListener('scroll', checkScroll);
+    </script>
+</body>
+</html>
