@@ -1,10 +1,9 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional
 from datetime import datetime
 import traceback
-from ..utils.stream_logger import StreamLineHandler
 from .reasoningLLM import ReasoningLLMEngine
 from ..llms.model_manager import ModelManager, ModelConfig
 from ..config.settings import (
@@ -13,9 +12,7 @@ from ..config.settings import (
     DEFAULT_LLM_API_KEY,
     DEFAULT_LLM_API_BASE
 )
-import shutil
 import re
-from bs4 import BeautifulSoup
 from .context_preparation import prepare_context_files
 from ..prompts import load_prompt, format_prompt
 import os
@@ -202,30 +199,6 @@ class ArtifactGenerator:
                 
         return full_response
 
-    def _get_next_artifact_version(self) -> int:
-        """获取artifact.html的下一个版本号"""
-        artifact_versions_dir = self.artifacts_dir / "artifact_versions"
-        artifact_versions_dir.mkdir(exist_ok=True)
-        
-        try:
-            # 使用更健壮的版本号提取方法
-            existing_versions = []
-            for file_path in artifact_versions_dir.glob("artifact_v*.html"):
-                try:
-                    # 从文件名中提取版本号，格式应该是 artifact_v{number}.html
-                    version_str = file_path.stem.split('v')[-1]  # 使用stem去掉.html后缀
-                    if version_str.isdigit():
-                        existing_versions.append(int(version_str))
-                except (ValueError, IndexError):
-                    self.logger.warning(f"跳过无效的版本文件名: {file_path.name}")
-                    continue
-            
-            return max(existing_versions, default=0) + 1
-            
-        except Exception as e:
-            self.logger.error(f"获取下一个版本号时发生错误: {str(e)}")
-            return 1  # 发生错误时返回1作为安全的默认值
-
     def _build_html_prompt(self, context_files: Dict[str, str], query: str) -> str:
         """构建HTML生成的提示词
         
@@ -361,12 +334,16 @@ class ArtifactGenerator:
             if not context_contents:
                 raise ValueError("未能成功读取任何上下文文件内容")
 
+            # 获取优化建议查询
+            optimization_suggestion = await self._get_optimization_query()
+
             # 更新元数据结构
             metadata_info = {
                 "artifact_id": f"artifact_{self.alchemy_id}",
                 "type": "html",
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
+                "optimization_suggestion": optimization_suggestion,
                 "output_name": output_name,
                 "context_files": context_files_info,
                 "generation_config": {
@@ -414,62 +391,30 @@ class ArtifactGenerator:
             output_path = output_dir / f"{artifact_name}.html"
             output_path.write_text(html_content, encoding="utf-8")
 
-            # 保存artifact.html作为最新版本
+            # 保存artifact.html
             artifact_path = self.artifacts_dir / "artifact.html"
             
-            # 如果artifact.html已存在，进行版本管理
-            if artifact_path.exists():
-                # 保存当前版本
-                current_version = self._get_next_artifact_version()
-                artifact_versions_dir = self.artifacts_dir / "artifact_versions"
-                artifact_versions_dir.mkdir(exist_ok=True)
-                version_path = artifact_versions_dir / f"artifact_v{current_version}.html"
-                
-                # 备份当前版本
-                shutil.copy2(artifact_path, version_path)
-                
-                # 更新版本记录
-                versions_info_path = artifact_versions_dir / "versions_info.json"
-                versions_info = {
-                    "latest_version": current_version,
-                    "versions": []
-                }
-                
-                if versions_info_path.exists():
-                    with open(versions_info_path, "r", encoding="utf-8") as f:
-                        versions_info = json.load(f)
-                
-                version_info = {
-                    "version": current_version,
-                    "timestamp": datetime.now().isoformat(),
-                    "query": query,
-                    "path": str(version_path.relative_to(self.artifacts_base))
-                }
-                
-                versions_info["versions"].append(version_info)
-                versions_info["latest_version"] = current_version
-                
-                with open(versions_info_path, "w", encoding="utf-8") as f:
-                    json.dump(versions_info, f, ensure_ascii=False, indent=2)
-            
-            # 写入新的artifact.html
+            # 写入artifact.html
             artifact_path.write_text(html_content, encoding="utf-8")
             self.logger.info(f"已保存制品HTML: {artifact_path}")
-
-            # 获取优化建议查询
-            optimization_query = await self._get_optimization_query()
             
-            # 更新迭代信息
-            iteration_info = {
+            # 保存本轮生成的完整信息
+            generation_info = {
                 "iteration": iteration,
                 "timestamp": datetime.now().isoformat(),
-                "path": str(work_base.relative_to(self.artifacts_base)),
-                "query": query,
-                "type": "html",
-                "output": str(output_path.relative_to(self.artifacts_base)),
-                "optimization_suggestion": optimization_query
+                "input_query": query,
+                "output_file": str(output_path.relative_to(self.artifacts_base)),
+                "optimization_suggestion": optimization_suggestion,
+                "generation_stats": {
+                    "html_size": len(html_content)
+                }
             }
             
+            with open(output_dir / "generation_info.json", "w", encoding="utf-8") as f:
+                json.dump(generation_info, f, ensure_ascii=False, indent=2)
+
+
+            # 更新status.json
             # 先检查status.json是否已存在，如果存在则读取现有内容
             status_path = self.artifacts_dir / "status.json"
             if status_path.exists():
@@ -496,7 +441,6 @@ class ArtifactGenerator:
                     "updated_at": datetime.now().isoformat(),
                     "latest_iteration": iteration,
                     "original_query": query,
-                    # 添加artifact字段，与旧版本兼容
                     "artifact": {
                         "path": "artifact.html",
                         "timestamp": datetime.now().isoformat()
@@ -507,26 +451,25 @@ class ArtifactGenerator:
             # 确保iterations字段存在
             if "iterations" not in status_info:
                 status_info["iterations"] = []
-            
+
+
+            # 更新迭代信息
+            iteration_info = {
+                "iteration": iteration,
+                "timestamp": datetime.now().isoformat(),
+                "path": str(work_base.relative_to(self.artifacts_base)),
+                "query": query,
+                "type": "html",
+                "output": str(output_path.relative_to(self.artifacts_base)),
+                "optimization_suggestion": optimization_suggestion
+            }
+
             status_info["iterations"].append(iteration_info)
             
             with open(status_path, "w", encoding="utf-8") as f:
                 json.dump(status_info, f, ensure_ascii=False, indent=2)
 
-            # 保存本轮生成的完整信息
-            generation_info = {
-                "iteration": iteration,
-                "timestamp": datetime.now().isoformat(),
-                "input_query": query,
-                "output_file": str(output_path.relative_to(self.artifacts_base)),
-                "optimization_suggestion": optimization_query,
-                "generation_stats": {
-                    "html_size": len(html_content)
-                }
-            }
-            
-            with open(output_dir / "generation_info.json", "w", encoding="utf-8") as f:
-                json.dump(generation_info, f, ensure_ascii=False, indent=2)
+
 
             return output_path
 
@@ -559,15 +502,33 @@ class ArtifactGenerator:
                 self.logger.warning("无法获取原始查询，将使用空字符串")
             
 
+            #获取前面迭代已经生成过的查询
+            # 先检查status.json是否已存在，如果存在则读取现有内容
+            status_path = self.artifacts_dir / "status.json"
+            if status_path.exists():
+                try:
+                    with open(status_path, "r", encoding="utf-8") as f:
+                        status_info = json.load(f)
+                        previous_queries = [
+                            iteration_info.get("query", "")
+                            for iteration_info in status_info.get("iterations", [])
+                        ]
+                        self.logger.info(f"前面迭代已经生成过的查询: {previous_queries}")
+                except Exception as e:
+                    self.logger.error(f"读取status.json时发生错误: {str(e)}")
+            else:
+                self.logger.warning("无法获取前面迭代已经生成过的查询，将使用空列表")
+                previous_queries = []
                         
-            # 确定当前迭代次数
-            iteration = self._get_next_iteration() - 1
-            
+            #处理previous_queries
+            previous_queries_str = "\n".join(previous_queries)
+            self.logger.info(f"前面迭代已经生成过的查询: {previous_queries_str}")
 
             # 加载生成新的建议查询提示词模板
             prompt = format_prompt("artifact/optimization_query_prompt",
-                                    original_query=original_query)
-
+                                    original_query=original_query,
+                                    previous_queries=previous_queries_str
+            )
             
             # 在添加新消息前清除历史对话记录
             self.reasoning_engine.clear_history()
