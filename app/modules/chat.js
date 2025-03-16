@@ -178,6 +178,116 @@ class ChatSessionManager {
             }
         }
     }
+
+    /**
+     * 设置聊天记录访问路由
+     * @param {Object} app - Express应用实例
+     */
+    setupChatRoutes(app) {
+        // 添加API端点，用于访问聊天记录文件
+        app.get('/api/chat-records/:sessionId/:format', async (req, res) => {
+            try {
+                const { sessionId, format } = req.params;
+                
+                // 安全检查：验证sessionId格式，防止路径遍历攻击
+                if (!sessionId.match(/^[a-f0-9]{32}$/)) {
+                    return res.status(400).send('无效的会话ID格式');
+                }
+                
+                // 验证格式参数
+                if (format !== 'json' && format !== 'txt') {
+                    return res.status(400).send('无效的格式参数，只支持json或txt');
+                }
+                
+                // 构建文件路径
+                const filePath = path.join(this.fullChatRecordDir, `${sessionId}.${format}`);
+                
+                // 检查文件是否存在
+                if (!fs.existsSync(filePath)) {
+                    console.error(`请求的聊天记录不存在: ${filePath}`);
+                    return res.status(404).send('请求的聊天记录不存在');
+                }
+                
+                // 设置Content-Type
+                if (format === 'json') {
+                    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                } else {
+                    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+                }
+                
+                // 发送文件
+                const fileStream = fs.createReadStream(filePath);
+                fileStream.pipe(res);
+                
+            } catch (err) {
+                console.error('访问聊天记录文件时出错:', err);
+                res.status(500).send('访问聊天记录文件时出错');
+            }
+        });
+
+        // 添加API端点，用于获取所有聊天记录列表
+        app.get('/api/chat-records', async (req, res) => {
+            try {
+                // 读取聊天记录目录中的所有文件
+                const files = await fsPromises.readdir(this.fullChatRecordDir);
+                
+                // 过滤出JSON文件（聊天记录）
+                const jsonFiles = files.filter(file => file.endsWith('.json') && !file.startsWith('README'));
+                
+                // 收集聊天记录信息
+                const records = [];
+                
+                for (const file of jsonFiles) {
+                    const sessionId = file.replace('.json', '');
+                    const filePath = path.join(this.fullChatRecordDir, file);
+                    
+                    try {
+                        // 获取文件状态信息
+                        const stats = await fsPromises.stat(filePath);
+                        
+                        // 读取文件内容以获取第一条消息作为预览
+                        const data = await fsPromises.readFile(filePath, 'utf8');
+                        const messages = JSON.parse(data);
+                        
+                        // 获取第一条用户消息作为预览
+                        const firstUserMessage = messages.find(msg => msg.role === 'user');
+                        const preview = firstUserMessage ? 
+                            (firstUserMessage.content.length > 50 ? 
+                                firstUserMessage.content.substring(0, 50) + '...' : 
+                                firstUserMessage.content) : 
+                            '无预览';
+                        
+                        records.push({
+                            sessionId,
+                            messageCount: messages.length,
+                            lastModified: stats.mtime,
+                            preview,
+                            jsonUrl: `/api/chat-records/${sessionId}/json`,
+                            txtUrl: `/api/chat-records/${sessionId}/txt`
+                        });
+                    } catch (err) {
+                        console.error(`读取聊天记录 ${file} 时出错:`, err);
+                    }
+                }
+                
+                // 按最后修改时间排序，最新的排在前面
+                records.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+                
+                res.json({
+                    success: true,
+                    records,
+                    total: records.length
+                });
+                
+            } catch (err) {
+                console.error('获取聊天记录列表时出错:', err);
+                res.status(500).json({
+                    success: false,
+                    error: '获取聊天记录列表时出错'
+                });
+            }
+        });
+    }
 }
 
 module.exports = {

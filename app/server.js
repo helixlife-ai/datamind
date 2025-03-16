@@ -14,6 +14,8 @@ const { setupFileWatcher, updateFileStructure, buildFileSystemStructure } = requ
 const { setupProcessManager, emitTaskOutput } = require('./modules/processManager');
 const { setupRoutes } = require('./modules/routes');
 const { setupGalleryRoute } = require('./modules/gallery');
+const { setupExplorerRoute } = require('./modules/explorer');
+const { setupPanelRoute } = require('./modules/panel');
 
 // 读取环境变量
 dotenv.config();
@@ -25,8 +27,7 @@ console.log(`当前工作目录: ${process.cwd()}`);
 // 初始化配置
 const config = setupConfig();
 
-// 设置Express应用
-app.use(express.static('public'));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -34,6 +35,14 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use((req, res, next) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     next();
+});
+
+// 添加首页路由
+app.get('/', (req, res) => {
+    // 移除默认的Content-Type设置，因为我们要发送HTML
+    res.removeHeader('Content-Type');
+    // 发送首页HTML文件
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // 初始化API客户端
@@ -59,6 +68,9 @@ watchDirs.forEach(dir => {
 // 创建聊天会话管理器实例
 const chatSessionManager = new ChatSessionManager(config);
 
+// 设置聊天记录访问路由
+chatSessionManager.setupChatRoutes(app);
+
 // 定期清理不活跃的会话(每小时)
 setInterval(() => {
     chatSessionManager.cleanupSessions();
@@ -80,6 +92,12 @@ updateFileStructure(watchDirs, io);
 
 // 设置gallery路由
 setupGalleryRoute(app, watchDirs, config);
+
+// 设置explorer路由
+setupExplorerRoute(app, watchDirs, config);
+
+// 设置panel路由
+setupPanelRoute(app, watchDirs, config);
 
 // 设置其他路由
 setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients, processManager);
