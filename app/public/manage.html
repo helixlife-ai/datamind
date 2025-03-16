@@ -1,0 +1,2135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataMind - The Alchemy Cauldron</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc;
+            min-height: 100vh;
+            color: #1e293b;
+        }
+        .container {
+            max-width: none;
+            margin: 0;
+            background-color: white;
+            padding: 0;
+            min-height: 100vh;
+            box-sizing: border-box;
+            padding-top: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        h1 {
+            color: #333;
+            margin: 0;
+            padding: 20px 0;
+        }
+        #fileChanges {
+            flex: 1;
+            height: 100%;
+            overflow-y: auto;
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        .change-item {
+            padding: 15px;
+            margin: 8px 0;
+            border-radius: 10px;
+            animation: fadeIn 0.5s;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .change-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        }
+        .add {
+            background-color: rgba(34, 197, 94, 0.05);
+            border-left: 4px solid #22c55e;
+        }
+        .change {
+            background-color: rgba(59, 130, 246, 0.05);
+            border-left: 4px solid #3b82f6;
+        }
+        .remove {
+            background-color: rgba(239, 68, 68, 0.05);
+            border-left: 4px solid #ef4444;
+        }
+        .time {
+            color: #64748b;
+            font-size: 0.85em;
+            margin-top: 5px;
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* 修改资源管理器样式 */
+        .explorer-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 8px;
+            height: calc(100vh - 60px);
+            padding: 0 16px 16px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #fileExplorer {
+            flex: 1;
+            height: 100%;
+            overflow-y: auto;
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            padding: 10px;
+            border-radius: 10px;
+            background-color: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s;
+        }
+
+        #fileExplorer:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .folder, .file {
+            padding: 10px;
+            margin: 3px 0;
+            cursor: pointer;
+            position: relative;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .folder-content {
+            margin-left: 20px;
+            border-left: 1px solid rgba(203, 213, 225, 0.5);
+            padding-left: 10px;
+            display: block;
+        }
+
+        /* 修改文件夹和文件的图标与文本对齐 */
+        .folder > .folder-header {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* 修改文件夹箭头图标位置 */
+        .folder > .folder-header::before {
+            content: "▶";
+            font-size: 0.8em;
+            color: #64748b;
+            transition: transform 0.2s;
+            min-width: 12px;
+            order: 1;
+            display: inline-block;
+        }
+
+        /* 修改文件夹图标位置 */
+        .folder > .folder-header::after {
+            content: "📁";
+            order: 0; /* 放到最前面 */
+            margin-right: 5px;
+        }
+
+        .folder.open > .folder-header::after {
+            content: "📂";
+        }
+
+        .folder.open > .folder-header::before {
+            transform: rotate(90deg);
+        }
+
+        .folder > .folder-content {
+            display: none;
+        }
+
+        .folder.open > .folder-content {
+            display: block;
+            animation: slideDown 0.2s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 文件夹名称位置 */
+        .folder-name {
+            order: 2;
+            flex: 1;
+            font-weight: 500;
+            color: #334155;
+        }
+
+        /* 文件图标和名称对齐 */
+        .file {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .file::before {
+            content: "📄";
+            min-width: 20px;
+        }
+
+        /* 删除之前的树状连接线相关样式 */
+        .folder-content::before,
+        .folder > .folder-header::before,
+        .file::before {
+            position: static;
+            width: auto;
+            height: auto;
+            background-color: transparent;
+        }
+
+        /* 优化文件和文件夹的悬停效果 */
+        .folder:hover, .file:hover {
+            background-color: rgba(241, 245, 249, 0.7);
+            transform: translateX(2px);
+        }
+
+        .file-name {
+            flex: 1;
+            color: #475569;
+        }
+
+        /* 文件路径样式 */
+        .file-path {
+            font-family: 'Menlo', 'Monaco', monospace;
+            background-color: rgba(226, 232, 240, 0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: #475569;
+        }
+
+        .path-separator {
+            color: #94a3b8;
+            font-size: 0.9em;
+        }
+
+        .path-segment {
+            color: #64748b;
+            background-color: #f1f5f9;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* 标题样式 */
+        .explorer-header {
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+        }
+
+        /* 添加文件夹变更样式 */
+        .addDir {
+            background-color: rgba(20, 184, 166, 0.05);
+            border-left: 4px solid #14b8a6;
+        }
+        
+        .removeDir {
+            background-color: rgba(245, 158, 11, 0.05);
+            border-left: 4px solid #f59e0b;
+        }
+
+        /* 添加图标样式 */
+        .change-item::before {
+            font-size: 1.2em;
+        }
+
+        .add::before {
+            content: "📝";
+        }
+
+        .change::before {
+            content: "✏️";
+        }
+
+        .remove::before {
+            content: "🗑️";
+        }
+
+        .addDir::before {
+            content: "📁";
+        }
+
+        .removeDir::before {
+            content: "🗂️";
+        }
+
+        /* 变更内容容器 */
+        .change-content {
+            flex: 1;
+        }
+
+        #contentArea {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .explorer-header {
+            padding: 16px;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            flex-shrink: 0;  /* 防止头部被压缩 */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #fileContentWrapper {
+            flex: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
+            background: #fff;
+            height: calc(100% - 32px);
+            overflow: hidden;
+            visibility: hidden;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s;
+        }
+
+        #fileContentWrapper:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        #fileContentWrapper.active {
+            visibility: visible;
+            animation: fadeIn 0.3s;
+        }
+
+        #fileContent {
+            padding: 16px 20px;
+            font-family: 'Menlo', 'Monaco', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.6;
+            flex: 1;
+            overflow: auto;
+            background-color: #1a1a1a;
+            color: #e6e6e6;
+            border-radius: 8px;
+        }
+
+        /* 日志文本高亮样式 */
+        #fileContent .log-time {
+            color: #7dd3fc;  /* 时间戳显示为浅蓝色 */
+        }
+        
+        #fileContent .log-error {
+            color: #f87171;  /* 错误信息显示为红色 */
+        }
+        
+        #fileContent .log-warning {
+            color: #fbbf24;  /* 警告信息显示为黄色 */
+        }
+        
+        #fileContent .log-info {
+            color: #60a5fa;  /* 信息显示为蓝色 */
+        }
+        
+        #fileContent .log-success {
+            color: #34d399;  /* 成功信息显示为青色 */
+        }
+        
+        #fileContent .log-highlight {
+            color: #fdba74;  /* 高亮内容显示为橙色 */
+        }
+
+        #renderContent {
+            width: 100%;
+            flex: 1;
+            border: none;
+            background: white;
+            overflow: auto;
+            border-radius: 8px;
+        }
+
+        #fileChanges {
+            display: none;
+            flex: 1;
+            height: calc(100% - 32px);
+            overflow: auto;
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
+            background: white;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+        }
+
+        #fileChanges.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        .change-item {
+            margin: 10px;
+            border-radius: 8px;
+        }
+
+        /* 优化滚动条样式 */
+        #fileChanges::-webkit-scrollbar,
+        #renderContent::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #fileChanges::-webkit-scrollbar-track,
+        #renderContent::-webkit-scrollbar-track {
+            background: #f8fafc;
+            border-radius: 4px;
+        }
+        
+        #fileChanges::-webkit-scrollbar-thumb,
+        #renderContent::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 4px;
+            border: 2px solid #f8fafc;
+        }
+        
+        #fileChanges::-webkit-scrollbar-thumb:hover,
+        #renderContent::-webkit-scrollbar-thumb:hover {
+            background-color: #94a3b8;
+        }
+
+        #fileControls button {
+            margin-left: 10px;
+        }
+
+        .preview-toolbar {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+
+        .file {
+            cursor: pointer;
+        }
+
+        .file.active {
+            background-color: rgba(59, 130, 246, 0.1);
+            color: #1d4ed8;
+            font-weight: 500;
+            transform: translateX(2px);
+        }
+
+        #currentFileName {
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        #fileControls {
+            float: right;
+        }
+
+        #fileControls button {
+            padding: 6px 14px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+        }
+
+        #fileControls button:hover {
+            background: #2563eb;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+        }
+
+        #fileContent::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #fileContent::-webkit-scrollbar-track {
+            background: #242424;
+            border-radius: 4px;
+        }
+        
+        #fileContent::-webkit-scrollbar-thumb {
+            background-color: #555;
+            border-radius: 4px;
+            border: 2px solid #242424;
+        }
+        
+        #fileContent::-webkit-scrollbar-thumb:hover {
+            background-color: #777;
+        }
+
+        /* Update header styles */
+        .header {
+            display: flex;
+            align-items: center;
+            padding: 8px 24px;
+            background: linear-gradient(to right, #ffffff, #f1f5f9);
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            height: 52px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+        }
+
+        .title-container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .main-title {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .product-name {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 0;
+            background: linear-gradient(135deg, #1e293b, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .product-subtitle {
+            font-family: 'Crimson Text', Georgia, serif;
+            font-size: 14px;
+            font-style: italic;
+            color: #64748b;
+            margin: 0;
+            padding-left: 28px;
+            position: relative;
+        }
+
+        .product-subtitle::before {
+            content: "⚗️";
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 16px;
+        }
+
+        .product-tagline {
+            font-size: 13px;
+            font-weight: 600;
+            color: #3b82f6;
+            margin: 0;
+            padding: 4px 12px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.08);
+            white-space: nowrap;
+            letter-spacing: -0.2px;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+        }
+
+        .product-tagline::before {
+            content: "✨";
+            margin-right: 8px;
+        }
+
+        /* 添加响应式样式 */
+        @media (max-width: 768px) {
+            .header {
+                padding: 16px;
+            }
+            
+            .product-name {
+                font-size: 20px;
+            }
+            
+            .product-tagline {
+                font-size: 14px;
+                margin-left: 20px;
+                padding: 4px 8px;
+            }
+            
+            .product-subtitle {
+                font-size: 14px;  /* 移动端稍微小一点 */
+            }
+        }
+
+        #explorerContent {
+            flex: 1;
+            overflow: auto;
+            padding: 8px;
+        }
+
+        /* 修改滚动条样式 */
+        #explorerContent::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #explorerContent::-webkit-scrollbar-track {
+            background: #f8fafc;
+            border-radius: 4px;
+        }
+
+        #explorerContent::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 4px;
+            border: 2px solid #f8fafc;
+        }
+
+        #explorerContent::-webkit-scrollbar-thumb:hover {
+            background-color: #94a3b8;
+        }
+
+        .virtual-scroll-content {
+            position: relative;
+            will-change: transform;
+        }
+
+        /* 修改聊天面板样式 */
+        #chatPanel {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
+            background: white;
+            overflow: hidden;
+            width: 50px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            height: 100%;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+        }
+
+        #chatPanel:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        #chatPanel.expanded {
+            width: 350px;
+        }
+
+        /* 聊天头部样式 */
+        .chat-header {
+            padding: 16px;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            font-weight: 600;
+            background: #f8fafc;
+            display: none;
+            color: #334155;
+        }
+
+        #chatPanel.expanded .chat-header {
+            display: block;
+        }
+
+        /* 切换按钮样式 */
+        .chat-toggle {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background: #f8fafc;
+            border: none;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            font-size: 24px;
+            padding: 0;
+            transition: background-color 0.2s;
+        }
+
+        .chat-toggle:hover {
+            background: #f1f5f9;
+        }
+
+        /* 聊天内容区域样式 */
+        .chat-content {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+            width: 100%;
+            height: calc(100% - 50px);
+        }
+
+        #chatPanel.expanded .chat-content {
+            display: flex;
+            animation: fadeIn 0.3s;
+        }
+
+        /* 消息列表样式 */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: #fff;
+        }
+
+        /* 消息气泡样式 */
+        .message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            margin: 5px 0;
+            word-wrap: break-word;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background-color: #3b82f6;
+            color: white;
+            border-bottom-right-radius: 6px;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background-color: #f1f5f9;
+            color: #334155;
+            border-bottom-left-radius: 6px;
+        }
+
+        /* 输入区域样式 */
+        .chat-input-container {
+            padding: 16px;
+            border-top: 1px solid rgba(203, 213, 225, 0.5);
+            display: flex;
+            gap: 10px;
+            background: #fff;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 24px;
+            outline: none;
+            resize: none;
+            min-height: 24px;
+            max-height: 120px;
+            font-size: 14px;
+            line-height: 1.5;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+            transition: all 0.2s;
+        }
+
+        .chat-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+
+        .send-button {
+            padding: 10px 20px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            align-self: flex-end;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+        }
+
+        .send-button:hover {
+            background: #2563eb;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .send-button:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* 滚动条样式 */
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: #f8fafc;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* 适配移动端 */
+        @media (max-width: 768px) {
+            #chatPanel {
+                position: fixed;
+                right: 0;
+                bottom: 0;
+                top: auto;
+                height: 50px;
+                z-index: 1000;
+            }
+
+            #chatPanel.expanded {
+                height: 60vh;
+                width: 100%;
+                max-width: 350px;
+            }
+
+            .chat-content {
+                height: calc(100% - 50px);
+            }
+
+            .chat-input-container {
+                padding: 10px;
+            }
+
+            .chat-input {
+                font-size: 16px; /* 移动端更大的字体 */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-container">
+                <div class="main-title">
+                    <h1 class="product-name">DataMind</h1>
+                    <p class="product-subtitle">The Alchemy Cauldron</p>
+                    <p class="product-tagline">Data in, Surprise out!</p>
+                </div>
+            </div>
+        </div>
+        <div class="explorer-container">
+            <div id="fileExplorer">
+                <div class="explorer-header">文件浏览器</div>
+                <div id="explorerContent"></div>
+            </div>
+            <div id="contentArea">
+                <div class="explorer-header">
+                    <span id="currentFileName">选择一个文件</span>
+                    <div id="fileControls" style="display: none;">
+                        <button id="toggleView" style="display: none;">切换视图</button>
+                    </div>
+                </div>
+                <div id="fileContentWrapper">
+                    <div id="fileContent"></div>
+                    <iframe id="renderContent" style="display: none;"></iframe>
+                </div>
+                <div id="fileChanges">
+                    <div class="explorer-header">变更历史</div>
+                </div>
+            </div>
+            <div id="chatPanel">
+                <button class="chat-toggle" id="chatToggle">💬</button>
+                <div class="chat-content">
+                    <div class="chat-header">AI 助手</div>
+                    <div class="chat-messages" id="chatMessages"></div>
+                    <div class="chat-input-container">
+                        <textarea 
+                            class="chat-input" 
+                            id="chatInput" 
+                            placeholder="输入消息..."
+                            rows="1"
+                        ></textarea>
+                        <button class="send-button" id="sendButton">发送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const fileChanges = document.getElementById('fileChanges');
+        const explorerContent = document.getElementById('explorerContent');
+        
+        // 存储配置和文件系统结构
+        let config = {}; // 初始化config对象
+        let fileSystem = {};
+
+        let currentFile = null;
+
+        let markedReady = false;
+
+        // 在 script 标签内添加一个新的变量来存储文件夹状态
+        const folderStates = new Map(); // 用于存储文件夹的折叠状态
+
+        // 添加文件监听状态
+        let currentWatchingFile = null;
+
+        // 存储当前会话ID
+        let currentSessionId = null;
+
+        // 等待 marked 库加载完成
+        function waitForMarked() {
+            return new Promise((resolve) => {
+                if (typeof marked !== 'undefined') {
+                    markedReady = true;
+                    resolve();
+                } else {
+                    const script = document.createElement('script');
+                    script.src = "https://cdn.jsdelivr.net/npm/marked/marked.min.js";
+                    script.onload = () => {
+                        markedReady = true;
+                        resolve();
+                    };
+                    document.head.appendChild(script);
+                }
+            });
+        }
+
+        // 添加配置接收监听
+        socket.on('configUpdate', (newConfig) => {
+            config = newConfig;
+            console.log('Received updated config:', config);
+        });
+
+        // 将 JSON 转换为 HTML 表格
+        function jsonToTable(jsonData) {
+            // 如果是字符串，尝试解析
+            if (typeof jsonData === 'string') {
+                try {
+                    jsonData = JSON.parse(jsonData);
+                } catch (e) {
+                    return `<div class="error">Invalid JSON: ${e.message}</div>`;
+                }
+            }
+
+            function formatValue(value, level = 0) {
+                if (value === null) return '<span class="null">null</span>';
+                if (value === undefined) return '<span class="undefined">undefined</span>';
+                
+                if (Array.isArray(value)) {
+                    if (value.length === 0) return '[]';
+                    if (level >= 3) return `[Array(${value.length})]`; // 限制嵌套深度
+                    
+                    if (typeof value[0] === 'object' && value[0] !== null) {
+                        // 如果数组元素是对象，递归创建表格
+                        return jsonToTable(value, level + 1);
+                    } else {
+                        // 简单数组，以逗号分隔显示，添加适当的缩进
+                        const indent = '  '.repeat(level);
+                        return `[\n${indent}  ${value.map(v => formatValue(v, level + 1)).join(',\n' + indent + '  ')}\n${indent}]`;
+                    }
+                }
+                
+                if (typeof value === 'object' && value !== null) {
+                    if (level >= 3) return '{...}'; // 限制嵌套深度
+                    
+                    // 创建嵌套表格，添加缩进
+                    const indent = '  '.repeat(level);
+                    let table = `<table class="nested-table" style="margin-left: ${level * 20}px">`;
+                    table += '<tbody>';
+                    for (const [key, val] of Object.entries(value)) {
+                        table += `<tr>
+                            <td class="key" style="padding-left: ${level * 8}px">${escapeHtml(key)}</td>
+                            <td class="value">${formatValue(val, level + 1)}</td>
+                        </tr>`;
+                    }
+                    table += '</tbody></table>';
+                    return table;
+                }
+                
+                if (typeof value === 'string') return `<span class="string">"${escapeHtml(value)}"</span>`;
+                if (typeof value === 'number') return `<span class="number">${value}</span>`;
+                if (typeof value === 'boolean') return `<span class="boolean">${value}</span>`;
+                
+                return escapeHtml(String(value));
+            }
+
+            // 如果是数组且不为空
+            if (Array.isArray(jsonData) && jsonData.length > 0) {
+                // 获取所有可能的列
+                const columns = new Set();
+                jsonData.forEach(item => {
+                    if (typeof item === 'object' && item !== null) {
+                        Object.keys(item).forEach(key => columns.add(key));
+                    }
+                });
+
+                // 转换为数组并排序
+                const sortedColumns = Array.from(columns).sort();
+
+                // 构建表格
+                let table = `<div class="table-container${arguments[1] ? ' nested' : ''}"><table>`;
+                
+                // 添加表头
+                table += '<thead><tr>';
+                sortedColumns.forEach(column => {
+                    table += `<th>${escapeHtml(column)}</th>`;
+                });
+                table += '</tr></thead>';
+
+                // 添加数据行
+                table += '<tbody>';
+                jsonData.forEach(item => {
+                    table += '<tr>';
+                    sortedColumns.forEach(column => {
+                        const value = item[column];
+                        table += `<td>${formatValue(value)}</td>`;
+                    });
+                    table += '</tr>';
+                });
+                table += '</tbody></table></div>';
+
+                return table;
+            } else if (typeof jsonData === 'object' && jsonData !== null) {
+                // 如果是单个对象，创建两列表格：键和值
+                let table = `<div class="table-container${arguments[1] ? ' nested' : ''}"><table>`;
+                table += '<thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
+                
+                Object.entries(jsonData).forEach(([key, value]) => {
+                    table += `<tr>
+                        <td class="key">${escapeHtml(key)}</td>
+                        <td class="value">${formatValue(value)}</td>
+                    </tr>`;
+                });
+                
+                table += '</tbody></table></div>';
+                return table;
+            }
+
+            return `<div class="error">Unable to display JSON data</div>`;
+        }
+
+        // 将 CSV 转换为 HTML 表格
+        function csvToTable(csvContent) {
+            try {
+                // 分割行
+                const rows = csvContent.split(/\r?\n/).filter(row => row.trim());
+                
+                // 使用逗号分割，但要处理引号内的逗号
+                const parseRow = (row) => {
+                    const cells = [];
+                    let cell = '';
+                    let inQuotes = false;
+                    
+                    for (let i = 0; i < row.length; i++) {
+                        const char = row[i];
+                        
+                        if (char === '"') {
+                            if (inQuotes && row[i + 1] === '"') {
+                                cell += '"';
+                                i++;
+                            } else {
+                                inQuotes = !inQuotes;
+                            }
+                        } else if (char === ',' && !inQuotes) {
+                            cells.push(cell);
+                            cell = '';
+                        } else {
+                            cell += char;
+                        }
+                    }
+                    
+                    cells.push(cell);
+                    return cells;
+                };
+
+                if (rows.length === 0) {
+                    return '<div class="error">Empty CSV file</div>';
+                }
+
+                // 解析标题行
+                const headers = parseRow(rows[0]);
+                
+                let table = '<div class="table-container"><table>';
+                
+                // 添加表头
+                table += '<thead><tr>';
+                headers.forEach(header => {
+                    table += `<th>${escapeHtml(header)}</th>`;
+                });
+                table += '</tr></thead>';
+
+                // 添加数据行
+                table += '<tbody>';
+                for (let i = 1; i < rows.length; i++) {
+                    const cells = parseRow(rows[i]);
+                    table += '<tr>';
+                    cells.forEach(cell => {
+                        table += `<td>${escapeHtml(cell)}</td>`;
+                    });
+                    // 如果这行的单元格数量少于标题数量，添加空单元格
+                    for (let j = cells.length; j < headers.length; j++) {
+                        table += '<td></td>';
+                    }
+                    table += '</tr>';
+                }
+                table += '</tbody></table></div>';
+
+                return table;
+            } catch (e) {
+                return `<div class="error">Error parsing CSV: ${e.message}</div>`;
+            }
+        }
+
+        // 辅助函数：HTML转义
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // 辅助函数：格式化单元格值
+        function formatCellValue(value) {
+            if (value === null || value === undefined) {
+                return '';
+            } else if (typeof value === 'object') {
+                return escapeHtml(JSON.stringify(value));
+            } else {
+                return escapeHtml(String(value));
+            }
+        }
+
+        // 修改文件点击处理函数
+        function handleFileClick(fileDiv, filePath) {
+            // 移除其他文件的active状态
+            document.querySelectorAll('.file').forEach(f => f.classList.remove('active'));
+            fileDiv.classList.add('active');
+
+            // 显示文件控制按钮
+            document.getElementById('fileControls').style.display = 'block';
+            document.getElementById('currentFileName').textContent = filePath.split('/').pop();
+
+            // 停止之前的文件监听
+            if (currentWatchingFile) {
+                socket.emit('stopWatchFile', {
+                    dir: currentWatchingFile.dir,
+                    path: currentWatchingFile.path
+                });
+                currentWatchingFile = null;
+            }
+
+            // 查找匹配的监控目录
+            const watchDir = config.watchDirs.find(dir => 
+                filePath.startsWith(dir.path)
+            );
+
+            if (!watchDir) {
+                console.error('No matching directory found for path:', filePath);
+                alert('Invalid file path');
+                return;
+            }
+
+            // 获取相对路径
+            const relativePath = filePath.replace(watchDir.path + '/', '');
+            
+            fetch(`/api/file?dir=${encodeURIComponent(watchDir.path)}&path=${encodeURIComponent(relativePath)}`)
+                .then(async response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    
+                    const fileContentWrapper = document.getElementById('fileContentWrapper');
+                    const fileContent = document.getElementById('fileContent');
+                    const renderContent = document.getElementById('renderContent');
+                    const toggleViewBtn = document.getElementById('toggleView');
+                    
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    fileContent.innerHTML = highlightLogContent(data.content);
+                    fileContentWrapper.classList.add('active');
+                    fileContent.style.display = 'block';
+                    renderContent.style.display = 'none';
+                    document.getElementById('fileChanges').style.display = 'none';
+                    currentFile = filePath;
+
+                    // 检查是否是日志文件
+                    if (filePath.endsWith('.log')) {
+                        // 开始监听文件更新
+                        currentWatchingFile = {
+                            dir: watchDir.path,
+                            path: relativePath
+                        };
+                        socket.emit('watchFile', currentWatchingFile);
+                        
+                        // 滚动到底部
+                        fileContent.scrollTop = fileContent.scrollHeight;
+                    }
+
+                    // 检查文件类型
+                    const fileExtension = filePath.split('.').pop().toLowerCase();
+                    const previewableTypes = ['html', 'htm', 'svg', 'md', 'json', 'csv'];
+                    
+                    toggleViewBtn.style.display = previewableTypes.includes(fileExtension) ? 'inline-block' : 'none';
+                    
+                    if (previewableTypes.includes(fileExtension)) {
+                        // 默认显示预览模式
+                        fileContent.style.display = 'none';
+                        renderContent.style.display = 'block';
+                        toggleViewBtn.textContent = 'View Source';
+                        
+                        if (fileExtension === 'json') {
+                            const tableHtml = `
+                                <style>
+                                    .table-container {
+                                        padding: 20px;
+                                        overflow-x: auto;
+                                    }
+                                    .table-container.nested {
+                                        padding: 0;
+                                    }
+                                    table {
+                                        border-collapse: collapse;
+                                        width: 100%;
+                                        margin-bottom: 1rem;
+                                        background-color: transparent;
+                                        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+                                    }
+                                    th, td {
+                                        padding: 12px;
+                                        vertical-align: top;
+                                        border-top: 1px solid #dee2e6;
+                                        text-align: left;
+                                    }
+                                    th {
+                                        background-color: #f8f9fa;
+                                        border-bottom: 2px solid #dee2e6;
+                                    }
+                                    tbody tr:nth-of-type(odd) {
+                                        background-color: rgba(0,0,0,.02);
+                                    }
+                                    .nested-table {
+                                        margin: 0;
+                                        width: 100%;
+                                        border: none;
+                                    }
+                                    .nested-table td {
+                                        border: none;
+                                        padding: 4px 8px;
+                                    }
+                                    .key {
+                                        color: #7c4dff;
+                                        font-weight: 500;
+                                        white-space: nowrap;
+                                    }
+                                    .string {
+                                        color: #2e7d32;
+                                        white-space: pre-wrap;
+                                    }
+                                    .number {
+                                        color: #1976d2;
+                                    }
+                                    .boolean {
+                                        color: #e64a19;
+                                    }
+                                    .null, .undefined {
+                                        color: #757575;
+                                        font-style: italic;
+                                    }
+                                    .error {
+                                        color: #dc3545;
+                                        padding: 20px;
+                                        margin: 20px;
+                                        border: 1px solid #dc3545;
+                                        border-radius: 4px;
+                                    }
+                                    /* 添加缩进指示线 */
+                                    .nested-table {
+                                        border-left: 1px solid rgba(0,0,0,.1);
+                                        margin-left: 4px !important;
+                                    }
+                                    /* 优化嵌套表格的间距 */
+                                    .nested-table td.value {
+                                        padding-left: 16px;
+                                    }
+                                </style>
+                                ${jsonToTable(data.content)}
+                            `;
+                            renderContent.srcdoc = tableHtml;
+                        } else if (fileExtension === 'csv') {
+                            const tableHtml = `
+                                <style>
+                                    .table-container {
+                                        padding: 20px;
+                                        overflow-x: auto;
+                                    }
+                                    table {
+                                        border-collapse: collapse;
+                                        width: 100%;
+                                        margin-bottom: 1rem;
+                                        background-color: transparent;
+                                    }
+                                    th, td {
+                                        padding: 12px;
+                                        vertical-align: top;
+                                        border-top: 1px solid #dee2e6;
+                                        text-align: left;
+                                    }
+                                    th {
+                                        background-color: #f8f9fa;
+                                        border-bottom: 2px solid #dee2e6;
+                                    }
+                                    tbody tr:nth-of-type(odd) {
+                                        background-color: rgba(0,0,0,.05);
+                                    }
+                                    .error {
+                                        color: #dc3545;
+                                        padding: 20px;
+                                        margin: 20px;
+                                        border: 1px solid #dc3545;
+                                        border-radius: 4px;
+                                    }
+                                </style>
+                                ${csvToTable(data.content)}
+                            `;
+                            renderContent.srcdoc = tableHtml;
+                        } else if (fileExtension === 'html' || fileExtension === 'htm') {
+                            renderContent.srcdoc = data.content;
+                        } else if (fileExtension === 'md') {
+                            // 确保 marked 库已加载
+                            if (!markedReady) {
+                                await waitForMarked();
+                            }
+
+                            // 添加 Markdown 样式
+                            const markdownStyle = `
+                                <style>
+                                    body {
+                                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                                        line-height: 1.6;
+                                        padding: 20px;
+                                        max-width: 900px;
+                                        margin: 0 auto;
+                                        color: #24292e;
+                                    }
+                                    pre {
+                                        background-color: #f6f8fa;
+                                        border-radius: 3px;
+                                        padding: 16px;
+                                        overflow: auto;
+                                    }
+                                    code {
+                                        background-color: #f6f8fa;
+                                        border-radius: 3px;
+                                        padding: 0.2em 0.4em;
+                                        font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+                                    }
+                                    blockquote {
+                                        border-left: 4px solid #dfe2e5;
+                                        margin: 0;
+                                        padding: 0 1em;
+                                        color: #6a737d;
+                                    }
+                                    table {
+                                        border-collapse: collapse;
+                                        width: 100%;
+                                        margin: 16px 0;
+                                    }
+                                    table th, table td {
+                                        border: 1px solid #dfe2e5;
+                                        padding: 6px 13px;
+                                    }
+                                    table tr:nth-child(2n) {
+                                        background-color: #f6f8fa;
+                                    }
+                                    img {
+                                        max-width: 100%;
+                                        height: auto;
+                                    }
+                                    h1, h2, h3, h4, h5, h6 {
+                                        margin-top: 24px;
+                                        margin-bottom: 16px;
+                                        font-weight: 600;
+                                        line-height: 1.25;
+                                    }
+                                    h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+                                    h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+                                    h3 { font-size: 1.25em; }
+                                    h4 { font-size: 1em; }
+                                    h5 { font-size: 0.875em; }
+                                    h6 { font-size: 0.85em; color: #6a737d; }
+                                </style>
+                            `;
+                            
+                            try {
+                                // 配置 marked 选项
+                                marked.setOptions({
+                                    breaks: true,
+                                    gfm: true,
+                                    headerIds: true,
+                                    langPrefix: 'language-'
+                                });
+                                
+                                // 渲染 Markdown 内容
+                                const renderedContent = marked.parse(data.content);
+                                renderContent.srcdoc = markdownStyle + renderedContent;
+                            } catch (err) {
+                                console.error('Markdown rendering error:', err);
+                                renderContent.srcdoc = `<pre style="padding: 20px;">${data.content}</pre>`;
+                            }
+                        } else {
+                            renderContent.srcdoc = `<pre style="padding: 20px;">${data.content}</pre>`;
+                        }
+                    } else {
+                        // 非可预览文件类型保持原来的显示方式
+                        fileContent.style.display = 'block';
+                        renderContent.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching file:', error);
+                    alert('无法读取文件内容: ' + error.message);
+                });
+        }
+
+        // 修改文件创建函数
+        function createFileElement(name, fullPath, level) {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file';
+            fileDiv.style.paddingLeft = `${level * 20}px`;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'file-name';
+            nameSpan.textContent = name;
+            fileDiv.appendChild(nameSpan);
+
+            fileDiv.addEventListener('click', () => handleFileClick(fileDiv, fullPath));
+            
+            return fileDiv;
+        }
+
+        // 添加视图切换处理
+        document.getElementById('toggleView').addEventListener('click', function() {
+            const fileContent = document.getElementById('fileContent');
+            const renderContent = document.getElementById('renderContent');
+            
+            if (fileContent.style.display !== 'none') {
+                fileContent.style.display = 'none';
+                renderContent.style.display = 'block';
+                this.textContent = 'View Source';
+            } else {
+                fileContent.style.display = 'block';
+                renderContent.style.display = 'none';
+                this.textContent = 'Preview';
+            }
+        });
+
+        // 修改文件夹点击事件处理
+        function handleFolderClick(folderDiv, folderPath) {
+            folderDiv.classList.toggle('open');
+            // 保存文件夹的状态
+            folderStates.set(folderPath, folderDiv.classList.contains('open'));
+        }
+
+        // 修改创建文件夹元素的函数
+        function createFolderElement(name, fullPath, level) {
+            const folderDiv = document.createElement('div');
+            folderDiv.className = 'folder';
+            
+            // 从存储的状态中恢复折叠状态，如果没有存储状态则默认打开
+            if (folderStates.has(fullPath)) {
+                if (folderStates.get(fullPath)) {
+                    folderDiv.classList.add('open');
+                }
+            } else {
+                folderDiv.classList.add('open'); // 默认打开状态
+            }
+
+            const folderHeader = document.createElement('div');
+            folderHeader.className = 'folder-header';
+            folderHeader.style.paddingLeft = `${level * 20}px`;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'folder-name';
+            nameSpan.textContent = name;
+            folderHeader.appendChild(nameSpan);
+
+            folderDiv.appendChild(folderHeader);
+
+            folderHeader.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleFolderClick(folderDiv, fullPath);
+            });
+
+            return folderDiv;
+        }
+
+        // 修改 updateFileStructure 函数
+        function updateFileStructure(parentElement, structure, parentPath, level) {
+            // 处理文件夹
+            Object.entries(structure)
+                .filter(([name, content]) => typeof content === 'object')
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .forEach(([name, content]) => {
+                    const fullPath = parentPath ? `${parentPath}/${name}` : name;
+                    
+                    const folderDiv = createFolderElement(name, fullPath, level);
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'folder-content';
+                    
+                    updateFileStructure(contentDiv, content, fullPath, level + 1);
+                    
+                    folderDiv.appendChild(contentDiv);
+                    parentElement.appendChild(folderDiv);
+                });
+
+            // 处理文件
+            Object.entries(structure)
+                .filter(([name, content]) => content === true)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .forEach(([name]) => {
+                    const fullPath = parentPath ? `${parentPath}/${name}` : name;
+                    const fileDiv = createFileElement(name, fullPath, level);
+                    parentElement.appendChild(fileDiv);
+                });
+        }
+
+        // 修改 updateExplorerView 函数
+        function updateExplorerView(parentElement, structure, parentPath = '', level = 0) {
+            parentElement.innerHTML = '';
+            
+            // 将所有目录的文件直接添加到父元素
+            Object.entries(structure).forEach(([dirPath, dirInfo]) => {
+                if (dirInfo.files) {
+                    // 直接将文件和子文件夹添加到父元素
+                    updateFileStructure(parentElement, dirInfo.files, dirPath, level);
+                }
+            });
+        }
+
+        // 修改文件变更事件处理
+        socket.on('fileChange', (data) => {
+            const div = document.createElement('div');
+            div.className = `change-item ${data.type}`;
+
+            const action = {
+                'add': '新增文件',
+                'change': '修改文件',
+                'remove': '删除文件',
+                'addDir': '新增文件夹',
+                'removeDir': '删除文件夹'
+            }[data.type];
+
+            // 构建完整路径
+            const fullPath = data.dir + '/' + data.path;
+            
+            // 只在目录结构变化时更新文件系统
+            if (data.type === 'add' || data.type === 'remove' || 
+                data.type === 'addDir' || data.type === 'removeDir') {
+                updateFileSystem(fullPath, data.type);
+            }
+            
+            // 格式化时间
+            const timeStr = new Date(data.time).toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+
+            div.innerHTML = `
+                <div class="change-content">
+                    <strong>${action}</strong>
+                    <span class="file-path">${fullPath}</span>
+                    <span class="time"><i class="time-icon">⏰</i> ${timeStr}</span>
+                </div>
+            `;
+
+            // 如果当前正在查看变更记录，检查是否需要显示这条记录
+            if (document.getElementById('fileChanges').style.display === 'block') {
+                const currentFileName = document.getElementById('currentFileName').textContent;
+                const fileName = fullPath.split('/').pop();
+                div.style.display = fileName === currentFileName ? 'flex' : 'none';
+            }
+
+            fileChanges.insertBefore(div, fileChanges.firstChild);
+        });
+
+        // 接收初始文件系统结构
+        socket.on('initialStructure', (structure) => {
+            fileSystem = structure;
+            updateExplorerView(explorerContent, fileSystem);
+        });
+
+        // 添加 updateFileSystem 函数
+        function updateFileSystem(path, type) {
+            const parts = path.split('/');
+            let current = fileSystem;
+            
+            // 找到对应的监控目录
+            const watchDir = config.watchDirs.find(dir => path.startsWith(dir.path));
+            if (!watchDir) {
+                console.error('No matching watch directory for path:', path);
+                return;
+            }
+
+            // 获取相对于监控目录的路径
+            const relativeParts = path.replace(watchDir.path + '/', '').split('/');
+            
+            // 确保监控目录存在于文件系统结构中
+            if (!fileSystem[watchDir.path]) {
+                fileSystem[watchDir.path] = {
+                    name: watchDir.name,
+                    description: watchDir.description,
+                    files: {}
+                };
+            }
+            
+            // 从监控目录的 files 开始遍历
+            current = fileSystem[watchDir.path].files;
+            
+            // 遍历路径的每一部分，构建或更新嵌套结构
+            for (let i = 0; i < relativeParts.length - 1; i++) {
+                const part = relativeParts[i];
+                if (!current[part] || typeof current[part] !== 'object') {
+                    current[part] = {};
+                }
+                current = current[part];
+            }
+
+            const fileName = relativeParts[relativeParts.length - 1];
+
+            // 根据操作类型更新结构
+            if (type === 'remove' || type === 'removeDir') {
+                delete current[fileName];
+                // 如果父目录为空，也删除父目录
+                if (Object.keys(current).length === 0) {
+                    let temp = fileSystem[watchDir.path].files;
+                    for (let i = 0; i < relativeParts.length - 2; i++) {
+                        if (Object.keys(temp[relativeParts[i]]).length === 0) {
+                            delete temp[relativeParts[i]];
+                        }
+                        temp = temp[relativeParts[i]];
+                    }
+                }
+            } else {
+                current[fileName] = (type === 'addDir') ? {} : true;
+            }
+
+            // 更新视图
+            updateExplorerView(explorerContent, fileSystem);
+        }
+
+        // 在 JavaScript 部分添加日志解析和高亮函数
+        function highlightLogContent(content) {
+            // 将原始内容转换为HTML安全的文本
+            content = content.replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;');
+            
+            // 创建一个临时数组来存储所有需要高亮的部分
+            let highlights = [];
+            
+            // 高亮时间戳
+            content.replace(/\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}(?:\.\d{3})?/g, (match, offset) => {
+                highlights.push({
+                    start: offset,
+                    end: offset + match.length,
+                    class: 'log-time',
+                    text: match
+                });
+            });
+            
+            // 高亮错误信息
+            content.replace(/(?:error|Error|ERROR|Exception|EXCEPTION|Failed|FAILED|失败).*$/gm, (match, offset) => {
+                highlights.push({
+                    start: offset,
+                    end: offset + match.length,
+                    class: 'log-error',
+                    text: match
+                });
+            });
+            
+            // 高亮警告信息
+            content.replace(/(?:warning|Warning|WARN|警告).*$/gm, (match, offset) => {
+                highlights.push({
+                    start: offset,
+                    end: offset + match.length,
+                    class: 'log-warning',
+                    text: match
+                });
+            });
+            
+            // 高亮成功信息
+            content.replace(/(?:success|Success|SUCCESS|完成|成功).*$/gm, (match, offset) => {
+                highlights.push({
+                    start: offset,
+                    end: offset + match.length,
+                    class: 'log-success',
+                    text: match
+                });
+            });
+            
+            // 高亮信息性内容
+            content.replace(/(?:info|Info|INFO|信息).*$/gm, (match, offset) => {
+                highlights.push({
+                    start: offset,
+                    end: offset + match.length,
+                    class: 'log-info',
+                    text: match
+                });
+            });
+            
+            // 高亮特定格式的内容（如路径、ID等）
+            content.replace(/(?:\/[\w\-./]+|\[[\w\-.:]+\])/g, (match, offset) => {
+                highlights.push({
+                    start: offset,
+                    end: offset + match.length,
+                    class: 'log-highlight',
+                    text: match
+                });
+            });
+            
+            // 按照起始位置排序，并处理重叠
+            highlights.sort((a, b) => a.start - b.start);
+            let validHighlights = [];
+            let lastEnd = -1;
+            
+            for (let highlight of highlights) {
+                if (highlight.start >= lastEnd) {
+                    validHighlights.push(highlight);
+                    lastEnd = highlight.end;
+                }
+            }
+            
+            // 从后向前应用高亮，避免位置偏移
+            let result = content;
+            for (let i = validHighlights.length - 1; i >= 0; i--) {
+                const h = validHighlights[i];
+                result = result.slice(0, h.start) +
+                        `<span class="${h.class}">${h.text}</span>` +
+                        result.slice(h.end);
+            }
+            
+            return result;
+        }
+
+        // 修改文件内容更新的相关代码
+        socket.on('fileUpdate', (function() {
+            const BATCH_DELAY = 100; // 批量更新延迟时间
+            const MAX_CONTENT_LENGTH = 1000000; // 最大内容长度
+            const CHUNK_SIZE = 50000; // 每个块的大小
+            
+            let updateTimer = null;
+            let pendingContent = '';
+            
+            // 创建一个用于存储和管理日志内容的类
+            class LogManager {
+                constructor(element) {
+                    this.element = element;
+                    this.content = '';
+                    this.isScrolledToBottom = true;
+                    this.virtualScrollHeight = 0;
+                    
+                    // 监听滚动事件
+                    this.element.addEventListener('scroll', () => {
+                        this.isScrolledToBottom = Math.abs(
+                            this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight
+                        ) < 10;
+                    });
+                }
+                
+                // 更新内容
+                update(newContent, append = false) {
+                    if (append) {
+                        this.content += newContent;
+                    } else {
+                        this.content = newContent;
+                    }
+                    
+                    // 如果内容超过最大长度，进行裁剪
+                    if (this.content.length > MAX_CONTENT_LENGTH) {
+                        this.content = this.content.slice(-MAX_CONTENT_LENGTH);
+                    }
+                    
+                    this._render();
+                }
+                
+                // 渲染内容
+                _render() {
+                    // 使用 DocumentFragment 提高性能
+                    const fragment = document.createDocumentFragment();
+                    const chunks = this._splitIntoChunks(this.content);
+                    
+                    // 清空现有内容
+                    this.element.innerHTML = '';
+                    
+                    chunks.forEach(chunk => {
+                        const div = document.createElement('div');
+                        div.innerHTML = highlightLogContent(chunk);
+                        fragment.appendChild(div);
+                    });
+                    
+                    this.element.appendChild(fragment);
+                    
+                    // 如果之前在底部，保持在底部
+                    if (this.isScrolledToBottom) {
+                        requestAnimationFrame(() => {
+                            this.element.scrollTop = this.element.scrollHeight;
+                        });
+                    }
+                }
+                
+                // 将内容分割成更小的块
+                _splitIntoChunks(content) {
+                    const chunks = [];
+                    let start = 0;
+                    
+                    while (start < content.length) {
+                        // 在换行符处分割，避免破坏日志格式
+                        let end = start + CHUNK_SIZE;
+                        if (end < content.length) {
+                            end = content.lastIndexOf('\n', end);
+                            if (end <= start) {
+                                end = start + CHUNK_SIZE;
+                            }
+                        }
+                        chunks.push(content.slice(start, end));
+                        start = end;
+                    }
+                    
+                    return chunks;
+                }
+            }
+            
+            // 创建 LogManager 实例
+            const logManager = new LogManager(document.getElementById('fileContent'));
+            
+            return function(data) {
+                if (!currentWatchingFile) return;
+                if (data.dir !== currentWatchingFile.dir || data.path !== currentWatchingFile.path) return;
+                
+                // 将新内容添加到待处理内容中
+                pendingContent += data.content;
+                
+                // 清除之前的定时器
+                if (updateTimer) {
+                    clearTimeout(updateTimer);
+                }
+                
+                // 设置新的定时器进行批量更新
+                updateTimer = setTimeout(() => {
+                    logManager.update(pendingContent, data.append);
+                    pendingContent = '';
+                    updateTimer = null;
+                }, BATCH_DELAY);
+            };
+        })());
+
+        // 修改聊天相关的代码
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatPanel = document.getElementById('chatPanel');
+            const chatToggle = document.getElementById('chatToggle');
+            const chatInput = document.getElementById('chatInput');
+            const sendButton = document.getElementById('sendButton');
+            const chatMessages = document.getElementById('chatMessages');
+
+            // 添加切换面板展开/收起的功能
+            chatToggle.addEventListener('click', function() {
+                chatPanel.classList.toggle('expanded');
+                if (chatPanel.classList.contains('expanded')) {
+                    chatInput.focus();
+                }
+            });
+
+            // 点击面板外部时收起面板
+            document.addEventListener('click', function(e) {
+                if (!chatPanel.contains(e.target) && chatPanel.classList.contains('expanded')) {
+                    chatPanel.classList.remove('expanded');
+                }
+            });
+
+            // 自动调整输入框高度
+            chatInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
+
+            // 存储对话历史
+            let chatHistory = [];
+            
+            // 添加发送中标志
+            let isSending = false;
+
+            // 发送消息到服务器并接收流式响应
+            async function sendMessage() {
+                const message = chatInput.value.trim();
+                if (!message || isSending) return;
+                
+                // 设置发送状态
+                isSending = true;
+                sendButton.disabled = true;
+                
+                // 添加用户消息
+                addMessage(message, 'user');
+                
+                // 将用户消息添加到历史记录
+                chatHistory.push({ role: 'user', content: message });
+                
+                // 清空输入框
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                
+                // 添加AI消息占位符
+                const assistantMessage = document.createElement('div');
+                assistantMessage.className = 'message assistant';
+                assistantMessage.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+                chatMessages.appendChild(assistantMessage);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                try {
+                    // 发送请求到服务器，包含会话ID
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            messages: chatHistory,
+                            provider: 'siliconflow',
+                            stream: true,
+                            sessionId: currentSessionId
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`服务器返回错误: ${response.status}`);
+                    }
+                    
+                    // 创建事件源接收流式响应
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let responseText = '';
+                    
+                    // 处理返回的事件流
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            break;
+                        }
+                        
+                        // 解码并处理chunks
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n\n');
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                
+                                if (data === '[DONE]') {
+                                    continue;
+                                }
+                                
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    
+                                    // 保存会话ID
+                                    if (parsed.sessionId) {
+                                        currentSessionId = parsed.sessionId;
+                                        console.log('收到会话ID:', currentSessionId);
+                                    }
+                                    
+                                    if (parsed.content) {
+                                        responseText += parsed.content;
+                                        assistantMessage.innerHTML = formatMessage(responseText);
+                                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                                    }
+                                    
+                                    if (parsed.error) {
+                                        throw new Error(parsed.error);
+                                    }
+                                } catch (e) {
+                                    console.error('解析流数据失败:', e);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 将完整的AI回复添加到历史记录
+                    chatHistory.push({ role: 'assistant', content: responseText });
+                    
+                } catch (error) {
+                    console.error('发送消息失败:', error);
+                    assistantMessage.innerHTML = `发送消息失败: ${error.message}`;
+                    assistantMessage.classList.add('error');
+                } finally {
+                    // 重置发送状态
+                    isSending = false;
+                    sendButton.disabled = false;
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            }
+
+            // 添加消息到聊天界面
+            function addMessage(text, type) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}`;
+                messageDiv.innerHTML = formatMessage(text);
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            // 格式化消息内容
+            function formatMessage(text) {
+                // 简单的Markdown式格式化
+                if (!text) return '';
+                
+                // 转义HTML
+                text = text.replace(/&/g, '&amp;')
+                           .replace(/</g, '&lt;')
+                           .replace(/>/g, '&gt;');
+                
+                // 格式化代码块
+                text = text.replace(/```([\s\S]*?)```/g, (match, code) => {
+                    return `<pre><code>${code}</code></pre>`;
+                });
+                
+                // 格式化行内代码
+                text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+                
+                // 格式化加粗
+                text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+                
+                // 格式化斜体
+                text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+                
+                // 将换行符转换为<br>
+                text = text.replace(/\n/g, '<br>');
+                
+                return text;
+            }
+
+            // 发送按钮点击事件
+            sendButton.addEventListener('click', sendMessage);
+
+            // 输入框回车发送
+            chatInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            // 添加样式
+            const style = document.createElement('style');
+            style.textContent = `
+                /* 打字指示器样式 */
+                .typing-indicator {
+                    display: flex;
+                    align-items: center;
+                    column-gap: 4px;
+                    padding: 0 10px;
+                }
+                
+                .typing-indicator span {
+                    height: 8px;
+                    width: 8px;
+                    background: #3b82f6;
+                    border-radius: 50%;
+                    display: block;
+                    opacity: 0.4;
+                    animation: typing 1s infinite alternate;
+                }
+                
+                .typing-indicator span:nth-child(1) {
+                    animation-delay: 0.2s;
+                }
+                
+                .typing-indicator span:nth-child(2) {
+                    animation-delay: 0.4s;
+                }
+                
+                .typing-indicator span:nth-child(3) {
+                    animation-delay: 0.6s;
+                }
+                
+                @keyframes typing {
+                    from { opacity: 0.4; transform: translateY(0); }
+                    to { opacity: 1; transform: translateY(-4px); }
+                }
+                
+                .message.error {
+                    background-color: rgba(239, 68, 68, 0.05);
+                    color: #ef4444;
+                }
+                
+                .message code {
+                    font-family: Menlo, Monaco, 'Courier New', monospace;
+                    background-color: rgba(0,0,0,0.1);
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                    font-size: 0.9em;
+                }
+                
+                .message pre {
+                    margin: 8px 0;
+                    padding: 10px;
+                    background-color: rgba(0,0,0,0.05);
+                    border-radius: 5px;
+                    overflow-x: auto;
+                }
+                
+                .message pre code {
+                    background-color: transparent;
+                    padding: 0;
+                    border-radius: 0;
+                    display: block;
+                }
+            `;
+            document.head.appendChild(style);
+
+            // 添加初始欢迎消息
+            setTimeout(() => {
+                addMessage('您好！我是DataMind助手，有什么可以帮您？', 'assistant');
+                chatHistory.push({ 
+                    role: 'assistant', 
+                    content: '您好！我是DataMind助手，有什么可以帮您？' 
+                });
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
