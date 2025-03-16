@@ -255,10 +255,13 @@ function collectAllArtifacts(watchDirs) {
                         
                         artifacts.push({
                             alchemyId,
+                            alchemyDir: dirName,  // 添加alchemyDir字段，用于构建screenshot URL
                             iteration: iteration.iteration,
                             timestamp: iteration.timestamp,
                             query: iteration.query || statusInfo.original_query || "未知查询",
                             outputPath: iteration.output,
+                            // 添加screenshot字段
+                            screenshot: iteration.screenshot || null,
                             // 使用新构建的URL
                             relativePath: artifactUrl
                         });
@@ -308,8 +311,10 @@ function generateArtifactCards(artifacts) {
         const date = new Date(artifact.timestamp);
         const formattedDate = `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
         
-        // 生成预览图URL - 可以根据制品类型生成不同的预览图
-        const previewImgUrl = artifact.previewImage || "https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=400&q=80";
+        // 生成预览图URL - 优先使用screenshot字段，如果不存在则使用默认图片
+        const previewImgUrl = artifact.screenshot 
+            ? `/api/artifacts/${artifact.alchemyDir}/${artifact.screenshot}`
+            : "https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=400&q=80";
         
         const cardHtml = `
         <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">

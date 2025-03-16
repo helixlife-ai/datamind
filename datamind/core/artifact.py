@@ -810,8 +810,8 @@ class ArtifactGenerator:
                 # 启动浏览器
                 browser = await p.chromium.launch()
                 
-                # 创建新页面
-                page = await browser.new_page(viewport={"width": 1280, "height": 800})
+                # 创建新页面 - 修改视口大小为600x400，与gallery.html中的卡片比例相匹配
+                page = await browser.new_page(viewport={"width": 600, "height": 400})
                 
                 # 导航到HTML文件
                 await page.goto(file_url, wait_until="networkidle")
@@ -823,7 +823,7 @@ class ArtifactGenerator:
                 await asyncio.sleep(1)
                 
                 # 截图
-                await page.screenshot(path=str(screenshot_path), full_page=True)
+                await page.screenshot(path=str(screenshot_path), full_page=False)
                 
                 # 关闭浏览器
                 await browser.close()
