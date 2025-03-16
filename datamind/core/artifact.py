@@ -408,7 +408,6 @@ class ArtifactGenerator:
             
             # 使用Playwright生成HTML文件的截图
             await self._generate_screenshot(output_path, output_dir / f"{artifact_name}.png")
-            await self._generate_screenshot(artifact_path, self.artifacts_dir / "artifact.png")
             
             # 保存本轮生成的完整信息
             generation_info = {
