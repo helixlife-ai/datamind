@@ -151,7 +151,7 @@ function setupProcessManager(io) {
                     
                     // 构建命令参数 - 参考server_bak.js的实现
                     const args = [
-                        'examples/example_usage.py',
+                        'scripts/alchemy_run.py',
                         `--mode=${mode}`
                     ];
                     
@@ -177,7 +177,7 @@ function setupProcessManager(io) {
                     }
                     
                     // 构建脚本的绝对路径
-                    const scriptPath = path.join(path.join(__dirname, '..', '..'), 'examples', 'example_usage.py');
+                    const scriptPath = path.join(path.join(__dirname, '..', '..'), 'scripts', 'alchemy_run.py');
                     console.log(`脚本路径: ${scriptPath}`);
                     
                     // 更新参数，使用绝对路径
@@ -390,7 +390,7 @@ function setupProcessManager(io) {
                 cmd = 'wmic process where "name=\'python.exe\'" get processid,commandline';
             } else {
                 // Linux/Mac: 使用 ps 和 grep 查找 python 进程，并过滤包含 datamind 相关关键词的进程
-                cmd = 'ps aux | grep python | grep -E "datamind|example_usage.py|alchemy_manager_cli.py" | grep -v grep';
+                cmd = 'ps aux | grep python | grep -E "datamind|alchemy_run.py|alchemy_manager_cli.py" | grep -v grep';
             }
             
             exec(cmd, (error, stdout, stderr) => {
@@ -416,7 +416,7 @@ function setupProcessManager(io) {
                         const line = lines[i].trim();
                         // 只处理包含项目相关关键词的进程
                         if (line && (line.includes('datamind') || 
-                                    line.includes('example_usage.py') || 
+                                    line.includes('alchemy_run.py') || 
                                     line.includes('alchemy_manager_cli.py'))) {
                             // 提取PID（最后一列）
                             const pid = line.trim().split(/\s+/).pop();

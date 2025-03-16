@@ -402,7 +402,7 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
             const pythonPath = process.env.PYTHON_PATH || 'python';
             
             // 构建命令
-            const command = `${pythonPath} examples/alchemy_manager_cli.py resumable --json`;
+            const command = `${pythonPath} scripts/alchemy_manager_cli.py resumable --json`;
             console.log(`执行命令: ${command}`);
             
             // 使用child_process执行命令

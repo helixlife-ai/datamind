@@ -302,7 +302,7 @@ class AlchemyClient:
             # 更新恢复指令，现在包含多个可恢复任务的提示
             self.logger.info(f"已保存检查点，可以使用以下命令恢复当前任务:")
             print(f"已保存检查点，可以使用以下命令恢复当前任务:")
-            print(f"python examples/example_usage.py --mode=continue --id={alchemy_id} --resume")
+            print(f"python scripts/alchemy_run.py --mode=continue --id={alchemy_id} --resume")
             print("\n或者查看所有可恢复的任务:")
             print(f"python scripts/alchemy_manager_cli.py resumable")
         except Exception as e:

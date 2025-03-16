@@ -7,8 +7,8 @@ import traceback
 from .reasoningLLM import ReasoningLLMEngine
 from ..llms.model_manager import ModelManager, ModelConfig
 from ..config.settings import (
-    parse_api_keys,
     DEFAULT_REASONING_MODEL,
+    DEFAULT_GENERATOR_MODEL,
     DEFAULT_LLM_API_KEY,
     DEFAULT_LLM_API_BASE
 )
@@ -19,12 +19,6 @@ import os
 from dotenv import load_dotenv
 import asyncio
 from playwright.async_api import async_playwright
-load_dotenv(override=True)
-
-LLMCORE_LLM_API_KEY = parse_api_keys(os.getenv("LLMCORE_API_KEY", ""))
-LLMCORE_LLM_API_BASE = os.getenv("LLMCORE_BASE_URL") 
-LLMCORE_GENERATOR_MODEL = os.getenv("LLMCORE_GENERATOR_MODEL") 
-LLMCORE_REASONING_MODEL = os.getenv("LLMCORE_REASONING_MODEL") 
 
 class ArtifactGenerator:
     """制品生成器，用于根据上下文文件生成HTML格式的制品"""
@@ -59,6 +53,25 @@ class ArtifactGenerator:
         
         # 设置日志记录器
         self.logger = logger
+
+        # 创建模型管理器实例
+        self.model_manager = ModelManager()
+
+        # 注册推理模型
+        self.model_manager.register_model(ModelConfig(
+            name=DEFAULT_REASONING_MODEL,
+            model_type="api",
+            api_base=DEFAULT_LLM_API_BASE,
+            api_key=DEFAULT_LLM_API_KEY
+        ))
+
+        # 注册生成模型  
+        self.model_manager.register_model(ModelConfig(
+            name=DEFAULT_GENERATOR_MODEL,
+            model_type="api",
+            api_base=DEFAULT_LLM_API_BASE,
+            api_key=DEFAULT_LLM_API_KEY
+        ))        
         
         # 创建推理引擎实例
         self.reasoning_engine = self._setup_reasoning_engine()
@@ -66,20 +79,7 @@ class ArtifactGenerator:
 
     def _setup_reasoning_engine(self):
         """初始化推理引擎"""
-        model_manager = ModelManager()
-        model_manager.register_model(ModelConfig(
-            name=DEFAULT_REASONING_MODEL,
-            model_type="api",
-            api_base=DEFAULT_LLM_API_BASE,
-            api_key=DEFAULT_LLM_API_KEY
-        ))
-        model_manager.register_model(ModelConfig(
-            name=LLMCORE_REASONING_MODEL,
-            model_type="api",
-            api_base=LLMCORE_LLM_API_BASE,
-            api_key=LLMCORE_LLM_API_KEY
-        ))
-        return ReasoningLLMEngine(model_manager, model_name=LLMCORE_REASONING_MODEL)
+        return ReasoningLLMEngine(self.model_manager, model_name=DEFAULT_REASONING_MODEL)
        
     def _generate_error_html(self, error_message: str, title: str) -> str:
         """生成错误提示页面

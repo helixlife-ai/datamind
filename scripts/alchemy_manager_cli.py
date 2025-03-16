@@ -115,11 +115,11 @@ def show_task(manager, args):
     
     # 显示继续执行的命令
     print("\n继续此任务:")
-    print(f"  python examples/example_usage.py --mode=continue --id={task['id']}")
+    print(f"  python scripts/alchemy_run.py --mode=continue --id={task['id']}")
     
     # 显示恢复执行的命令
     print("\n从中断点恢复此任务:")
-    print(f"  python examples/example_usage.py --mode=continue --id={task['id']} --resume")
+    print(f"  python scripts/alchemy_run.py --mode=continue --id={task['id']} --resume")
 
 def rename_task(manager, args):
     """重命名任务"""
@@ -248,7 +248,7 @@ def list_resumable_tasks(manager, args):
             task.get("latest_query", "")[:30] + ("..." if len(task.get("latest_query", "")) > 30 else ""),
             current_step,
             timestamp,
-            "python examples/example_usage.py --mode=continue --id=%s --resume" % task["id"]
+            "python scripts/alchemy_run.py --mode=continue --id=%s --resume" % task["id"]
         ]
         table_data.append(row)
     
