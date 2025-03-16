@@ -111,6 +111,70 @@ function setupGalleryRoute(app, watchDirs, config) {
             res.status(500).json({ success: false, error: '刷新gallery页面时出错' });
         }
     });
+    
+    // 添加新的API端点，用于访问制品文件
+    app.get('/api/artifacts/:alchemyDir/:iterPath(*)', (req, res) => {
+        try {
+            const { alchemyDir, iterPath } = req.params;
+            
+            // 查找alchemy_runs目录
+            const alchemyRunsDir = watchDirs.find(dir => dir.path.endsWith('alchemy_runs'));
+            if (!alchemyRunsDir) {
+                return res.status(404).send('未找到alchemy_runs目录');
+            }
+            
+            // 构建完整的文件路径
+            const filePath = path.join(alchemyRunsDir.fullPath, alchemyDir, iterPath);
+            
+            // 检查文件是否存在
+            if (!fs.existsSync(filePath)) {
+                console.error(`请求的文件不存在: ${filePath}`);
+                return res.status(404).send('请求的文件不存在');
+            }
+            
+            // 根据文件扩展名设置Content-Type
+            const ext = path.extname(filePath).toLowerCase();
+            let contentType = 'text/plain';
+            
+            switch (ext) {
+                case '.html':
+                    contentType = 'text/html; charset=utf-8';
+                    break;
+                case '.css':
+                    contentType = 'text/css';
+                    break;
+                case '.js':
+                    contentType = 'application/javascript';
+                    break;
+                case '.json':
+                    contentType = 'application/json';
+                    break;
+                case '.png':
+                    contentType = 'image/png';
+                    break;
+                case '.jpg':
+                case '.jpeg':
+                    contentType = 'image/jpeg';
+                    break;
+                case '.gif':
+                    contentType = 'image/gif';
+                    break;
+                case '.svg':
+                    contentType = 'image/svg+xml';
+                    break;
+            }
+            
+            res.setHeader('Content-Type', contentType);
+            
+            // 发送文件
+            const fileStream = fs.createReadStream(filePath);
+            fileStream.pipe(res);
+            
+        } catch (err) {
+            console.error('访问制品文件时出错:', err);
+            res.status(500).send('访问制品文件时出错');
+        }
+    });
 }
 
 // 收集所有炼丹目录中的制品信息
@@ -142,14 +206,24 @@ function collectAllArtifacts(watchDirs) {
                     // 获取所有迭代信息
                     const iterations = statusInfo.iterations || [];
                     iterations.forEach(iteration => {
+                        // 检查输出路径是否存在
+                        if (!iteration.output) {
+                            console.log(`迭代 ${iteration.iteration} 没有输出路径，跳过`);
+                            return;
+                        }
+                        
+                        // 构建正确的访问URL
+                        // 从 iterations/iterX/artifact/output/artifact_iterX.html 转换为可访问的URL
+                        const artifactUrl = `/api/artifacts/${dirName}/${iteration.output}`;
+                        
                         artifacts.push({
                             alchemyId,
                             iteration: iteration.iteration,
                             timestamp: iteration.timestamp,
                             query: iteration.query || statusInfo.original_query || "未知查询",
                             outputPath: iteration.output,
-                            // 构建相对路径
-                            relativePath: `/alchemy/${dirName}/${iteration.output}`
+                            // 使用新构建的URL
+                            relativePath: artifactUrl
                         });
                     });
                 } catch (err) {
