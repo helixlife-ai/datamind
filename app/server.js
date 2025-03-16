@@ -9,7 +9,7 @@ const dotenv = require('dotenv');
 // 导入自定义模块
 const { setupConfig } = require('./modules/config');
 const { setupApiClients } = require('./modules/api');
-const { ChatSessionManager } = require('./modules/chat');
+const { ChatSessionManager, setupChatRoutes } = require('./modules/chat');
 const { setupFileWatcher, updateFileStructure, buildFileSystemStructure } = require('./modules/fileWatcher');
 const { setupProcessManager, emitTaskOutput } = require('./modules/processManager');
 const { setupRoutes } = require('./modules/routes');
@@ -68,8 +68,8 @@ watchDirs.forEach(dir => {
 // 创建聊天会话管理器实例
 const chatSessionManager = new ChatSessionManager(config);
 
-// 设置聊天记录访问路由
-chatSessionManager.setupChatRoutes(app);
+// 设置聊天相关路由（包括页面和API）
+setupChatRoutes(app, chatSessionManager);
 
 // 定期清理不活跃的会话(每小时)
 setInterval(() => {

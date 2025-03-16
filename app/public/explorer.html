@@ -566,6 +566,19 @@
             margin-right: 8px;
         }
 
+        /* 添加导航样式 */
+        .nav-link {
+            padding: 0.5rem 1rem;
+            color: #64748b;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover {
+            color: #3b82f6;
+        }
+
         /* 添加响应式样式 */
         @media (max-width: 768px) {
             .header {
@@ -585,6 +598,74 @@
             .product-subtitle {
                 font-size: 14px;  /* 移动端稍微小一点 */
             }
+
+            /* 移动菜单样式 */
+            .mobile-menu-button {
+                background: none;
+                border: none;
+                font-size: 1.5rem;
+                color: #64748b;
+                cursor: pointer;
+            }
+
+            #mobile-menu {
+                padding: 1rem;
+            }
+
+            #mobile-menu .nav-link {
+                padding: 0.75rem 0;
+                border-bottom: 1px solid #f1f5f9;
+            }
+        }
+
+        .d-none {
+            display: none !important;
+        }
+
+        .d-flex {
+            display: flex !important;
+        }
+
+        .d-md-none {
+            display: none !important;
+        }
+
+        .d-md-flex {
+            display: flex !important;
+        }
+
+        @media (min-width: 768px) {
+            .d-md-none {
+                display: none !important;
+            }
+            .d-md-flex {
+                display: flex !important;
+            }
+        }
+
+        @media (max-width: 767.98px) {
+            .d-md-none {
+                display: block !important;
+            }
+            .d-md-flex {
+                display: none !important;
+            }
+        }
+
+        .ms-auto {
+            margin-left: auto !important;
+        }
+
+        .flex-column {
+            flex-direction: column !important;
+        }
+
+        .bg-white {
+            background-color: white !important;
+        }
+
+        .shadow-sm {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
         }
 
         #explorerContent {
@@ -628,6 +709,28 @@
                     <p class="product-subtitle">The Alchemy Cauldron</p>
                     <p class="product-tagline">Data in, Surprise out!</p>
                 </div>
+            </div>
+            <div class="ms-auto">
+                <nav class="d-none d-md-flex">
+                    <a href="/" class="nav-link">首页</a>
+                    <a href="/gallery" class="nav-link">作品</a>
+                    <a href="/panel" class="nav-link">炼丹炉</a>
+                    <a href="/explorer" class="nav-link">仓库</a>
+                    <a href="/chat" class="nav-link">助理</a>
+                </nav>
+                <button id="mobile-menu-button" class="mobile-menu-button d-md-none">
+                    <i class="bi bi-list"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="mobile-menu" class="d-md-none d-none bg-white shadow-sm">
+            <div class="d-flex flex-column">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/gallery" class="nav-link">作品</a>
+                <a href="/panel" class="nav-link">炼丹炉</a>
+                <a href="/explorer" class="nav-link">仓库</a>
+                <a href="/chat" class="nav-link">助理</a>
             </div>
         </div>
         <div class="explorer-container">
@@ -1603,6 +1706,12 @@
                 }, BATCH_DELAY);
             };
         })());
+
+        // 添加移动菜单切换功能
+        document.getElementById('mobile-menu-button').addEventListener('click', function() {
+            const mobileMenu = document.getElementById('mobile-menu');
+            mobileMenu.classList.toggle('d-none');
+        });
     </script>
 </body>
 </html>

@@ -290,12 +290,19 @@
         .header {
             display: flex;
             align-items: center;
-            padding: 8px 24px;
+            padding: 8px 4%;
             background: linear-gradient(to right, #ffffff, #f1f5f9);
             border-bottom: 1px solid rgba(203, 213, 225, 0.5);
             height: 60px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
             flex-shrink: 0;
+            width: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
         }
         
         .title-container {
@@ -394,6 +401,7 @@
             padding: 0 16px 16px;
             flex: 1;
             overflow: hidden;
+            margin-top: 60px; /* 添加与header高度相同的上边距 */
         }
         
         .card-footer {
@@ -550,6 +558,55 @@
                 overflow: hidden;
             }
         }
+
+        #mobile-menu {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        #mobile-menu .nav-link {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+            font-weight: 500;
+        }
+
+        #mobile-menu .nav-link:last-child {
+            border-bottom: none;
+        }
+
+        #mobile-menu .nav-link:hover {
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+
+        .mobile-menu-button {
+            border: none;
+            background: transparent;
+            padding: 8px;
+            color: #64748b;
+            font-size: 1.25rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .mobile-menu-button:hover {
+            color: #3b82f6;
+        }
+
+        .nav-link {
+            color: #64748b;
+            font-weight: 500;
+            padding: 8px 16px;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover {
+            color: #3b82f6;
+        }
     </style>
 </head>
 <body>
@@ -561,6 +618,28 @@
                     <p class="product-subtitle">The Alchemy Cauldron</p>
                     <p class="product-tagline">Data in, Surprise out!</p>
                 </div>
+            </div>
+            <div class="ms-auto">
+                <nav class="d-none d-md-flex">
+                    <a href="/" class="nav-link">首页</a>
+                    <a href="/gallery" class="nav-link">作品</a>
+                    <a href="/panel" class="nav-link">炼丹炉</a>
+                    <a href="/explorer" class="nav-link">仓库</a>
+                    <a href="/chat" class="nav-link">助理</a>
+                </nav>
+                <button id="mobile-menu-button" class="mobile-menu-button d-md-none">
+                    <i class="bi bi-list"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="mobile-menu" class="d-md-none d-none bg-white shadow-sm">
+            <div class="d-flex flex-column">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/gallery" class="nav-link">作品</a>
+                <a href="/panel" class="nav-link">炼丹炉</a>
+                <a href="/explorer" class="nav-link">仓库</a>
+                <a href="/chat" class="nav-link">助理</a>
             </div>
         </div>
         
@@ -2266,6 +2345,22 @@
             // 设置选择的路径到输入框
             document.getElementById('folderPath').value = filePath;
         }
+
+        // 移动端菜单
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        mobileMenuButton.addEventListener('click', () => {
+            mobileMenu.classList.toggle('d-none');
+        });
+
+        // 点击移动端菜单项后关闭菜单
+        const mobileMenuItems = mobileMenu.querySelectorAll('a');
+        mobileMenuItems.forEach(item => {
+            item.addEventListener('click', () => {
+                mobileMenu.classList.add('d-none');
+            });
+        });
     </script>
 </body>
 </html>
