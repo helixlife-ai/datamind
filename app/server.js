@@ -13,6 +13,7 @@ const { ChatSessionManager } = require('./modules/chat');
 const { setupFileWatcher, updateFileStructure, buildFileSystemStructure } = require('./modules/fileWatcher');
 const { setupProcessManager, emitTaskOutput } = require('./modules/processManager');
 const { setupRoutes } = require('./modules/routes');
+const { setupGalleryRoute } = require('./modules/gallery');
 
 // 读取环境变量
 dotenv.config();
@@ -77,7 +78,10 @@ watchDirs.forEach(dir => {
 // 初始化时发送文件结构
 updateFileStructure(watchDirs, io);
 
-// 设置路由
+// 设置gallery路由
+setupGalleryRoute(app, watchDirs, config);
+
+// 设置其他路由
 setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients, processManager);
 
 // WebSocket连接处理
@@ -195,6 +199,18 @@ io.on('connection', (socket) => {
         console.log('Client disconnected');
     });
 });
+
+// 打印所有监控目录
+console.log('监控的目录列表:');
+watchDirs.forEach(dir => {
+    console.log(`- ${dir.path}: ${dir.fullPath}`);
+});
+
+// 检查是否包含alchemy_runs目录
+const hasAlchemyDir = watchDirs.some(dir => dir.path.endsWith('alchemy_runs'));
+if (!hasAlchemyDir) {
+    console.warn('警告: 配置中缺少alchemy_runs目录，gallery页面将无法显示作品');
+}
 
 // 启动服务器
 const PORT = config.port || 3000;

@@ -320,6 +320,7 @@
             </div>
             <div class="ms-auto">
                 <nav class="d-none d-md-flex">
+                    <a href="/" class="nav-link">首页</a>
                     <a href="#projects" class="nav-link">作品</a>
                     <a href="#about" class="nav-link">关于</a>
                     <a href="#contact" class="nav-link">联系</a>
@@ -332,6 +333,7 @@
         
         <div id="mobile-menu" class="d-md-none d-none bg-white shadow-sm">
             <div class="d-flex flex-column">
+                <a href="/" class="nav-link">首页</a>
                 <a href="#projects" class="nav-link">作品</a>
                 <a href="#about" class="nav-link">关于</a>
                 <a href="#contact" class="nav-link">联系</a>
@@ -342,205 +344,24 @@
             <section class="text-center mb-5 px-4">
                 <h2 class="mb-3 fw-bold">精选作品展示</h2>
                 <p class="text-muted mx-auto" style="max-width: 700px;">
-                    探索我们精心设计的作品集，每一个项目都代表着独特的创意和专业的执行力
+                    探索我们的炼丹作品集，每一个项目都代表着独特的AI创意和专业的执行力
                 </p>
+                <button id="refresh-gallery" class="btn btn-outline-primary mt-3">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新作品列表
+                </button>
             </section>
 
             <section id="projects" class="mb-5 px-4">
                 <h3 class="section-title">作品集</h3>
                 
                 <div class="row g-4">
-                    <!-- 作品卡片 1 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1547658719-da2b51169166?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="现代网站设计" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">现代网站设计</h4>
-                                <p class="card-text">采用最新的设计趋势和技术，打造响应式、高性能的现代网站。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
+                    <div id="loading-indicator" class="col-12 text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">加载中...</span>
                         </div>
+                        <p class="mt-2 text-muted">正在加载作品...</p>
                     </div>
-                    
-                    <!-- 作品卡片 2 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1551650975-87deedd944c3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="移动应用界面" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">移动应用界面</h4>
-                                <p class="card-text">专注于用户体验的移动应用界面设计，简洁直观且功能强大。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 3 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1626785774573-4b799315345d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="品牌标识设计" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">品牌标识设计</h4>
-                                <p class="card-text">创造独特且有记忆点的品牌标识，帮助企业在市场中脱颖而出。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 4 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="数据可视化" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">数据可视化</h4>
-                                <p class="card-text">将复杂数据转化为直观易懂的视觉呈现，帮助用户快速理解信息。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 5 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1523206489230-c012c64b2b48?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="电子商务平台" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">电子商务平台</h4>
-                                <p class="card-text">设计用户友好的电子商务界面，提升转化率和用户满意度。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 6 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1593720213428-28a5b9e94613?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="文档主题设计" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">文档主题设计</h4>
-                                <p class="card-text">为技术文档和知识库创建清晰、易于导航的主题设计。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 7 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="人工智能应用" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">人工智能应用</h4>
-                                <p class="card-text">结合AI技术的智能应用界面设计，提供个性化用户体验。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 8 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="游戏UI设计" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">游戏UI设计</h4>
-                                <p class="card-text">为游戏打造沉浸式界面体验，平衡美观与功能性。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 9 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="AR/VR体验" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">AR/VR体验</h4>
-                                <p class="card-text">设计增强现实和虚拟现实应用的交互界面，创造未来感体验。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 10 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1499951360447-b19be8fe80f5?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="响应式仪表盘" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">响应式仪表盘</h4>
-                                <p class="card-text">为企业管理系统设计直观、高效的数据仪表盘界面。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 11 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1542744173-8e7e53415bb0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="企业品牌重塑" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">企业品牌重塑</h4>
-                                <p class="card-text">为成熟企业提供品牌更新服务，注入现代元素保持市场竞争力。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- 作品卡片 12 -->
-                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
-                        <div class="card h-100">
-                            <div class="card-img-container">
-                                <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=600&h=400&q=80" alt="金融科技界面" class="card-img">
-                            </div>
-                            <div class="card-body">
-                                <h4 class="card-title">金融科技界面</h4>
-                                <p class="card-text">为金融应用设计安全、可靠且易用的用户界面，提升用户信任感。</p>
-                            </div>
-                            <div class="card-footer bg-white border-top-0">
-                                <a href="#" class="btn btn-primary">查看详情</a>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- 这里的内容会被gallery.js中的generateArtifactCards函数生成的内容替换 -->
                 </div>
             </section>
         </main>
@@ -549,9 +370,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // 设置当前年份
-        document.getElementById('current-year').textContent = new Date().getFullYear();
-        
         // 移动端菜单
         const mobileMenuButton = document.getElementById('mobile-menu-button');
         const mobileMenu = document.getElementById('mobile-menu');
@@ -596,6 +414,66 @@
         window.addEventListener('load', animateOnScroll);
         // 滚动时执行
         window.addEventListener('scroll', animateOnScroll);
+        
+        // 添加刷新按钮功能
+        document.getElementById('refresh-gallery').addEventListener('click', function() {
+            // 显示加载指示器
+            const projectsSection = document.getElementById('projects');
+            const rowContainer = projectsSection.querySelector('.row');
+            rowContainer.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2 text-muted">正在刷新作品...</p>
+                </div>
+            `;
+            
+            // 发送刷新请求
+            fetch('/api/gallery/refresh', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 刷新成功，重新加载页面
+                    window.location.reload();
+                } else {
+                    // 显示错误信息
+                    rowContainer.innerHTML = `
+                        <div class="col-12 text-center py-5">
+                            <p class="text-danger">刷新失败: ${data.error || '未知错误'}</p>
+                            <button class="btn btn-outline-primary mt-3" onclick="window.location.reload()">
+                                <i class="bi bi-arrow-clockwise"></i> 重试
+                            </button>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                // 显示错误信息
+                rowContainer.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <p class="text-danger">刷新失败: ${error.message || '网络错误'}</p>
+                        <button class="btn btn-outline-primary mt-3" onclick="window.location.reload()">
+                            <i class="bi bi-arrow-clockwise"></i> 重试
+                        </button>
+                    </div>
+                `;
+            });
+        });
+        
+        // 为卡片中的图片添加错误处理
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.card-img').forEach(img => {
+                img.onerror = function() {
+                    this.src = 'https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=400&q=80';
+                };
+            });
+        });
     </script>
 </body>
 </html> 
