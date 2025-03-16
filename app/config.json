@@ -4,11 +4,6 @@
             "path": "../work_dir/data_alchemy",
             "name": "Alchemy Cauldron",
             "description": "Monitor DataMind's knowledge alchemy process - transforming documents into insights"
-        },
-        {
-            "path": "../work_dir/data_alchemy/alchemy_runs",
-            "name": "炼丹运行",
-            "description": "存储炼丹运行的目录"
         }
     ],
     "chatRecordDir": {

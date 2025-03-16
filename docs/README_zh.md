@@ -126,6 +126,7 @@ cd datamind
 
 # 安装依赖
 pip install -r requirements.txt
+playwright install chromium
 
 # 生成测试数据
 python scripts/generate_test_data.py

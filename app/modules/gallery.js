@@ -118,13 +118,29 @@ function setupGalleryRoute(app, watchDirs, config) {
             const { alchemyDir, iterPath } = req.params;
             
             // 查找alchemy_runs目录
-            const alchemyRunsDir = watchDirs.find(dir => dir.path.endsWith('alchemy_runs'));
-            if (!alchemyRunsDir) {
+            let alchemyRunsDir = watchDirs.find(dir => dir.path.endsWith('alchemy_runs'));
+            let alchemyPath = null;
+            
+            if (alchemyRunsDir) {
+                // 直接使用找到的alchemy_runs目录
+                alchemyPath = alchemyRunsDir.fullPath;
+            } else {
+                // 查找是否作为子目录存在
+                for (const dir of watchDirs) {
+                    const possiblePath = path.join(dir.fullPath, 'alchemy_runs');
+                    if (fs.existsSync(possiblePath)) {
+                        alchemyPath = possiblePath;
+                        break;
+                    }
+                }
+            }
+            
+            if (!alchemyPath) {
                 return res.status(404).send('未找到alchemy_runs目录');
             }
             
             // 构建完整的文件路径
-            const filePath = path.join(alchemyRunsDir.fullPath, alchemyDir, iterPath);
+            const filePath = path.join(alchemyPath, alchemyDir, iterPath);
             
             // 检查文件是否存在
             if (!fs.existsSync(filePath)) {
@@ -182,16 +198,37 @@ function collectAllArtifacts(watchDirs) {
     const artifacts = [];
     
     // 查找所有炼丹目录
-    const alchemyDir = watchDirs.find(dir => dir.path.endsWith('alchemy_runs'));
-    if (!alchemyDir) {
+    let alchemyDir = watchDirs.find(dir => dir.path.endsWith('alchemy_runs'));
+    let alchemyPath = null;
+    
+    if (alchemyDir) {
+        // 直接使用找到的alchemy_runs目录
+        alchemyPath = alchemyDir.fullPath;
+        console.log('找到alchemy_runs目录:', alchemyPath);
+    } else {
+        // 查找是否作为子目录存在
+        for (const dir of watchDirs) {
+            const possiblePath = path.join(dir.fullPath, 'alchemy_runs');
+            if (fs.existsSync(possiblePath)) {
+                alchemyPath = possiblePath;
+                alchemyDir = {
+                    ...dir,
+                    fullPath: possiblePath,
+                    path: path.join(dir.path, 'alchemy_runs')
+                };
+                console.log('找到alchemy_runs子目录:', alchemyPath);
+                break;
+            }
+        }
+    }
+    
+    if (!alchemyPath) {
         console.log('未找到alchemy_runs目录');
         return artifacts;
     }
     
-    console.log('找到alchemy_runs目录:', alchemyDir.fullPath);
-    
     // 遍历所有炼丹目录
-    const alchemyDirs = fs.readdirSync(alchemyDir.fullPath);
+    const alchemyDirs = fs.readdirSync(alchemyPath);
     console.log('炼丹目录列表:', alchemyDirs);
     
     alchemyDirs.forEach(dirName => {

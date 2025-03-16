@@ -207,9 +207,17 @@ watchDirs.forEach(dir => {
 });
 
 // 检查是否包含alchemy_runs目录
-const hasAlchemyDir = watchDirs.some(dir => dir.path.endsWith('alchemy_runs'));
+let hasAlchemyDir = watchDirs.some(dir => dir.path.endsWith('alchemy_runs'));
 if (!hasAlchemyDir) {
-    console.warn('警告: 配置中缺少alchemy_runs目录，gallery页面将无法显示作品');
+    // 检查是否作为子目录存在
+    hasAlchemyDir = watchDirs.some(dir => {
+        const alchemyPath = path.join(dir.fullPath, 'alchemy_runs');
+        return fs.existsSync(alchemyPath);
+    });
+    
+    if (!hasAlchemyDir) {
+        console.warn('警告: 未找到alchemy_runs目录，gallery页面将无法显示作品');
+    }
 }
 
 // 启动服务器

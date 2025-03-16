@@ -27,3 +27,6 @@ flake8>=3.9.0
 python-dotenv 
 python-docx
 docling
+
+# 网页截图
+playwright>=1.40.0
