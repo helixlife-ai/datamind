@@ -91,7 +91,7 @@ watchDirs.forEach(dir => {
 updateFileStructure(watchDirs, io);
 
 // 设置gallery路由
-setupGalleryRoute(app, watchDirs, config);
+setupGalleryRoute(app, watchDirs, config, io);
 
 // 设置explorer路由
 setupExplorerRoute(app, watchDirs, config);

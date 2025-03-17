@@ -2,94 +2,13 @@ const fs = require('fs');
 const path = require('path');
 
 // 设置gallery路由
-function setupGalleryRoute(app, watchDirs, config) {
+function setupGalleryRoute(app, watchDirs, config, io) {
     // 创建gallery路由
     app.get('/gallery', (req, res) => {
         try {
             // 读取gallery.html模板
             const templatePath = path.join(__dirname, '../public/gallery.html');
             let galleryHtml = fs.readFileSync(templatePath, 'utf8');
-            
-            // 收集所有炼丹目录中的制品信息
-            const artifacts = collectAllArtifacts(watchDirs);
-            
-            // 生成作品卡片HTML
-            const cardsHtml = generateArtifactCards(artifacts);
-            
-            // 在gallery.html中替换作品卡片部分
-            // 修改查找方式，使用更可靠的方法定位替换位置
-            const rowStartTag = '<div class="row g-4">';
-            const rowStartIdx = galleryHtml.indexOf(rowStartTag);
-            
-            if (rowStartIdx !== -1) {
-                // 找到起始标签后，查找下一个 </div> 标签
-                const rowContentStartIdx = rowStartIdx + rowStartTag.length;
-                const rowEndIdx = galleryHtml.indexOf('</section>', rowContentStartIdx);
-                
-                if (rowEndIdx !== -1) {
-                    // 在 </section> 之前找到最后一个 </div>
-                    const lastDivBeforeSectionEnd = galleryHtml.lastIndexOf('</div>', rowEndIdx);
-                    
-                    if (lastDivBeforeSectionEnd !== -1 && lastDivBeforeSectionEnd > rowContentStartIdx) {
-                        // 找到了合适的替换位置
-                        const beforeContent = galleryHtml.substring(0, rowContentStartIdx);
-                        const afterContent = galleryHtml.substring(lastDivBeforeSectionEnd);
-                        
-                        // 替换内容
-                        galleryHtml = beforeContent + '\n' + cardsHtml + '\n            ' + afterContent;
-                        console.log('成功替换gallery.html中的作品卡片部分');
-                    } else {
-                        // 如果找不到合适的 </div>，直接在 row 开始标签后插入内容
-                        const beforeContent = galleryHtml.substring(0, rowContentStartIdx);
-                        const afterContent = galleryHtml.substring(rowContentStartIdx);
-                        
-                        galleryHtml = beforeContent + '\n' + cardsHtml + '\n            ' + afterContent;
-                        console.log('已在row标签后插入作品卡片内容');
-                    }
-                } else {
-                    console.error('无法找到</section>标签');
-                    // 尝试直接替换loading-indicator
-                    const loadingIndicator = '<div id="loading-indicator"';
-                    const loadingStartIdx = galleryHtml.indexOf(loadingIndicator);
-                    
-                    if (loadingStartIdx !== -1) {
-                        const loadingEndIdx = galleryHtml.indexOf('</div>', loadingStartIdx);
-                        if (loadingEndIdx !== -1) {
-                            const nextEndDiv = galleryHtml.indexOf('</div>', loadingEndIdx + 6);
-                            if (nextEndDiv !== -1) {
-                                const beforeContent = galleryHtml.substring(0, loadingStartIdx);
-                                const afterContent = galleryHtml.substring(nextEndDiv + 6);
-                                galleryHtml = beforeContent + cardsHtml + afterContent;
-                                console.log('已替换loading-indicator为作品卡片内容');
-                            }
-                        }
-                    }
-                }
-            } else {
-                console.error('无法在gallery.html中找到row g-4标签');
-                
-                // 尝试查找projects部分
-                const projectsSection = '<section id="projects"';
-                const projectsSectionIdx = galleryHtml.indexOf(projectsSection);
-                
-                if (projectsSectionIdx !== -1) {
-                    // 在projects部分中插入内容
-                    const sectionTitleEnd = galleryHtml.indexOf('</h3>', projectsSectionIdx);
-                    
-                    if (sectionTitleEnd !== -1) {
-                        const insertPoint = sectionTitleEnd + 5; // </h3>后
-                        const beforeContent = galleryHtml.substring(0, insertPoint);
-                        const afterContent = galleryHtml.substring(insertPoint);
-                        
-                        galleryHtml = beforeContent + 
-                                     '\n                <div class="row g-4">\n' + 
-                                     cardsHtml + 
-                                     '\n                </div>\n' + 
-                                     afterContent;
-                        console.log('已在projects部分插入作品卡片内容');
-                    }
-                }
-            }
             
             // 设置正确的Content-Type
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -103,7 +22,12 @@ function setupGalleryRoute(app, watchDirs, config) {
     // 添加刷新gallery的API端点
     app.post('/api/gallery/refresh', (req, res) => {
         try {
-            // 清除缓存，强制重新收集制品
+            // 收集所有炼丹目录中的制品信息
+            const artifacts = collectAllArtifacts(watchDirs);
+            
+            // 通过Socket.IO广播更新的卡片数据
+            io.emit('gallery:artifacts', artifacts);
+            
             console.log('刷新gallery页面');
             res.json({ success: true, message: '已刷新gallery页面' });
         } catch (err) {
@@ -191,6 +115,92 @@ function setupGalleryRoute(app, watchDirs, config) {
             res.status(500).send('访问制品文件时出错');
         }
     });
+    
+    // 设置Socket.IO事件处理
+    io.on('connection', (socket) => {
+        console.log('Gallery客户端连接');
+        
+        // 客户端请求制品数据
+        socket.on('gallery:requestArtifacts', () => {
+            try {
+                // 收集所有炼丹目录中的制品信息
+                const artifacts = collectAllArtifacts(watchDirs);
+                
+                // 发送制品数据给客户端
+                socket.emit('gallery:artifacts', artifacts);
+                console.log('已发送制品数据给客户端');
+            } catch (err) {
+                console.error('发送制品数据时出错:', err);
+                socket.emit('gallery:error', { message: '获取制品数据失败' });
+            }
+        });
+        
+        // 监听断开连接事件
+        socket.on('disconnect', () => {
+            console.log('Gallery客户端断开连接');
+        });
+    });
+    
+    // 设置文件监视器，监控alchemy_runs目录的变化
+    setupAlchemyWatcher(watchDirs, io);
+}
+
+// 设置alchemy_runs目录监视器
+function setupAlchemyWatcher(watchDirs, io) {
+    // 查找alchemy_runs目录
+    let alchemyRunsDir = watchDirs.find(dir => dir.path.endsWith('alchemy_runs'));
+    let alchemyPath = null;
+    
+    if (alchemyRunsDir) {
+        // 直接使用找到的alchemy_runs目录
+        alchemyPath = alchemyRunsDir.fullPath;
+    } else {
+        // 查找是否作为子目录存在
+        for (const dir of watchDirs) {
+            const possiblePath = path.join(dir.fullPath, 'alchemy_runs');
+            if (fs.existsSync(possiblePath)) {
+                alchemyPath = possiblePath;
+                break;
+            }
+        }
+    }
+    
+    if (!alchemyPath) {
+        console.warn('未找到alchemy_runs目录，无法监控制品变化');
+        return;
+    }
+    
+    // 使用fs.watch监控目录变化
+    const watcher = fs.watch(alchemyPath, { recursive: true }, (eventType, filename) => {
+        // 只关注status.json文件的变化
+        if (filename && filename.includes('status.json')) {
+            console.log(`检测到制品变化: ${filename}`);
+            
+            // 延迟一小段时间，确保文件写入完成
+            setTimeout(() => {
+                try {
+                    // 收集所有炼丹目录中的制品信息
+                    const artifacts = collectAllArtifacts(watchDirs);
+                    
+                    // 通过Socket.IO广播更新的卡片数据
+                    io.emit('gallery:artifacts', artifacts);
+                    console.log('已广播更新的制品数据');
+                } catch (err) {
+                    console.error('广播制品数据时出错:', err);
+                }
+            }, 500);
+        }
+    });
+    
+    // 处理监视器错误
+    watcher.on('error', (error) => {
+        console.error('监控alchemy_runs目录时出错:', error);
+    });
+    
+    console.log(`已开始监控alchemy_runs目录: ${alchemyPath}`);
+    
+    // 返回监视器，以便在需要时关闭
+    return watcher;
 }
 
 // 收集所有炼丹目录中的制品信息
@@ -339,4 +349,4 @@ function generateArtifactCards(artifacts) {
     return cardsHtml;
 }
 
-module.exports = { setupGalleryRoute }; 
+module.exports = { setupGalleryRoute, collectAllArtifacts }; 

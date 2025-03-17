@@ -436,9 +436,6 @@
                 <p class="mx-auto" style="max-width: 700px;">
                     探索我们的炼丹作品集，每一个项目都代表着独特的AI创意和专业的执行力
                 </p>
-                <button id="refresh-gallery" class="btn btn-outline-primary mt-3">
-                    <i class="bi bi-arrow-clockwise"></i> 刷新作品列表
-                </button>
             </section>
 
             <section id="projects" class="mb-5 px-4">
@@ -451,7 +448,7 @@
                         </div>
                         <p class="mt-2 text-muted">正在加载作品...</p>
                     </div>
-                    <!-- 这里的内容会被gallery.js中的generateArtifactCards函数生成的内容替换 -->
+                    <!-- 这里的内容会被动态生成的卡片替换 -->
                 </div>
             </section>
         </main>
@@ -459,6 +456,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script>
         // 移动端菜单
         const mobileMenuButton = document.getElementById('mobile-menu-button');
@@ -474,6 +472,108 @@
             item.addEventListener('click', () => {
                 mobileMenu.classList.add('d-none');
             });
+        });
+        
+        // 连接Socket.IO
+        const socket = io();
+        
+        // 页面加载完成后请求制品数据
+        document.addEventListener('DOMContentLoaded', function() {
+            // 请求制品数据
+            socket.emit('gallery:requestArtifacts');
+        });
+        
+        // 监听制品数据更新
+        socket.on('gallery:artifacts', function(artifacts) {
+            // 获取作品容器
+            const projectsSection = document.getElementById('projects');
+            const rowContainer = projectsSection.querySelector('.row');
+            
+            // 如果没有制品，显示提示信息
+            if (!artifacts || artifacts.length === 0) {
+                rowContainer.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <p class="text-muted">暂无制品，请先创建炼丹任务</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 生成卡片HTML
+            let cardsHtml = '';
+            
+            artifacts.forEach((artifact, index) => {
+                // 截断过长的查询文本
+                const queryText = artifact.query.length > 80 
+                    ? artifact.query.substring(0, 80) + '...' 
+                    : artifact.query;
+                    
+                // 格式化时间戳
+                const date = new Date(artifact.timestamp);
+                const formattedDate = `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+                
+                // 生成预览图URL - 优先使用screenshot字段，如果不存在则使用默认图片
+                const previewImgUrl = artifact.screenshot 
+                    ? `/api/artifacts/${artifact.alchemyDir}/${artifact.screenshot}`
+                    : "https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=400&q=80";
+                
+                const cardHtml = `
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                    <div class="card h-100">
+                        <div class="card-img-container">
+                            <img src="${previewImgUrl}" alt="制品预览" class="card-img" loading="lazy">
+                        </div>
+                        <div class="card-body">
+                            <h4 class="card-title">炼丹 #${artifact.alchemyId}</h4>
+                            <p class="card-text">${queryText}</p>
+                            <p class="card-text text-muted small">迭代: ${artifact.iteration} | 创建于: ${formattedDate}</p>
+                        </div>
+                        <div class="card-footer bg-white border-top-0">
+                            <a href="${artifact.relativePath}" class="btn btn-primary" target="_blank">查看详情</a>
+                        </div>
+                    </div>
+                </div>
+                `;
+                cardsHtml += cardHtml;
+            });
+            
+            // 更新DOM
+            rowContainer.innerHTML = cardsHtml;
+            
+            // 为新加载的卡片添加动画效果
+            const cards = rowContainer.querySelectorAll('.card');
+            cards.forEach((card, index) => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(20px)';
+                card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                
+                // 延迟显示，创建瀑布流效果
+                setTimeout(() => {
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, index * 100);
+            });
+            
+            // 为卡片中的图片添加错误处理
+            rowContainer.querySelectorAll('.card-img').forEach(img => {
+                img.onerror = function() {
+                    this.src = 'https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=400&q=80';
+                };
+            });
+        });
+        
+        // 监听错误消息
+        socket.on('gallery:error', function(error) {
+            console.error('获取制品数据失败:', error);
+            
+            // 显示错误信息
+            const projectsSection = document.getElementById('projects');
+            const rowContainer = projectsSection.querySelector('.row');
+            rowContainer.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <p class="text-danger">加载失败: ${error.message || '未知错误'}</p>
+                </div>
+            `;
         });
         
         // 滚动动画
@@ -493,77 +593,8 @@
             });
         };
         
-        // 初始设置卡片样式
-        document.querySelectorAll('.card').forEach(card => {
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(20px)';
-            card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-        });
-        
-        // 初始加载时执行一次
-        window.addEventListener('load', animateOnScroll);
         // 滚动时执行
         window.addEventListener('scroll', animateOnScroll);
-        
-        // 添加刷新按钮功能
-        document.getElementById('refresh-gallery').addEventListener('click', function() {
-            // 显示加载指示器
-            const projectsSection = document.getElementById('projects');
-            const rowContainer = projectsSection.querySelector('.row');
-            rowContainer.innerHTML = `
-                <div class="col-12 text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">加载中...</span>
-                    </div>
-                    <p class="mt-2 text-muted">正在刷新作品...</p>
-                </div>
-            `;
-            
-            // 发送刷新请求
-            fetch('/api/gallery/refresh', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // 刷新成功，重新加载页面
-                    window.location.reload();
-                } else {
-                    // 显示错误信息
-                    rowContainer.innerHTML = `
-                        <div class="col-12 text-center py-5">
-                            <p class="text-danger">刷新失败: ${data.error || '未知错误'}</p>
-                            <button class="btn btn-outline-primary mt-3" onclick="window.location.reload()">
-                                <i class="bi bi-arrow-clockwise"></i> 重试
-                            </button>
-                        </div>
-                    `;
-                }
-            })
-            .catch(error => {
-                // 显示错误信息
-                rowContainer.innerHTML = `
-                    <div class="col-12 text-center py-5">
-                        <p class="text-danger">刷新失败: ${error.message || '网络错误'}</p>
-                        <button class="btn btn-outline-primary mt-3" onclick="window.location.reload()">
-                            <i class="bi bi-arrow-clockwise"></i> 重试
-                        </button>
-                    </div>
-                `;
-            });
-        });
-        
-        // 为卡片中的图片添加错误处理
-        document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.card-img').forEach(img => {
-                img.onerror = function() {
-                    this.src = 'https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=400&q=80';
-                };
-            });
-        });
     </script>
 </body>
 </html> 
