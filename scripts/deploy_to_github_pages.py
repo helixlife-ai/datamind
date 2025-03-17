@@ -18,9 +18,9 @@ import json
 
 def parse_arguments():
     """解析命令行参数"""
-    parser = argparse.ArgumentParser(description='将HTML文件部署到GitHub Pages')
-    parser.add_argument('source_dir', nargs='?', default='work_dir/gh_page_test', help='包含HTML文件的源目录')
-    parser.add_argument('--repo', default='https://github.com/imjszhang/test-datamind-gallery.git', help='GitHub仓库URL')
+    parser = argparse.ArgumentParser(description='将Artifacts部署到GitHub Pages')
+    parser.add_argument('source_dir', nargs='?', default='work_dir/gh_page', help='包含Artifacts的源目录')
+    parser.add_argument('--repo', default='https://github.com/imjszhang/datamind-gallery.git', help='GitHub仓库URL')
     parser.add_argument('--branch', default='gh-pages', help='GitHub Pages分支名称（默认：gh-pages）')
     parser.add_argument('--commit-message', default=None, help='自定义提交信息')
     parser.add_argument('--temp-dir', default='work_dir/temp_deploy', help='临时目录路径（默认：work_dir/temp_deploy）')
@@ -261,13 +261,16 @@ if __name__ == "__main__":
     
     # 优先使用命令行参数中的token，如果没有则尝试从环境变量获取
     token = args.token or os.environ.get('GITHUB_TOKEN')
-    
+
     if not token and args.repo.startswith('https://'):
         print("警告: 未提供GitHub令牌。如需使用令牌认证，请通过--token参数提供或在.env文件中设置GITHUB_TOKEN")
-    
+
+    repo = args.repo or os.environ.get('GITHUB_REPO')
+    print(f"使用仓库: {repo}")
+
     deploy_to_github(
         args.source_dir,
-        args.repo,
+        repo,
         args.branch,
         args.commit_message,
         args.temp_dir,

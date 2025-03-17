@@ -1,0 +1,56 @@
+[
+  {
+    "alchemyId": "001",
+    "alchemyDir": "alchemy_001",
+    "query": "分析中国近十年GDP增长趋势",
+    "timestamp": "2023-05-15T08:30:00Z",
+    "iteration": 3,
+    "screenshot": "images/gdp_analysis.png",
+    "relativePath": "artifacts/gdp_analysis.html"
+  },
+  {
+    "alchemyId": "002",
+    "alchemyDir": "alchemy_002",
+    "query": "预测2023年全球主要股市走势",
+    "timestamp": "2023-06-22T14:45:00Z",
+    "iteration": 2,
+    "screenshot": "images/stock_prediction.png",
+    "relativePath": "artifacts/stock_prediction.html"
+  },
+  {
+    "alchemyId": "003",
+    "alchemyDir": "alchemy_003",
+    "query": "分析新冠疫情对全球旅游业的影响",
+    "timestamp": "2023-07-10T11:20:00Z",
+    "iteration": 5,
+    "screenshot": "images/covid_tourism.png",
+    "relativePath": "artifacts/covid_tourism.html"
+  },
+  {
+    "alchemyId": "004",
+    "alchemyDir": "alchemy_004",
+    "query": "探索人工智能在医疗领域的应用前景",
+    "timestamp": "2023-08-05T09:15:00Z",
+    "iteration": 4,
+    "screenshot": "images/ai_healthcare.png",
+    "relativePath": "artifacts/ai_healthcare.html"
+  },
+  {
+    "alchemyId": "005",
+    "alchemyDir": "alchemy_005",
+    "query": "全球气候变化趋势及其对农业的影响",
+    "timestamp": "2023-09-18T16:30:00Z",
+    "iteration": 3,
+    "screenshot": "images/climate_agriculture.png",
+    "relativePath": "artifacts/climate_agriculture.html"
+  },
+  {
+    "alchemyId": "006",
+    "alchemyDir": "alchemy_006",
+    "query": "中国电子商务市场分析与未来发展预测",
+    "timestamp": "2023-10-25T13:40:00Z",
+    "iteration": 2,
+    "screenshot": "images/ecommerce_china.png",
+    "relativePath": "artifacts/ecommerce_china.html"
+  }
+] 
