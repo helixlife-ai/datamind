@@ -8,7 +8,7 @@ const dotenv = require('dotenv');
 
 // 导入自定义模块
 const { setupConfig } = require('./modules/config');
-const { setupApiClients } = require('./modules/api');
+const { setupLLMApiClients } = require('./modules/llmapi');
 const { ChatSessionManager, setupChatRoutes } = require('./modules/chat');
 const { setupFileWatcher, updateFileStructure, buildFileSystemStructure } = require('./modules/fileWatcher');
 const { setupProcessManager, emitTaskOutput } = require('./modules/processManager');
@@ -46,7 +46,7 @@ app.get('/', (req, res) => {
 });
 
 // 初始化API客户端
-const apiClients = setupApiClients();
+const llmApiClients = setupLLMApiClients();
 
 // 处理监控目录的路径
 const watchDirs = config.watchDirs.map(dir => ({
@@ -100,7 +100,7 @@ setupExplorerRoute(app, watchDirs, config);
 setupPanelRoute(app, watchDirs, config);
 
 // 设置其他路由
-setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients, processManager);
+setupRoutes(app, io, watchDirs, config, chatSessionManager, llmApiClients, processManager);
 
 // WebSocket连接处理
 io.on('connection', (socket) => {

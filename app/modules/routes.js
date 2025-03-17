@@ -10,10 +10,10 @@ const { exec } = require('child_process');
  * @param {Array} watchDirs - 监控目录配置
  * @param {Object} config - 应用配置
  * @param {Object} chatSessionManager - 聊天会话管理器
- * @param {Object} apiClients - API客户端
+ * @param {Object} llmApiClients - API客户端
  * @param {Object} processManager - 进程管理器
  */
-function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients, processManager) {
+function setupRoutes(app, io, watchDirs, config, chatSessionManager, llmApiClients, processManager) {
     // 获取相对路径的函数
     function getRelativePath(fullPath) {
         for (const dir of watchDirs) {
@@ -312,12 +312,12 @@ function setupRoutes(app, io, watchDirs, config, chatSessionManager, apiClients,
             // 如果没有提供消息历史，使用会话中的历史
             const chatMessages = messages.length > 1 ? messages : [...session.messages, ...messages];
             
-            const client = apiClients.getNextApiClient(provider);
+            const client = llmApiClients.getNextApiClient(provider);
             if (!client) {
                 return res.status(503).json({ error: 'API服务不可用' });
             }
             
-            const modelName = apiClients.getModelName(provider);
+            const modelName = llmApiClients.getModelName(provider);
             
             if (stream) {
                 // 流式响应

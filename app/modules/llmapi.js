@@ -81,7 +81,7 @@ function parseApiKeys(envValue) {
  * 初始化API客户端
  * @returns {Object} API客户端对象
  */
-function setupApiClients() {
+function setupLLMApiClients() {
     // 初始化API客户端
     const OPENAI_CLIENTS = {
         'deepseek': [],
@@ -225,6 +225,6 @@ function setupApiClients() {
 }
 
 module.exports = {
-    setupApiClients,
+    setupLLMApiClients,
     parseApiKeys
 }; 
