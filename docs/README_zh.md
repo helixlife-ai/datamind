@@ -147,9 +147,9 @@ node server.js
 2. 直接在环境中设置：
    ```bash
    DEFAULT_API_KEY=["your-api-key-here"]
-   DEFAULT_BASE_URL=https://api.siliconflow.cn/v1
-   DEFAULT_GENERATOR_MODEL="Pro/deepseek-ai/DeepSeek-V3"
-   DEFAULT_REASONING_MODEL="Pro/deepseek-ai/DeepSeek-R1"
+   DEFAULT_BASE_URL=https://api.anthropic.com/v1
+   DEFAULT_GENERATOR_MODEL="claude-3-7-sonnet-20250219"
+   DEFAULT_REASONING_MODEL="claude-3-7-sonnet-20250219"
    ```
 
 ## 🤝 参与贡献
