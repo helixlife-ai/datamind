@@ -88,7 +88,7 @@ graph TD
 - **聚合分析**: 支持多维度数据分析和可视化
 - **智能缓存**: 文件处理缓存机制，提升检索性能
 
-### 🎨 新增特性 (v0.2.2)
+### 🎨 新增特性 (v0.3.0)
 - **智能搜索流程**: 
   * 增强的搜索规划和执行流程
   * 改进的查询意图解析和理解
@@ -120,15 +120,15 @@ graph TD
 ### 安装
 
 ```bash
-# 克隆项目
+# Clone the project
 git clone https://github.com/helixlife-ai/datamind.git
 cd datamind
 
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 playwright install chromium
 
-# 生成测试数据
+# Generate test data
 python scripts/generate_test_data.py
 ```
 
@@ -146,8 +146,12 @@ python scripts/generate_test_data.py
 运行示例脚本是最简单的开始方式：
 
 ```bash
-# 运行示例脚本
-python examples/example_usage.py
+# Run the app
+cd app
+pnpm install
+node server.js
+
+open http://localhost:3000
 ```
 
 该脚本演示了：
@@ -165,31 +169,13 @@ python examples/example_usage.py
 
 ```
 work_dir/
-├── test_data/              # 测试数据目录
+├── test_data/              # Test data directory
 │   ├── ai_guide.md
 │   ├── ai_models.json
 │   └── ...
-├── test_queries.txt        # 示例搜索查询
-├── context.txt            # 搜索上下文信息
-└── output/
-    └── intelligent_search/
-        └── delivery_plans/
-            └── plan_[timestamp]/
-                ├── plan.json         # 交付计划配置
-                ├── search_results/   # 原始搜索结果
-                │   ├── results.json
-                │   ├── results.html
-                │   ├── results.csv
-                │   └── results.xlsx
-                └── deliverables/     # 生成的交付物
-                    ├── report.md     # 主报告
-                    ├── insights.md   # 关键洞察
-                    ├── timeline.md   # 时间线分析
-                    └── references.md # 源引用
-
-data/                      # 数据存储
-├── unified_storage.duckdb # 向量数据库
-└── file_cache.pkl        # 文件处理缓存
+data_alchemy/              # Data storage
+├── unified_storage.duckdb # Vector database
+└── file_cache.pkl        # File processing cache
 ```
 
 ### 生成的交付物

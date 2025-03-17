@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.md) | [中文](docs/CHANGELOG_zh.md)
 
+## [0.3.0] - 2025-03-17
+
+### Added
+- Added DeliveryPlanner for automated content delivery planning
+- Added DeliveryGenerator for intelligent content generation  
+- Added SearchPlanner for intelligent search strategy generation
+
+
 ## [0.2.2] - 2025-02-10
 
 ### Added

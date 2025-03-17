@@ -116,7 +116,7 @@ graph TD
 - **Aggregation Analysis**: Supports multi-dimensional data analysis and visualization
 - **Smart Caching**: File processing cache mechanism for improved retrieval performance
 
-### 🎨 New Features (v0.2.2)
+### 🎨 New Features (v0.3.0)
 - **Intelligent Search Pipeline**: 
   * Enhanced search planning and execution workflow
   * Improved query intent parsing and understanding
@@ -174,8 +174,12 @@ Generated test data includes AI-related documents in various formats:
 The easiest way to get started is to run the example script:
 
 ```bash
-# Run the example script
-python examples/example_usage.py
+# Run the app
+cd app
+pnpm install
+node server.js
+
+open http://localhost:3000
 ```
 
 This script demonstrates:
@@ -197,25 +201,7 @@ work_dir/
 │   ├── ai_guide.md
 │   ├── ai_models.json
 │   └── ...
-├── test_queries.txt        # Example search queries
-├── context.txt            # Search context information
-└── output/
-    └── intelligent_search/
-        └── delivery_plans/
-            └── plan_[timestamp]/
-                ├── plan.json         # Delivery plan configuration
-                ├── search_results/   # Raw search results
-                │   ├── results.json
-                │   ├── results.html
-                │   ├── results.csv
-                │   └── results.xlsx
-                └── deliverables/     # Generated deliverables
-                    ├── report.md     # Main report
-                    ├── insights.md   # Key insights
-                    ├── timeline.md   # Timeline analysis
-                    └── references.md # Source references
-
-data/                      # Data storage
+data_alchemy/              # Data storage
 ├── unified_storage.duckdb # Vector database
 └── file_cache.pkl        # File processing cache
 ```

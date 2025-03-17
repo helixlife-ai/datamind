@@ -2,6 +2,14 @@
 
 [English](../CHANGELOG.md) | [中文](CHANGELOG_zh.md)
 
+## [0.3.0] - 2025-03-17
+
+### 新增
+- 实现了智能搜索流程，增强了规划和执行能力
+- 新增 DeliveryPlanner 用于自动化内容交付规划
+- 新增 DeliveryGenerator 用于智能内容生成
+
+
 ## [0.2.2] - 2025-02-10
 
 ### 新增
