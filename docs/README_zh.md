@@ -6,13 +6,13 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
-[![Version](https://img.shields.io/badge/version-0.2.2-green.svg)](https://github.com/helixlife-ai/datamind/releases)
+[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](https://github.com/helixlife-ai/datamind/releases)
 
 [English](../README.md) | [中文](README_zh.md)
 
 ## 📖 简介
 
-DataMind 是您的智能文档助手，它彻底改变了您与知识库交互的方式。基于 DeepSeek R1 最先进的推理大模型，它能够在深层语义层面理解您的文档，并以卓越的准确性生成洞察。
+DataMind 是您的智能文档助手，它彻底改变了您与知识库交互的方式。基于最先进的大语言模型，它能够在深层语义层面理解您的文档，并以卓越的准确性生成洞察。
 
 **Data in, Surprise out!**
 
@@ -28,7 +28,7 @@ DataMind 是您的智能文档助手，它彻底改变了您与知识库交互�
 - 研究竞争对手？输入竞品网站、产品文档和社交媒体数据 —— 得到详实的竞争分析
 - 规划项目？放入历史项目文件、团队讨论和需求文档 —— 获取有条理的项目蓝图
 
-放入您的文档，说出您的需求，让 DataMind 的 AI 炼金术为您变出完美的交付物。
+放入您的文档，说出您的需求，让 DataMind 的 AI 炼金术为您变出完美的炼制品。
 
 把它想象成您的专属研究助手：
 - 运用先进的 AI 推理深入理解您的文档集合
@@ -36,6 +36,10 @@ DataMind 是您的智能文档助手，它彻底改变了您与知识库交互�
 - 自动生成专业的报告和洞察
 - 以您偏好的格式交付结果
 - 通过 AI 推理保持逻辑连贯性和事实准确性
+
+## 功能演示
+
+[功能演示视频](https://www.bilibili.com/video/123456/)
 
 ## 系统架构
 
@@ -48,8 +52,8 @@ graph TD
     C --> D[搜索规划]
     D --> E[搜索执行]
     E --> F[结果分析]
-    F --> G[交付规划]
-    G --> H[交付物生成]
+    F --> G[生成规划]
+    G --> H[炼制品生成]
     
     subgraph 数据处理
         B1[文件扫描] --> B2[文件解析]
@@ -64,10 +68,8 @@ graph TD
         style E fill:#bbf,stroke:#333
     end
     
-    subgraph 交付物
+    subgraph 制品
         H1[Markdown报告] --> H2[HTML页面]
-        H2 --> H3[CSV/Excel数据]
-        H3 --> H4[分析洞察]
         style H fill:#9f9,stroke:#333
     end
 ```
@@ -88,32 +90,17 @@ graph TD
 - **聚合分析**: 支持多维度数据分析和可视化
 - **智能缓存**: 文件处理缓存机制，提升检索性能
 
+### 📝 神奇制品生成
+- **智能排版**: 自动优化文档结构，提升可读性
+- **源引用管理**: 自动提取和引用原始文档
+- **HTML炼制品**: 以 HTML 格式输出炼制品
+
+### 🔄 自动迭代
+- **自动迭代**: 根据用户反馈自动迭代新的炼制品
+- **人工介入**: 用户可以在炼制过程中介入，提供反馈和增加新文档，调整炼制方向
+
 ### 🎨 新增特性 (v0.3.0)
-- **智能搜索流程**: 
-  * 增强的搜索规划和执行流程
-  * 改进的查询意图解析和理解
-  * 智能交付计划生成
-  * 可定制的结果格式化
-- **智能交付系统**:
-  * 基于 DeliveryPlanner 的高级交付规划
-  * 自动化内容组织和结构化
-  * 智能模板选择和适配
-  * 上下文感知的内容生成
-- **文档分析**: 
-  * 高级文档结构分析
-  * 多维度数据洞察
-  * 自动化报告生成
-  * 基于时间线的内容组织
-- **结果处理**:
-  * 灵活的结果保存机制
-  * 多格式输出支持（Markdown、CSV、JSON）
-  * 增强的结果格式化和展示
-  * 可定制的交付模板
-- **系统优化**:
-  * 改进的错误处理和恢复
-  * 增强的日志和监控
-  * 更好的资源管理
-  * 优化的缓存利用
+- 新增 app 入口，实现基于 web 的交互
 
 ## 🚀 快速开始
 
@@ -132,15 +119,6 @@ playwright install chromium
 python scripts/generate_test_data.py
 ```
 
-### 测试数据说明
-
-生成的测试数据包含多种格式的 AI 相关文档：
-- `ai_guide.md`: AI 基础介绍
-- `ai_models.json`: 主流 AI 模型信息
-- `ml_algorithms.csv`: 机器学习算法对比
-- `ai_applications.xml`: AI 应用领域数据
-- `ai_companies.xlsx`: AI 公司信息
-
 ### 使用示例
 
 运行示例脚本是最简单的开始方式：
@@ -150,75 +128,9 @@ python scripts/generate_test_data.py
 cd app
 pnpm install
 node server.js
-
-open http://localhost:3000
 ```
-
-该脚本演示了：
-- 数据处理与增量更新
-- 基础搜索功能和各种查询类型
-- 智能搜索与查询意图解析
-- 交付计划生成和执行
-- 多格式结果导出
-
-更多详细示例请查看 `examples` 目录。
-
-### 工作目录结构
-
-运行示例脚本后，将创建以下目录结构：
-
-```
-work_dir/
-├── test_data/              # Test data directory
-│   ├── ai_guide.md
-│   ├── ai_models.json
-│   └── ...
-data_alchemy/              # Data storage
-├── unified_storage.duckdb # Vector database
-└── file_cache.pkl        # File processing cache
-```
-
-### 生成的交付物
-
-系统生成以下几类交付物：
-
-1. 搜索结果：
-   - JSON 格式：完整的结构化数据
-   - HTML 格式：交互式网页视图
-   - CSV/Excel：用于分析的表格数据
-   - 时间线视图：基于时间的可视化
-
-2. 分析报告：
-   - 主报告：综合分析
-   - 关键洞察：重要发现
-   - 时间线分析：时间模式
-   - 源引用：原始文档链接
-
-3. 元数据：
-   - 交付计划配置
-   - 搜索统计
-   - 处理指标
-   - 缓存信息
-
-### 功能示例
-
-1. 基础搜索：
-   - 内容搜索：「机器学习」、「人工智能」
-   - 文件类型搜索：「file:json」、「file:markdown」
-   - 字段搜索：「company:OpenAI」、「author:Zhang」
-   - 日期过滤：「modified:>2024-01-01」
-
-2. 智能搜索：
-   - 自然语言查询
-   - 自动查询意图解析
-   - 智能搜索计划生成
-   - 上下文感知的结果组织
-
-3. 结果交付：
-   - 多格式输出（JSON、HTML、CSV、Excel）
-   - 可定制的报告模板
-   - 自动化洞察生成
-   - 源引用管理
+浏览器打开：http://localhost:3000
+将要处理的本地文档放在work_dir目录下，点击开始运行按钮。
 
 ## ⚙️ 配置
 
@@ -234,93 +146,11 @@ data_alchemy/              # Data storage
 
 2. 直接在环境中设置：
    ```bash
-   export DATAMIND_LLM_API_KEY=your-api-key-here
-   export DATAMIND_LLM_API_BASE=https://api.deepseek.com
+   DEFAULT_API_KEY=["your-api-key-here"]
+   DEFAULT_BASE_URL=https://api.siliconflow.cn/v1
+   DEFAULT_GENERATOR_MODEL="Pro/deepseek-ai/DeepSeek-V3"
+   DEFAULT_REASONING_MODEL="Pro/deepseek-ai/DeepSeek-R1"
    ```
-
-可用的环境变量：
-
-1. LLM API 配置：
-   ```bash
-   # Deepseek API（必需）
-   DATAMIND_LLM_API_KEY=your-deepseek-api-key-here
-   DATAMIND_LLM_API_BASE=https://api.deepseek.com
-
-   # SiliconFlow API（可选）
-   DATAMIND_SILICONFLOW_API_KEY=your-siliconflow-api-key-here
-   DATAMIND_SILICONFLOW_API_BASE=https://api.siliconflow.cn/v1
-   ```
-
-2. 存储配置：
-   ```bash
-   # 数据库和缓存路径
-   DATAMIND_DB_PATH=data/unified_storage.duckdb
-   DATAMIND_CACHE_PATH=data/file_cache.pkl
-   ```
-
-3. 目录配置：
-   ```bash
-   # 工作目录
-   DATAMIND_WORK_DIR=work_dir
-   DATAMIND_OUTPUT_DIR=work_dir/output
-   ```
-
-### 系统设置
-
-系统设置在 `datamind/config/settings.py` 中管理。主要配置包括：
-
-1. 模型设置：
-   ```python
-   # 嵌入模型
-   DEFAULT_EMBEDDING_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
-   
-   # LLM 模型
-   DEFAULT_LLM_MODEL = "Pro/deepseek-ai/DeepSeek-V3"    
-   DEFAULT_CHAT_MODEL = "Pro/deepseek-ai/DeepSeek-V3" 
-   DEFAULT_REASONING_MODEL = "Pro/deepseek-ai/DeepSeek-R1" 
-   ```
-
-2. 搜索参数：
-   ```python
-   # 搜索配置
-   SEARCH_TOP_K = 5
-   DEFAULT_SIMILARITY_THRESHOLD = 0.6
-   DEFAULT_TARGET_FIELD = "abstract_embedding"
-   ```
-
-3. 文件支持：
-   ```python
-   # 支持的文件类型
-   SUPPORTED_FILE_TYPES = [
-       "txt", "pdf", "doc", "docx", 
-       "md", "json", "csv", "xlsx"
-   ]
-   ```
-
-4. 查询模板：
-   - 不同搜索类型的结构化查询模板
-   - 意图解析的提示词模板
-   - 参考文本提取模板
-
-你可以通过修改设置文件或通过环境变量覆盖这些设置。
-
-## 📊 性能指标
-
-- 文档处理速度：~150 文档/秒（标准配置）
-- 向量检索延迟：<30ms（百万级数据规模）
-- 支持文档规模：百万级（16GB 内存配置）
-- 向量维度：384（使用 MiniLM 模型）
-- 缓存命中率：>90%（正常使用场景）
-
-## 🗺️ 开发路线
-
-- [x] 增量更新支持
-- [x] 文件缓存机制
-- [ ] Web 界面支持
-- [ ] REST API 接口
-- [ ] 分布式处理支持
-- [ ] 实时处理流水线
-- [ ] 更多文件格式支持
 
 ## 🤝 参与贡献
 
@@ -332,10 +162,10 @@ data_alchemy/              # Data storage
 
 ## 👥 团队
 
-- 作者：[jszhang]
+- 作者：静松
+- 微信：imjszhang
 - 邮箱：zhangjingsong@helixlife.cn
-- 团队：[解螺旋 AI 研究院](https://github.com/helixlife-ai)
-- 团队主页：https://github.com/helixlife-ai
+- 团队：[Helixlife AI Lab](https://github.com/helixlife-ai)
 
 ## 🙏 致谢
 

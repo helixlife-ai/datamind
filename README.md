@@ -6,13 +6,13 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
-[![Version](https://img.shields.io/badge/version-0.2.2-green.svg)](https://github.com/helixlife-ai/datamind/releases)
+[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](https://github.com/helixlife-ai/datamind/releases)
 
 [English](README.md) | [中文](docs/README_zh.md)
 
 ## 📖 Introduction
 
-DataMind is your intelligent document assistant that transforms how you interact with your knowledge base. Powered by DeepSeek R1, a state-of-the-art reasoning model, it understands your documents at a deep semantic level and generates insights with remarkable accuracy.
+DataMind is your intelligent document assistant that transforms how you interact with your knowledge base. Powered by reasoning model, it understands your documents at a deep semantic level and generates insights with remarkable accuracy.
 
 **Data in, Surprise out!**
 
