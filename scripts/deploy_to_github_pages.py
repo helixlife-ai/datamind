@@ -15,6 +15,11 @@ from dotenv import load_dotenv
 import time
 import requests
 import json
+import io
+
+# 添加到脚本开始处，在import部分之前
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 def parse_arguments():
     """解析命令行参数"""
