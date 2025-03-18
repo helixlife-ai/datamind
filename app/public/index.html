@@ -565,6 +565,242 @@
                 padding: 3rem 0;
             }
         }
+        
+        /* 修改Features部分的背景样式 */
+        #features {
+            background-image: linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.7)), url('https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #features .section-title,
+        #features .section-subtitle {
+            color: white;
+            position: relative;
+            z-index: 5;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        #features .section-subtitle {
+            color: rgba(255, 255, 255, 0.85);
+        }
+        
+        #features .feature-card {
+            background-color: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(79, 156, 249, 0.3);
+            color: white;
+            position: relative;
+            z-index: 5;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2), 0 0 15px rgba(79, 156, 249, 0.2);
+        }
+        
+        #features .feature-text {
+            color: rgba(255, 255, 255, 0.85);
+        }
+        
+        #features .feature-title {
+            color: white;
+        }
+        
+        #features .feature-icon {
+            color: #4f9cf9;
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            display: inline-block;
+            position: relative;
+        }
+        
+        #features .feature-icon::after {
+            content: '';
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(79, 156, 249, 0.2) 0%, rgba(79, 156, 249, 0) 70%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: -1;
+        }
+        
+        /* 背景魔法效果 - 不会遮挡内容 */
+        .magic-circle {
+            position: fixed;
+            width: 300px;
+            height: 300px;
+            border: 1px solid rgba(79, 156, 249, 0.2);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        
+        .magic-circle::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 1px dashed rgba(79, 156, 249, 0.3);
+            border-radius: 50%;
+            top: 0;
+            left: 0;
+            animation: rotate 60s linear infinite;
+        }
+        
+        .magic-circle::after {
+            content: '';
+            position: absolute;
+            width: 80%;
+            height: 80%;
+            border: 1px solid rgba(79, 156, 249, 0.2);
+            border-radius: 50%;
+            top: 10%;
+            left: 10%;
+            animation: rotate 40s linear infinite reverse;
+        }
+        
+        @keyframes rotate {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        
+        /* 取消原先可能会遮挡内容的浮动元素 */
+        .floating-flask {
+            display: none;
+        }
+        
+        /* 添加About部分的背景和样式 */
+        #about {
+            background-image: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.85)), url('https://images.unsplash.com/photo-1633074409888-dca31c1a8def?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #about .section-title,
+        #about .section-subtitle {
+            color: white;
+            position: relative;
+            z-index: 5;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        #about .section-subtitle {
+            color: rgba(255, 255, 255, 0.85);
+        }
+        
+        #about h4 {
+            color: white;
+            position: relative;
+            z-index: 5;
+        }
+        
+        #about p {
+            color: rgba(255, 255, 255, 0.85);
+            position: relative;
+            z-index: 5;
+        }
+        
+        #about img {
+            border: 4px solid rgba(79, 156, 249, 0.3);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3), 0 0 15px rgba(79, 156, 249, 0.2);
+            position: relative;
+            z-index: 5;
+            transition: all 0.5s ease;
+        }
+        
+        #about img:hover {
+            transform: scale(1.02);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 25px rgba(79, 156, 249, 0.3);
+        }
+        
+        /* 添加炼金术元素装饰 */
+        .alchemy-decoration {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            opacity: 0.15;
+            z-index: 1;
+        }
+        
+        .alchemy-decoration.symbol-1 {
+            top: 10%;
+            right: 5%;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234f9cf9"><circle cx="12" cy="12" r="10" stroke="%234f9cf9" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="3" fill="%234f9cf9"/></svg>') no-repeat center center;
+            animation: float-slow 20s infinite ease-in-out;
+        }
+        
+        .alchemy-decoration.symbol-2 {
+            bottom: 15%;
+            left: 10%;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234f9cf9"><polygon points="12,2 18,12 12,22 6,12" stroke="%234f9cf9" stroke-width="2" fill="none"/></svg>') no-repeat center center;
+            animation: float-slow 15s infinite ease-in-out reverse;
+        }
+        
+        .alchemy-decoration.symbol-3 {
+            top: 50%;
+            right: 15%;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234f9cf9"><path d="M12,2 L22,12 L12,22 L2,12 Z" stroke="%234f9cf9" stroke-width="2" fill="none"/><line x1="12" y1="2" x2="12" y2="22" stroke="%234f9cf9" stroke-width="2"/><line x1="2" y1="12" x2="22" y2="12" stroke="%234f9cf9" stroke-width="2"/></svg>') no-repeat center center;
+            animation: rotate-slow 25s infinite linear;
+        }
+        
+        @keyframes float-slow {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg);
+            }
+            50% {
+                transform: translateY(-20px) rotate(5deg);
+            }
+        }
+        
+        @keyframes rotate-slow {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        
+        /* 添加光线效果 */
+        .light-beam {
+            position: absolute;
+            background: linear-gradient(to right, transparent, rgba(79, 156, 249, 0.1), transparent);
+            height: 100%;
+            width: 150px;
+            transform: skewX(-30deg);
+            animation: light-sweep 8s infinite ease-in-out;
+            z-index: 1;
+            top: 0;
+            left: -150px;
+        }
+        
+        @keyframes light-sweep {
+            0%, 100% {
+                left: -150px;
+                opacity: 0;
+            }
+            50% {
+                left: 100%;
+                opacity: 0.6;
+            }
+        }
     </style>
 </head>
 <body>
@@ -605,7 +841,7 @@
         <section class="hero">
             <div class="particles" id="particles"></div>
             <div class="hero-content">
-                <h2 class="hero-title">欢迎成为一名数据炼金术师！</h2>
+                <h2 class="hero-title">欢迎成为数据炼金术师！</h2>
                 <p class="hero-subtitle">使用DataMind，你将拥有将普通数据转化为智慧金矿的奇妙魔法</p>
                 <div class="hero-buttons">
                     <a href="/gallery" class="btn btn-hero btn-hero-primary">立刻开启炼金之旅</a>
@@ -615,15 +851,20 @@
 
         <!-- 特性部分 -->
         <section id="features" class="section">
+            <!-- 背景魔法效果 -->
+            <div class="magic-circle" style="width: 400px; height: 400px;"></div>
+            <div class="magic-circle" style="width: 600px; height: 600px;"></div>
+            <div class="magic-circle" style="width: 800px; height: 800px;"></div>
+            
             <div class="content-container">
-                <h3 class="section-title">魔法炼金锅</h3>
+                <h3 class="section-title">魔法炼丹炉</h3>
                 <p class="section-subtitle">我们的炼金工艺将普通数据转化为闪闪发光的洞察力宝石，助您在商业中脱颖而出</p>
                 
                 <div class="row g-4">
                     <div class="col-md-4">
                         <div class="feature-card">
                             <div class="feature-icon">
-                                <i class="bi bi-graph-up"></i>
+                                <i class="bi bi-fire"></i>
                             </div>
                             <h4 class="feature-title">数据转化术</h4>
                             <p class="feature-text">如同炼金师提炼贵金属，我们从原始数据中萃取核心价值，转化为清晰可见的商业智慧。</p>
@@ -633,7 +874,7 @@
                     <div class="col-md-4">
                         <div class="feature-card">
                             <div class="feature-icon">
-                                <i class="bi bi-cpu"></i>
+                                <i class="bi bi-stars"></i>
                             </div>
                             <h4 class="feature-title">预见魔法</h4>
                             <p class="feature-text">我们的算法如同水晶球，能够预测未来趋势，让您的决策永远领先一步。</p>
@@ -643,7 +884,7 @@
                     <div class="col-md-4">
                         <div class="feature-card">
                             <div class="feature-icon">
-                                <i class="bi bi-lightning"></i>
+                                <i class="bi bi-magic"></i>
                             </div>
                             <h4 class="feature-title">速效丹药</h4>
                             <p class="feature-text">即时处理数据流，瞬间提供洞察，如同炼金丹药般迅速见效，解决您的业务痛点。</p>
@@ -654,14 +895,20 @@
         </section>
 
         <!-- 关于部分 -->
-        <section id="about" class="section bg-light">
+        <section id="about" class="section">
+            <!-- 装饰元素 -->
+            <div class="alchemy-decoration symbol-1"></div>
+            <div class="alchemy-decoration symbol-2"></div>
+            <div class="alchemy-decoration symbol-3"></div>
+            <div class="light-beam"></div>
+            
             <div class="content-container">
                 <h3 class="section-title">炼金师团队</h3>
                 <p class="section-subtitle">我们是一群痴迷于数据炼金术的现代魔法师，用算法和智慧创造商业奇迹</p>
                 
                 <div class="row align-items-center">
                     <div class="col-lg-6 mb-4 mb-lg-0">
-                        <img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="团队合作" class="img-fluid rounded-3 shadow">
+                        <img src="https://images.unsplash.com/photo-1568992688065-536aad8a12f6?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="炼金师团队" class="img-fluid rounded-3">
                     </div>
                     <div class="col-lg-6">
                         <h4 class="mb-4 fw-bold">我们的炼金信条</h4>
