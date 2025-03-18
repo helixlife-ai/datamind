@@ -178,6 +178,47 @@ class ChatSessionManager {
             }
         }
     }
+
+    /**
+     * 删除聊天记录
+     * @param {string} sessionId - 会话ID
+     */
+    async deleteChatHistory(sessionId) {
+        if (!sessionId) return false;
+        
+        // 验证删除路径是否在指定的聊天记录目录内
+        const jsonFilePath = path.join(this.fullChatRecordDir, `${sessionId}.json`);
+        const txtFilePath = path.join(this.fullChatRecordDir, `${sessionId}.txt`);
+        
+        // 确保文件路径在聊天记录目录内，防止路径遍历攻击
+        if (!jsonFilePath.startsWith(this.fullChatRecordDir) || !txtFilePath.startsWith(this.fullChatRecordDir)) {
+            console.error(`安全警告: 尝试在聊天记录目录外删除文件: ${jsonFilePath}`);
+            return false;
+        }
+        
+        try {
+            // 删除JSON文件
+            if (fs.existsSync(jsonFilePath)) {
+                await fsPromises.unlink(jsonFilePath);
+            }
+            
+            // 删除TXT文件
+            if (fs.existsSync(txtFilePath)) {
+                await fsPromises.unlink(txtFilePath);
+            }
+            
+            // 从会话缓存中移除
+            if (this.sessions.has(sessionId)) {
+                this.sessions.delete(sessionId);
+            }
+            
+            console.log(`已删除聊天记录: ${sessionId}`);
+            return true;
+        } catch (err) {
+            console.error(`删除聊天历史失败 ${sessionId}:`, err);
+            return false;
+        }
+    }
 }
 
 /**
@@ -302,6 +343,43 @@ function setupChatRoutes(app, chatManager) {
             res.status(500).json({
                 success: false,
                 error: '获取聊天记录列表时出错'
+            });
+        }
+    });
+
+    // 添加API端点，用于删除聊天记录
+    app.delete('/api/chat-records/:sessionId', async (req, res) => {
+        try {
+            const { sessionId } = req.params;
+            
+            // 安全检查：验证sessionId格式，防止路径遍历攻击
+            if (!sessionId.match(/^[a-f0-9]{32}$/)) {
+                return res.status(400).json({
+                    success: false,
+                    error: '无效的会话ID格式'
+                });
+            }
+            
+            // 删除聊天记录
+            const success = await chatManager.deleteChatHistory(sessionId);
+            
+            if (success) {
+                res.json({
+                    success: true,
+                    message: '聊天记录已删除'
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    error: '删除聊天记录失败'
+                });
+            }
+            
+        } catch (err) {
+            console.error('删除聊天记录时出错:', err);
+            res.status(500).json({
+                success: false,
+                error: '删除聊天记录时出错'
             });
         }
     });

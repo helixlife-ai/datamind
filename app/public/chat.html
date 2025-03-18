@@ -83,6 +83,19 @@
             </nav>
         </header>
         <div class="flex flex-1 overflow-hidden">
+            <!-- 新增的对话记录侧边栏 -->
+            <div class="w-64 flex flex-col border-r border-gray-200 bg-white shadow-sm">
+                <div class="flex justify-between items-center px-4 py-3 bg-blue-50 border-b border-gray-200 font-semibold text-primary">
+                    <span>对话记录</span>
+                    <button class="px-2.5 py-1.5 bg-primary text-white rounded-md hover:bg-primary-hover transition-colors text-sm" id="newChatBtn">
+                        <i class="bi bi-plus-lg"></i> 新建对话
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-2 bg-gray-50" id="conversationList">
+                    <div class="text-gray-500 text-center mt-8 italic text-sm">暂无对话记录</div>
+                </div>
+            </div>
+            
             <div class="flex flex-col flex-2 border-r border-gray-200 bg-white shadow-sm">
                 <div class="flex justify-between items-center px-4 py-3 bg-blue-50 border-b border-gray-200 font-semibold text-primary">
                     <span>推理对话</span>
@@ -172,6 +185,8 @@
             const confirmMessage = document.getElementById('confirmMessage');
             const confirmAction = document.getElementById('confirmAction');
             const cancelAction = document.getElementById('cancelAction');
+            const conversationList = document.getElementById('conversationList');
+            const newChatBtn = document.getElementById('newChatBtn');
 
             // 状态变量
             let isWaitingForResponse = false;
@@ -278,6 +293,162 @@
                     timestamp: new Date()
                 });
             }
+
+            // 新增函数：加载对话记录列表
+            async function loadConversationList() {
+                try {
+                    const response = await fetch('/api/chat-records');
+                    const data = await response.json();
+                    
+                    if (data.success && data.records.length > 0) {
+                        // 清空列表
+                        conversationList.innerHTML = '';
+                        
+                        // 添加每个对话记录
+                        data.records.forEach(record => {
+                            const conversationItem = document.createElement('div');
+                            conversationItem.className = 'p-2 border-b border-gray-100 hover:bg-blue-50 cursor-pointer rounded mb-1 transition-colors flex items-start';
+                            
+                            // 如果是当前会话，添加高亮样式
+                            if (record.sessionId === currentSessionId) {
+                                conversationItem.classList.add('bg-blue-100', 'border-l-4', 'border-l-primary');
+                            }
+                            
+                            const formattedDate = new Date(record.lastModified).toLocaleDateString('zh-CN');
+                            const formattedTime = new Date(record.lastModified).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                            
+                            conversationItem.innerHTML = `
+                                <div class="flex-1 overflow-hidden">
+                                    <div class="text-sm font-medium truncate">${record.preview}</div>
+                                    <div class="text-xs text-gray-500 mt-1 flex items-center">
+                                        <i class="bi bi-chat-dots mr-1"></i> ${record.messageCount}条消息
+                                        <span class="mx-1">•</span>
+                                        <i class="bi bi-clock mr-1"></i> ${formattedDate} ${formattedTime}
+                                    </div>
+                                </div>
+                                <button class="text-gray-400 hover:text-red-500 p-1" data-session-id="${record.sessionId}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            `;
+                            
+                            // 点击对话记录加载对话
+                            conversationItem.addEventListener('click', (e) => {
+                                // 如果点击的是删除按钮，不加载对话
+                                if (e.target.closest('button')) return;
+                                
+                                loadConversation(record.sessionId);
+                            });
+                            
+                            // 删除按钮事件
+                            const deleteBtn = conversationItem.querySelector('button');
+                            deleteBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                showModal(`确定要删除此对话记录吗？此操作不可恢复。`, () => {
+                                    deleteConversation(record.sessionId);
+                                    confirmModal.classList.add('hidden');
+                                });
+                            });
+                            
+                            conversationList.appendChild(conversationItem);
+                        });
+                    } else {
+                        conversationList.innerHTML = '<div class="text-gray-500 text-center mt-8 italic text-sm">暂无对话记录</div>';
+                    }
+                } catch (err) {
+                    console.error('加载对话记录列表失败:', err);
+                    conversationList.innerHTML = '<div class="text-red-500 text-center mt-8">加载对话记录列表失败</div>';
+                }
+            }
+            
+            // 新增函数：加载特定对话
+            async function loadConversation(sessionId) {
+                try {
+                    const response = await fetch(`/api/chat-records/${sessionId}/json`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error ${response.status}`);
+                    }
+                    
+                    const messages = await response.json();
+                    
+                    // 更新当前会话ID
+                    currentSessionId = sessionId;
+                    
+                    // 更新消息历史
+                    messageHistory = messages;
+                    
+                    // 清空聊天区域
+                    chatMessages.innerHTML = '';
+                    
+                    // 添加所有消息到界面
+                    messages.forEach(msg => {
+                        addMessage(msg.content, msg.role === 'user', new Date(msg.timestamp || Date.now()));
+                    });
+                    
+                    // 高亮当前选中的对话
+                    loadConversationList();
+                    
+                    // 记录加载对话的上下文
+                    addContextItem('加载对话', { sessionId, messageCount: messages.length });
+                    
+                } catch (err) {
+                    console.error('加载对话失败:', err);
+                    addContextItem('错误', `加载对话 ${sessionId} 失败: ${err.message}`);
+                }
+            }
+            
+            // 新增函数：删除对话
+            async function deleteConversation(sessionId) {
+                try {
+                    const response = await fetch(`/api/chat-records/${sessionId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // 如果删除的是当前对话，重置状态
+                        if (sessionId === currentSessionId) {
+                            currentSessionId = null;
+                            messageHistory = [];
+                            chatMessages.innerHTML = '';
+                            addMessage('👋 你好！我是推理模型助手。我可以帮助你进行复杂的推理和分析。请选择一个模型并开始对话吧！', false);
+                        }
+                        
+                        // 重新加载对话列表
+                        loadConversationList();
+                        
+                        // 记录删除操作
+                        addContextItem('删除对话', { sessionId });
+                    } else {
+                        throw new Error(data.error || '删除失败');
+                    }
+                } catch (err) {
+                    console.error('删除对话失败:', err);
+                    addContextItem('错误', `删除对话 ${sessionId} 失败: ${err.message}`);
+                }
+            }
+            
+            // 新增函数：创建新对话
+            function createNewChat() {
+                // 重置状态
+                currentSessionId = null;
+                messageHistory = [];
+                
+                // 清空聊天区域
+                chatMessages.innerHTML = '';
+                
+                // 添加欢迎消息
+                addMessage('👋 你好！我是推理模型助手。我可以帮助你进行复杂的推理和分析。请选择一个模型并开始对话吧！', false);
+                
+                // 记录创建新对话的操作
+                addContextItem('创建新对话', { timestamp: new Date().toISOString() });
+                
+                // 更新对话列表UI
+                loadConversationList();
+            }
+            
+            // 新建对话按钮事件
+            newChatBtn.addEventListener('click', createNewChat);
 
             // 发送消息到服务器
             async function sendMessage() {
@@ -443,6 +614,15 @@
                             addContextItem('错误', data.error);
                         }
                     }
+
+                    // 处理会话ID后更新对话列表
+                    if (data.sessionId && (!currentSessionId || currentSessionId !== data.sessionId)) {
+                        currentSessionId = data.sessionId;
+                        addContextItem('会话ID', currentSessionId);
+                        
+                        // 更新对话列表
+                        loadConversationList();
+                    }
                 } catch (error) {
                     console.error('发送消息失败:', error);
                     addMessage(`发送消息失败: ${error.message}`, false);
@@ -545,9 +725,8 @@
             `;
             document.head.appendChild(style);
 
-            // 初始化欢迎消息
-            addMessage('👋 你好！我是推理模型助手。我可以帮助你进行复杂的推理和分析。请选择一个模型并开始对话吧！', false);
-            addContextItem('初始化', '页面加载完成');
+            // 初始化时加载对话列表
+            loadConversationList();
         });
     </script>
 </body>
