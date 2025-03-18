@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataMind - 部署中心</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@1&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc;
+            min-height: 100vh;
+            color: #1e293b;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        h1 {
+            color: #333;
+            margin: 0;
+            padding: 20px 0;
+            font-weight: 600;
+            background: linear-gradient(135deg, #1e293b, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .card {
+            border: 1px solid rgba(203, 213, 225, 0.7);
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s, transform 0.2s;
+            margin-bottom: 20px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .card:hover {
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
+            transform: translateY(-5px);
+        }
+        
+        .card-img-container {
+            position: relative;
+            width: 100%;
+            padding-top: 66.67%; /* 2:3 宽高比 */
+            overflow: hidden;
+        }
+        
+        .card-img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+        }
+        
+        .card-body {
+            padding: 16px;
+            flex: 1;
+        }
+        
+        .card-title {
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 10px;
+            font-size: 1.25rem;
+        }
+        
+        .card-text {
+            color: #64748b;
+            margin-bottom: 15px;
+            font-size: calc(0.75rem + 0.3vw);
+            line-height: 1.5;
+        }
+        
+        .card-footer {
+            padding: 0 16px 16px;
+        }
+        
+        .card-footer .btn {
+            padding: 8px 16px;
+            font-size: calc(0.75rem + 0.2vw);
+        }
+        
+        .header {
+            display: flex;
+            align-items: center;
+            padding: 8px 4%;
+            background: linear-gradient(to right, #ffffff, #f1f5f9);
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            height: 60px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+            flex-shrink: 0;
+            width: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        
+        .title-container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .main-title {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        
+        .product-name {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 0;
+            background: linear-gradient(135deg, #1e293b, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .product-subtitle {
+            font-family: 'Crimson Text', Georgia, serif;
+            font-size: 14px;
+            font-style: italic;
+            color: #64748b;
+            margin: 0;
+            padding-left: 28px;
+            position: relative;
+        }
+        
+        .product-subtitle::before {
+            content: "⚗️";
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 16px;
+        }
+        
+        .product-tagline {
+            font-size: 13px;
+            font-weight: 600;
+            color: #3b82f6;
+            margin: 0;
+            padding: 4px 12px;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.08);
+            white-space: nowrap;
+            letter-spacing: -0.2px;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+        }
+        
+        .product-tagline::before {
+            content: "✨";
+            margin-right: 8px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+        }
+        
+        .btn-primary:hover {
+            background-color: #2563eb;
+            border-color: #2563eb;
+            box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .social-icon {
+            color: #64748b;
+            font-size: 1.25rem;
+            margin: 0 8px;
+            transition: color 0.2s;
+        }
+        
+        .social-icon:hover {
+            color: #3b82f6;
+        }
+        
+        .nav-link {
+            color: #64748b;
+            font-weight: 500;
+            padding: 8px 16px;
+            transition: color 0.2s;
+        }
+        
+        .nav-link:hover {
+            color: #3b82f6;
+        }
+        
+        .section-title {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: #334155;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            padding-bottom: 0.5rem;
+        }
+        
+        main {
+            padding: 2rem 4%;
+            margin-top: 60px; /* 添加与header高度相同的上边距 */
+        }
+                
+        @media (max-width: 768px) {
+            .header {
+                padding: 16px;
+            }
+            
+            .product-name {
+                font-size: 20px;
+            }
+            
+            .product-tagline {
+                font-size: 12px;
+                margin-left: 10px;
+            }
+            
+            .product-subtitle {
+                font-size: 12px;
+            }
+            
+            .hero-section {
+                padding: 3rem 1.5rem;
+                margin: 0 0.5rem 1.5rem;
+            }
+            
+            .hero-section h2 {
+                font-size: 2rem;
+            }
+            
+            .hero-section p {
+                font-size: 1rem;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .card-title {
+                font-size: 1.1rem;
+            }
+            
+            .card-text {
+                font-size: 0.85rem;
+            }
+            
+            .card-footer .btn {
+                padding: 6px 12px;
+                font-size: 0.85rem;
+            }
+            
+            .hero-section {
+                padding: 2rem 1rem;
+                margin: 0 0.25rem 1rem;
+            }
+            
+            .hero-section h2 {
+                font-size: 1.75rem;
+            }
+            
+            .hero-section p {
+                font-size: 0.9rem;
+                max-width: 100% !important;
+            }
+            
+            .hero-section .btn-outline-primary {
+                padding: 8px 16px;
+                font-size: 0.9rem;
+            }
+        }
+        
+        #mobile-menu {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.5);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        
+        #mobile-menu .nav-link {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(203, 213, 225, 0.3);
+            font-weight: 500;
+        }
+        
+        #mobile-menu .nav-link:last-child {
+            border-bottom: none;
+        }
+        
+        #mobile-menu .nav-link:hover {
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+        
+        .mobile-menu-button {
+            border: none;
+            background: transparent;
+            padding: 8px;
+            color: #64748b;
+            font-size: 1.25rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .mobile-menu-button:hover {
+            color: #3b82f6;
+        }
+        
+        .hero-section {
+            background-image: url('https://images.unsplash.com/photo-1586772002130-b0f3dfe1c9b1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            padding: 4rem 2rem;
+            position: relative;
+            border-radius: 12px;
+            margin: 0 1rem 2rem;
+            color: #fff;
+        }
+        
+        .hero-section::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(59, 130, 246, 0.75));
+            border-radius: 12px;
+            z-index: 0;
+        }
+        
+        .hero-section h2, 
+        .hero-section p, 
+        .hero-section button {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .hero-section h2 {
+            color: #ffffff;
+            font-size: 2.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .hero-section p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.1rem;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+        
+        .hero-section .btn-outline-primary {
+            color: #ffffff;
+            border-color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .hero-section .btn-outline-primary:hover {
+            background-color: #ffffff;
+            color: #3b82f6;
+            border-color: #ffffff;
+        }
+        
+        /* 添加部署页面特有的样式 */
+        .card-selected {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        }
+        
+        .card-selected .card-header {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .deploy-actions {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem 2rem;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(203, 213, 225, 0.5);
+            transition: transform 0.3s ease-in-out;
+        }
+        
+        .deploy-actions.hidden {
+            transform: translateY(100%);
+        }
+        
+        .deploy-panel {
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .deploy-panel-header {
+            background-color: #f1f5f9;
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .deploy-panel-body {
+            padding: 15px;
+            background-color: white;
+        }
+        
+        .deploy-config-form label {
+            font-weight: 500;
+            color: #334155;
+        }
+        
+        .deploy-log {
+            background-color: #1e293b;
+            color: #f8fafc;
+            font-family: 'Courier New', monospace;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        
+        .deploy-log pre {
+            margin: 0;
+            white-space: pre-wrap;
+            color: #a3e635;
+        }
+        
+        .artifact-checkbox {
+            width: 20px;
+            height: 20px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 2;
+        }
+        
+        .current-site {
+            border-left: 4px solid #3b82f6;
+            padding-left: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .site-preview-link {
+            display: inline-block;
+            margin-top: 10px;
+            color: #3b82f6;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-container">
+                <div class="main-title">
+                    <h1 class="product-name">DataMind</h1>
+                    <p class="product-subtitle">The Alchemy Cauldron</p>
+                    <p class="product-tagline">Deploy your work!</p>
+                </div>
+            </div>
+            <div class="ms-auto">
+                <nav class="d-none d-md-flex">
+                    <a href="/" class="nav-link">首页</a>
+                    <a href="/gallery" class="nav-link">作品</a>
+                    <a href="/panel" class="nav-link">炼丹炉</a>
+                    <a href="/explorer" class="nav-link">仓库</a>
+                    <a href="/deploy" class="nav-link">部署</a>
+                    <a href="/chat" class="nav-link">助理</a>
+                </nav>
+                <button id="mobile-menu-button" class="mobile-menu-button d-md-none">
+                    <i class="bi bi-list"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="mobile-menu" class="d-md-none d-none bg-white shadow-sm">
+            <div class="d-flex flex-column">
+                <a href="/" class="nav-link">首页</a>
+                <a href="/gallery" class="nav-link">作品</a>
+                <a href="/panel" class="nav-link">炼丹炉</a>
+                <a href="/explorer" class="nav-link">仓库</a>
+                <a href="/deploy" class="nav-link">部署</a>
+                <a href="/chat" class="nav-link">助理</a>
+            </div>
+        </div>
+
+        <main class="flex-grow-1">
+            <section class="text-center mb-5 px-4 hero-section">
+                <h2 class="mb-3 fw-bold">部署中心</h2>
+                <p class="mx-auto" style="max-width: 700px;">
+                    选择您想要发布的作品，一键部署到 GitHub Pages
+                </p>
+                <button id="refresh-artifacts" class="btn btn-outline-primary mt-3">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新作品列表
+                </button>
+            </section>
+
+            <section class="mb-5 px-4">
+                <div class="row">
+                    <div class="col-md-7">
+                        <div class="deploy-panel">
+                            <div class="deploy-panel-header">
+                                <h3 class="section-title m-0">选择要部署的作品</h3>
+                            </div>
+                            <div class="deploy-panel-body">
+                                <div class="row g-4" id="artifacts-container">
+                                    <div id="loading-indicator" class="col-12 text-center py-5">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">加载中...</span>
+                                        </div>
+                                        <p class="mt-2 text-muted">正在加载作品...</p>
+                                    </div>
+                                    <!-- 这里的内容会被动态生成的卡片替换 -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-5">
+                        <div class="deploy-panel">
+                            <div class="deploy-panel-header">
+                                <h3 class="section-title m-0">部署配置</h3>
+                            </div>
+                            <div class="deploy-panel-body">
+                                <div class="current-site">
+                                    <h4>当前站点状态</h4>
+                                    <div id="current-site-info">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                            <span class="visually-hidden">加载中...</span>
+                                        </div>
+                                        <span class="ms-2">加载中...</span>
+                                    </div>
+                                </div>
+                                
+                                <form class="deploy-config-form">
+                                    <div class="mb-3">
+                                        <label for="repo-url" class="form-label">GitHub 仓库地址</label>
+                                        <input type="text" class="form-control" id="repo-url" placeholder="https://github.com/username/repo.git">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="branch" class="form-label">部署分支</label>
+                                        <input type="text" class="form-control" id="branch" value="gh-pages">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="commit-message" class="form-label">提交信息</label>
+                                        <input type="text" class="form-control" id="commit-message" placeholder="更新网站内容">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="github-token" class="form-label">GitHub Token (可选)</label>
+                                        <input type="password" class="form-control" id="github-token" placeholder="ghp_xxxxxxxxxxxx">
+                                        <div class="form-text">用于访问私有仓库或自动创建不存在的仓库</div>
+                                    </div>
+                                    
+                                    <div class="d-grid gap-2">
+                                        <button type="button" id="generate-files-btn" class="btn btn-primary">
+                                            <i class="bi bi-file-earmark-code"></i> 生成部署文件
+                                        </button>
+                                        <button type="button" id="deploy-btn" class="btn btn-success">
+                                            <i class="bi bi-cloud-upload"></i> 部署到 GitHub Pages
+                                        </button>
+                                    </div>
+                                </form>
+                                
+                                <div class="deploy-log mt-4" id="deploy-log" style="display: none;">
+                                    <h5 class="text-white mb-2">部署日志</h5>
+                                    <pre id="log-content"></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <div class="deploy-actions hidden" id="deploy-actions">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <p class="mb-0"><span id="selected-count">0</span> 个作品已选择</p>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button id="cancel-selection" class="btn btn-outline-secondary me-2">取消</button>
+                        <button id="confirm-selection" class="btn btn-primary">确认选择</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/deploy.js"></script>
+</body>
+</html> 

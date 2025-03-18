@@ -16,6 +16,7 @@ const { setupRoutes } = require('./modules/routes');
 const { setupGalleryRoute } = require('./modules/gallery');
 const { setupExplorerRoute } = require('./modules/explorer');
 const { setupPanelRoute } = require('./modules/panel');
+const { setupDeployRoute } = require('./modules/deploy');
 
 // 读取环境变量
 dotenv.config();
@@ -98,6 +99,9 @@ setupExplorerRoute(app, watchDirs, config);
 
 // 设置panel路由
 setupPanelRoute(app, watchDirs, config);
+
+// 设置deploy路由
+setupDeployRoute(app, watchDirs, config, io);
 
 // 设置其他路由
 setupRoutes(app, io, watchDirs, config, chatSessionManager, llmApiClients, processManager);
