@@ -39,6 +39,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (selectedArtifacts.length > 0) {
             // 滚动到配置部分
             document.querySelector('.deploy-panel').scrollIntoView({ behavior: 'smooth' });
+            
+            // 设置一个短暂的延迟，确保滚动完成后才设置焦点
+            setTimeout(() => {
+                // 将焦点设置到"生成部署文件"按钮
+                document.getElementById('generate-files-btn').focus();
+            }, 500);
         }
     });
     
@@ -240,8 +246,13 @@ function renderArtifactCards() {
     let cardsHtml = '';
     
     artifacts.forEach((artifact, index) => {
+        // 创建唯一标识符
+        const uniqueId = `${artifact.alchemyId}_${artifact.iteration}`;
+        
         // 检查是否已被选择
-        const isSelected = selectedArtifacts.some(item => item.alchemyId === artifact.alchemyId);
+        const isSelected = selectedArtifacts.some(item => 
+            `${item.alchemyId}_${item.iteration}` === uniqueId
+        );
         
         // 截断过长的查询文本
         const queryText = artifact.query.length > 80 
@@ -261,7 +272,8 @@ function renderArtifactCards() {
         <div class="col-12 col-sm-6 col-md-6 col-lg-4">
             <div class="card h-100 ${isSelected ? 'card-selected' : ''}">
                 <input type="checkbox" class="artifact-checkbox" 
-                       data-alchemy-id="${artifact.alchemyId}" 
+                       data-alchemy-id="${artifact.alchemyId}"
+                       data-iteration="${artifact.iteration}"
                        ${isSelected ? 'checked' : ''}>
                 <div class="card-img-container">
                     <img src="${previewImgUrl}" alt="制品预览" class="card-img" loading="lazy">
@@ -293,12 +305,16 @@ function renderArtifactCards() {
         });
     });
     
-    // 添加复选框事件监听
+    // 修改复选框事件监听
     document.querySelectorAll('.artifact-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', function() {
             const alchemyId = this.getAttribute('data-alchemy-id');
-            const artifact = artifacts.find(item => item.alchemyId === alchemyId);
-            const index = artifacts.indexOf(artifact);
+            const iteration = parseInt(this.getAttribute('data-iteration'));
+            
+            // 根据alchemyId和iteration找到对应的制品
+            const index = artifacts.findIndex(item => 
+                item.alchemyId === alchemyId && item.iteration === iteration
+            );
             
             if (index !== -1) {
                 toggleArtifactSelection(index);
@@ -313,7 +329,13 @@ function renderArtifactCards() {
 // 切换制品选择状态
 function toggleArtifactSelection(index) {
     const artifact = artifacts[index];
-    const alreadySelectedIndex = selectedArtifacts.findIndex(item => item.alchemyId === artifact.alchemyId);
+    // 使用唯一标识符来识别每个制品，组合alchemyId和iteration
+    const uniqueId = `${artifact.alchemyId}_${artifact.iteration}`;
+    
+    // 查找是否已经选择了这个制品
+    const alreadySelectedIndex = selectedArtifacts.findIndex(item => 
+        `${item.alchemyId}_${item.iteration}` === uniqueId
+    );
     
     if (alreadySelectedIndex === -1) {
         // 添加到选择列表
@@ -336,11 +358,21 @@ function updateSelectionCount() {
     selectedCountElement.textContent = count;
     
     if (count > 0) {
-        deployActions.classList.remove('hidden');
+        // 只在小屏幕设备上显示浮动操作栏
+        if (window.innerWidth < 768) {
+            deployActions.classList.remove('hidden');
+        } else {
+            deployActions.classList.add('hidden');
+        }
     } else {
         deployActions.classList.add('hidden');
     }
 }
+
+// 添加窗口大小变化监听，以便动态调整浮动栏的显示
+window.addEventListener('resize', function() {
+    updateSelectionCount();
+});
 
 // 清除所有选择
 function clearSelection() {
