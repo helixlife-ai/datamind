@@ -83,8 +83,8 @@
             </nav>
         </header>
         <div class="flex flex-1 overflow-hidden">
-            <!-- 新增的对话记录侧边栏 -->
-            <div class="w-64 flex flex-col border-r border-gray-200 bg-white shadow-sm">
+            <!-- 对话记录侧边栏 - 调整为固定宽度 -->
+            <div class="w-56 flex flex-col border-r border-gray-200 bg-white shadow-sm">
                 <div class="flex justify-between items-center px-4 py-3 bg-blue-50 border-b border-gray-200 font-semibold text-primary">
                     <span>对话记录</span>
                     <button class="px-2.5 py-1.5 bg-primary text-white rounded-md hover:bg-primary-hover transition-colors text-sm" id="newChatBtn">
@@ -96,9 +96,10 @@
                 </div>
             </div>
             
-            <div class="flex flex-col flex-2 border-r border-gray-200 bg-white shadow-sm">
+            <!-- 推理对话主区域 - 分配更多空间 -->
+            <div class="flex flex-col flex-1 border-r border-gray-200 bg-white shadow-sm">
                 <div class="flex justify-between items-center px-4 py-3 bg-blue-50 border-b border-gray-200 font-semibold text-primary">
-                    <span>推理对话</span>
+                    <span>对话</span>
                     <div class="flex gap-2">
                         <button class="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 transition-colors" id="clearChat">
                             <i class="bi bi-trash"></i> 清除对话
@@ -118,8 +119,8 @@
                         <div class="flex items-center gap-3">
                             <label for="modelSelect" class="text-sm">模型:</label>
                             <select id="modelSelect" class="p-1.5 border border-gray-300 rounded bg-gray-50 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all text-sm">
-                                <option value="llmcore:reasoning">LLMCORE 推理模型</option>
-                                <option value="llmcore:default">LLMCORE 默认模型</option>
+                                <option value="default:reasoning">Default 推理模型</option>
+                                <option value="default:default">Default 默认模型</option>
                                 <option value="siliconflow:reasoning">SiliconFlow 推理模型</option>
                                 <option value="siliconflow:default">SiliconFlow 默认模型</option>
                                 <option value="deepseek:reasoning">DeepSeek 推理模型</option>
@@ -133,20 +134,44 @@
                     </div>
                 </div>
             </div>
-            <div class="flex flex-col flex-1 bg-white shadow-sm mr-px">
+            
+            <!-- 上下文监控区域 - 调整为合适的宽度 -->
+            <div class="flex flex-col w-80 bg-white shadow-sm mr-px transition-all duration-300" id="rightPanel">
                 <div class="flex justify-between items-center px-4 py-3 bg-blue-50 border-b border-gray-200 font-semibold text-primary">
-                    <span>上下文监控</span>
-                    <div class="flex gap-2">
-                        <button class="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 transition-colors" id="clearContext">
-                            <i class="bi bi-trash"></i> 清除
+                    <div class="flex space-x-1">
+                        <button class="px-3 py-1.5 rounded-t-md transition-colors bookmark-tab active" data-tab="context" data-width="80">
+                            <i class="bi bi-list-check mr-1"></i> 上下文监控
                         </button>
-                        <button class="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 transition-colors" id="exportContext">
-                            <i class="bi bi-download"></i> 导出
+                        <button class="px-3 py-1.5 rounded-t-md transition-colors bookmark-tab" data-tab="system-prompt" data-width="160">
+                            <i class="bi bi-gear-fill mr-1"></i> 系统提示词
                         </button>
                     </div>
                 </div>
-                <div class="flex-1 overflow-y-auto p-4 bg-gray-50" id="contextContent">
-                    <div class="text-gray-500 text-center mt-8 italic">上下文监控将显示在这里</div>
+                <div class="tab-content" id="context-tab">
+                    <div class="flex-1 overflow-y-auto p-4 bg-gray-50 h-full" id="contextContent">
+                        <div class="text-gray-500 text-center mt-8 italic">上下文监控将显示在这里</div>
+                    </div>
+                </div>
+                <div class="tab-content hidden" id="system-prompt-tab">
+                    <div class="flex-1 overflow-y-auto p-4 bg-gray-50 h-full">
+                        <div class="mb-3">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">系统提示词</label>
+                            <textarea id="systemPrompt" rows="15" class="w-full p-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 shadow-sm transition-all" placeholder="在这里输入自定义系统提示词..."></textarea>
+                        </div>
+                        <div class="flex justify-between">
+                            <div>
+                                <button id="resetSystemPrompt" class="px-3 py-1.5 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 transition-colors">
+                                    <i class="bi bi-arrow-counterclockwise mr-1"></i> 重置
+                                </button>
+                                <button id="loadDefaultSystemPrompt" class="px-3 py-1.5 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 transition-colors ml-2">
+                                    <i class="bi bi-lightning-fill mr-1"></i> 加载默认
+                                </button>
+                            </div>
+                            <button id="saveSystemPrompt" class="px-3 py-1.5 bg-primary text-white rounded hover:bg-primary-hover transition-colors">
+                                <i class="bi bi-check-lg mr-1"></i> 保存系统提示词
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -179,20 +204,26 @@
             const modelSelect = document.getElementById('modelSelect');
             const streamingToggle = document.getElementById('streamingToggle');
             const contextContent = document.getElementById('contextContent');
-            const clearContextButton = document.getElementById('clearContext');
-            const exportContextButton = document.getElementById('exportContext');
             const confirmModal = document.getElementById('confirmModal');
             const confirmMessage = document.getElementById('confirmMessage');
             const confirmAction = document.getElementById('confirmAction');
             const cancelAction = document.getElementById('cancelAction');
             const conversationList = document.getElementById('conversationList');
             const newChatBtn = document.getElementById('newChatBtn');
+            const bookmarkTabs = document.querySelectorAll('.bookmark-tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const systemPromptTextarea = document.getElementById('systemPrompt');
+            const saveSystemPromptButton = document.getElementById('saveSystemPrompt');
+            const resetSystemPromptButton = document.getElementById('resetSystemPrompt');
+            const loadDefaultSystemPromptButton = document.getElementById('loadDefaultSystemPrompt');
 
             // 状态变量
             let isWaitingForResponse = false;
             let currentSessionId = null;
             let messageHistory = [];
             let contextHistory = [];
+            let systemPrompt = '';
+            let defaultSystemPrompt = '你是一个智能助手，帮助用户回答问题。请用专业、友好的语气回答，保持回答简洁明了。如果不知道答案，请诚实地说出来，不要编造信息。';
 
             // 初始化 marked 配置
             marked.setOptions({
@@ -204,6 +235,100 @@
                 },
                 breaks: true
             });
+
+            // 添加书签切换功能
+            bookmarkTabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // 移除所有标签的活动状态
+                    bookmarkTabs.forEach(t => t.classList.remove('active', 'bg-white', 'border', 'border-gray-200', 'border-b-white'));
+                    
+                    // 添加当前标签的活动状态
+                    tab.classList.add('active', 'bg-white', 'border', 'border-gray-200', 'border-b-white');
+                    
+                    // 隐藏所有内容
+                    tabContents.forEach(content => content.classList.add('hidden'));
+                    
+                    // 显示对应的内容
+                    const tabId = tab.getAttribute('data-tab');
+                    document.getElementById(`${tabId}-tab`).classList.remove('hidden');
+                    
+                    // 调整面板宽度
+                    const rightPanel = document.getElementById('rightPanel');
+                    const width = tab.getAttribute('data-width');
+                    if (width) {
+                        // 移除所有宽度类
+                        rightPanel.className = rightPanel.className.replace(/w-\d+/g, '');
+                        // 添加新的宽度类
+                        rightPanel.classList.add(`w-${width}`);
+                    }
+                });
+            });
+
+            // 初始化系统提示词
+            function initSystemPrompt() {
+                // 尝试从localStorage加载系统提示词
+                const savedPrompt = localStorage.getItem('systemPrompt');
+                if (savedPrompt) {
+                    systemPrompt = savedPrompt;
+                    systemPromptTextarea.value = systemPrompt;
+                } else {
+                    // 使用默认提示词
+                    systemPrompt = defaultSystemPrompt;
+                    systemPromptTextarea.value = systemPrompt;
+                }
+                
+                // 记录上下文
+                addContextItem('系统提示词', systemPrompt);
+            }
+            
+            // 保存系统提示词
+            function saveSystemPrompt() {
+                const newPrompt = systemPromptTextarea.value.trim();
+                systemPrompt = newPrompt;
+                localStorage.setItem('systemPrompt', newPrompt);
+                
+                // 添加确认信息到上下文
+                addContextItem('系统提示词已更新', newPrompt);
+                
+                // 显示临时保存成功消息
+                const saveButton = document.getElementById('saveSystemPrompt');
+                const originalText = saveButton.innerHTML;
+                saveButton.innerHTML = '<i class="bi bi-check-circle-fill mr-1"></i> 已保存';
+                saveButton.classList.add('bg-green-600');
+                
+                setTimeout(() => {
+                    saveButton.innerHTML = originalText;
+                    saveButton.classList.remove('bg-green-600');
+                }, 2000);
+            }
+            
+            // 重置系统提示词
+            function resetSystemPrompt() {
+                systemPromptTextarea.value = '';
+                systemPrompt = '';
+                localStorage.removeItem('systemPrompt');
+                
+                // 添加确认信息到上下文
+                addContextItem('系统提示词已重置', '已清除自定义系统提示词');
+            }
+            
+            // 加载默认系统提示词
+            function loadDefaultSystemPrompt() {
+                systemPromptTextarea.value = defaultSystemPrompt;
+                systemPrompt = defaultSystemPrompt;
+                localStorage.setItem('systemPrompt', defaultSystemPrompt);
+                
+                // 添加确认信息到上下文
+                addContextItem('加载默认系统提示词', defaultSystemPrompt);
+            }
+            
+            // 添加事件监听器
+            saveSystemPromptButton.addEventListener('click', saveSystemPrompt);
+            resetSystemPromptButton.addEventListener('click', resetSystemPrompt);
+            loadDefaultSystemPromptButton.addEventListener('click', loadDefaultSystemPrompt);
+            
+            // 初始化系统提示词
+            initSystemPrompt();
 
             // 模态框控制
             function showModal(message, callback) {
@@ -481,6 +606,11 @@
                     sessionId: currentSessionId,
                     useReasoning: useReasoning
                 };
+                
+                // 添加系统提示词，如果存在
+                if (systemPrompt.trim()) {
+                    requestData.systemPrompt = systemPrompt;
+                }
 
                 // 记录请求上下文
                 addContextItem('请求', {
@@ -488,7 +618,8 @@
                     modelType: modelType,
                     useReasoning: useReasoning,
                     stream: streamResponse,
-                    messageCount: messageHistory.length
+                    messageCount: messageHistory.length,
+                    systemPrompt: systemPrompt ? '已设置' : '未设置'
                 });
 
                 try {
@@ -613,14 +744,19 @@
                             addMessage(`错误: ${data.error}`, false);
                             addContextItem('错误', data.error);
                         }
-                    }
-
-                    // 处理会话ID后更新对话列表
-                    if (data.sessionId && (!currentSessionId || currentSessionId !== data.sessionId)) {
-                        currentSessionId = data.sessionId;
-                        addContextItem('会话ID', currentSessionId);
                         
-                        // 更新对话列表
+                        // 处理会话ID后更新对话列表
+                        if (data.sessionId && (!currentSessionId || currentSessionId !== data.sessionId)) {
+                            currentSessionId = data.sessionId;
+                            addContextItem('会话ID', currentSessionId);
+                            
+                            // 更新对话列表
+                            loadConversationList();
+                        }
+                    }
+                    
+                    // 如果当前会话ID存在，更新对话列表
+                    if (currentSessionId) {
                         loadConversationList();
                     }
                 } catch (error) {
@@ -668,35 +804,6 @@
                 addContextItem('操作', '导出聊天历史');
             }
 
-            // 清除上下文历史
-            function clearContext() {
-                showModal('确定要清除上下文监控记录吗？', function() {
-                    contextContent.innerHTML = '<div class="text-gray-500 text-center mt-8 italic">上下文监控将显示在这里</div>';
-                    contextHistory = [];
-                    confirmModal.classList.add('hidden');
-                });
-            }
-
-            // 导出上下文历史
-            function exportContext() {
-                const exportData = {
-                    sessionId: currentSessionId,
-                    contextItems: contextHistory,
-                    exportTime: new Date().toISOString()
-                };
-                
-                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `context_export_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }
-
             // 事件监听器
             sendButton.addEventListener('click', sendMessage);
             
@@ -709,8 +816,6 @@
             
             clearChatButton.addEventListener('click', clearChat);
             exportChatButton.addEventListener('click', exportChat);
-            clearContextButton.addEventListener('click', clearContext);
-            exportContextButton.addEventListener('click', exportContext);
 
             // 添加淡入动画
             const style = document.createElement('style');
@@ -729,5 +834,37 @@
             loadConversationList();
         });
     </script>
+
+    <style>
+        /* 添加书签样式 */
+        .bookmark-tab {
+            position: relative;
+            bottom: -1px;
+        }
+        
+        .bookmark-tab.active {
+            background-color: white;
+            border: 1px solid #e5e7eb;
+            border-bottom: 1px solid white;
+        }
+        
+        .bookmark-tab:not(.active) {
+            background-color: rgba(219, 234, 254, 0.4);
+            color: #4b5563;
+        }
+        
+        .bookmark-tab:not(.active):hover {
+            background-color: rgba(219, 234, 254, 0.7);
+        }
+        
+        .tab-content {
+            height: calc(100% - 48px); /* 减去标题栏高度 */
+        }
+        
+        /* 添加平滑过渡效果 */
+        #rightPanel {
+            transition: width 0.3s ease-in-out;
+        }
+    </style>
 </body>
 </html> 

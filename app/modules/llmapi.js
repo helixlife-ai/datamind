@@ -4,6 +4,11 @@ const { OpenAI } = require('openai');
 
 // API提供商和模型配置
 const API_CONFIGS = {
+    'default': {  // 确保default提供商存在
+        defaultModel: 'claude-3-7-sonnet-20250219',
+        reasoningModel: 'claude-3-7-sonnet-20250219',
+        currentIndex: 0
+    },
     'deepseek': {
         defaultModel: 'deepseek-chat',
         reasoningModel: 'deepseek-reasoner',
@@ -12,11 +17,6 @@ const API_CONFIGS = {
     'siliconflow': {
         defaultModel: 'Pro/deepseek-ai/DeepSeek-V3',
         reasoningModel: 'Pro/deepseek-ai/DeepSeek-R1',
-        currentIndex: 0
-    },
-    'llmcore': {
-        defaultModel: 'claude-3-7-sonnet-20250219',
-        reasoningModel: 'claude-3-7-sonnet-20250219',
         currentIndex: 0
     }
 };
@@ -84,9 +84,9 @@ function parseApiKeys(envValue) {
 function setupLLMApiClients() {
     // 初始化API客户端
     const OPENAI_CLIENTS = {
+        'default': [],
         'deepseek': [],
-        'siliconflow': [],
-        'llmcore':[]
+        'siliconflow': []
     };
 
     // 直接从.env文件读取内容，用于调试
@@ -109,6 +109,28 @@ function setupLLMApiClients() {
     } catch (err) {
         console.log('无法直接读取.env文件:', err.message);
     }
+
+    // 读取并解析Default API密钥
+    console.log('处理Default API密钥:');
+    console.log(`环境变量 DEFAULT_API_KEY: ${process.env.DEFAULT_API_KEY ? '存在' : '不存在'}`);
+    const defaultApiKeys = parseApiKeys(process.env.DEFAULT_API_KEY);
+    console.log(`解析后的Default API密钥数量: ${defaultApiKeys.length}`);
+
+    defaultApiKeys.forEach((key, index) => {
+        if (key) {
+            try {
+                OPENAI_CLIENTS.default.push(new OpenAI({
+                    apiKey: key,
+                    baseURL: process.env.DEFAULT_BASE_URL 
+                }));
+                console.log(`成功添加Default API客户端 #${index+1}`);
+            } catch (err) {
+                console.error(`初始化Default API客户端 #${index+1} 失败:`, err);
+            }
+        } else {
+            console.log(`跳过空的Default API密钥 #${index+1}`);
+        }
+    });
 
     // 读取并解析DeepSeek API密钥
     console.log('处理DeepSeek API密钥:');
@@ -159,46 +181,42 @@ function setupLLMApiClients() {
             }
         });
     }
-
-    // 读取并解析LLMCORE API密钥
-    console.log('处理LLMCORE API密钥:');
-    console.log(`环境变量 LLMCORE_API_KEY: ${process.env.LLMCORE_API_KEY ? '存在' : '不存在'}`);
-    const llmcoreApiKeys = parseApiKeys(process.env.LLMCORE_API_KEY);
-    console.log(`解析后的LLMCORE API密钥数量: ${llmcoreApiKeys.length}`);
-
-    // 为LLMCORE初始化API客户端
-    if (llmcoreApiKeys.length === 0) {
-        console.log('警告: 未从环境变量获取到LLMCORE API密钥，无法初始化客户端');
-        console.log('请在.env文件中设置有效的LLMCORE_API_KEY');
-    } else {
-        llmcoreApiKeys.forEach((key, index) => {
-            if (key) {
-                try {
-                    OPENAI_CLIENTS.llmcore.push(new OpenAI({
-                        apiKey: key,
-                        baseURL: process.env.LLMCORE_BASE_URL || 'https://api.llmcore.com'
-                    }));
-                    console.log(`成功添加LLMCORE API客户端 #${index+1}`);
-                } catch (err) {
-                    console.error(`初始化LLMCORE API客户端 #${index+1} 失败:`, err);
-                }
-            } else {
-                console.log(`跳过空的LLMCORE API密钥 #${index+1}`);
-            }
-        });        
-    }
     
+    console.log(`已加载 ${OPENAI_CLIENTS.default.length} 个 Default API 客户端`);
     console.log(`已加载 ${OPENAI_CLIENTS.deepseek.length} 个 DeepSeek API 客户端`);
     console.log(`已加载 ${OPENAI_CLIENTS.siliconflow.length} 个 SiliconFlow API 客户端`);
-    console.log(`已加载 ${OPENAI_CLIENTS.llmcore.length} 个 LLMCORE API 客户端`);
+
 
     return {
         clients: OPENAI_CLIENTS,
         configs: API_CONFIGS,
         getNextApiClient: function(provider) {
+            // 检查提供商是否存在
+            if (!provider || !OPENAI_CLIENTS[provider]) {
+                console.error(`没有可用的 ${provider || '未指定'} API 客户端，使用默认提供商`);
+                provider = 'default';  // 使用默认提供商
+            }
+            
+            // 检查提供商是否有可用的客户端
             if (!OPENAI_CLIENTS[provider] || OPENAI_CLIENTS[provider].length === 0) {
                 console.error(`没有可用的 ${provider} API 客户端`);
                 return null;
+            }
+            
+            // 检查提供商配置是否存在
+            if (!API_CONFIGS[provider]) {
+                console.error(`未找到提供商 ${provider} 的配置，使用 default 配置`);
+                provider = 'default';  // 回退到默认提供商
+            }
+            
+            // 如果 default 也没有配置，创建一个
+            if (!API_CONFIGS[provider]) {
+                console.error(`创建默认提供商配置`);
+                API_CONFIGS[provider] = {
+                    defaultModel: 'claude-3-5-sonnet',
+                    reasoningModel: 'claude-3-5-sonnet',
+                    currentIndex: 0
+                };
             }
             
             const index = API_CONFIGS[provider].currentIndex;
