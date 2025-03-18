@@ -25,7 +25,7 @@ function setupDeployRoute(app, watchDirs, config, io) {
     app.use('/js', express.static(path.join(__dirname, '../public/js')));
 
     // 确保部署目录存在
-    const deployDir = path.join(process.cwd(), 'work_dir/gh_page');
+    const deployDir = path.join(process.cwd(), '..', 'work_dir/gh_page');
     if (!fs.existsSync(deployDir)) {
         fs.mkdirSync(deployDir, { recursive: true });
         console.log(`创建部署目录: ${deployDir}`);
@@ -223,7 +223,7 @@ function generateSampleArtifacts() {
     console.log('使用样本数据替代实际制品数据');
     
     // 检查是否有 work_dir/gh_page/artifacts.json
-    const artifactsJsonPath = path.join(process.cwd(), 'work_dir/gh_page', 'artifacts.json');
+    const artifactsJsonPath = path.join(process.cwd(), '..', 'work_dir/gh_page', 'artifacts.json');
     
     if (fs.existsSync(artifactsJsonPath)) {
         try {
@@ -275,7 +275,7 @@ function generateSampleArtifacts() {
 // 获取当前站点信息
 function getSiteInfo() {
     console.log('获取站点信息');
-    const deployDir = path.join(process.cwd(), 'work_dir/gh_page');
+    const deployDir = path.join(process.cwd(), '..', 'work_dir/gh_page');
     const deployInfoPath = path.join(deployDir, 'deploy_info.json');
     
     // 检查部署目录是否存在
@@ -352,7 +352,7 @@ function findAlchemyDir(watchDirs) {
 
 // 生成部署文件
 function generateDeployFiles(artifacts, socket, watchDirs) {
-    const deployDir = path.join(process.cwd(), 'work_dir/gh_page');
+    const deployDir = path.join(process.cwd(), '..', 'work_dir/gh_page');
     
     // 确保部署目录存在
     if (!fs.existsSync(deployDir)) {
@@ -948,8 +948,8 @@ function generateArtifactCards(artifacts) {
 
 // 部署到GitHub
 function deployToGitHub(repoUrl, branch, commitMessage, token, socket) {
-    const deployScript = path.join(process.cwd(), 'scripts', 'deploy_to_github_pages.py');
-    const sourceDir = path.join(process.cwd(), 'work_dir/gh_page');
+    const deployScript = path.join(process.cwd(), '..', 'scripts', 'deploy_to_github_pages.py');
+    const sourceDir = path.join(process.cwd(), '..', 'work_dir/gh_page');
     
     // 检查脚本是否存在
     if (!fs.existsSync(deployScript)) {
