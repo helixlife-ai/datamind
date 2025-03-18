@@ -6,9 +6,11 @@ let artifacts = [];
 let selectedArtifacts = [];
 let siteInfo = null;
 let deployedArtifactIds = []; // 存储已部署的作品ID
+let currentFilter = null; // 当前筛选的炼丹ID
 
 // DOM元素
 const artifactsContainer = document.getElementById('artifacts-container');
+const alchemyList = document.getElementById('alchemy-list');
 const deployActions = document.getElementById('deploy-actions');
 const selectedCountElement = document.getElementById('selected-count');
 const currentSiteInfo = document.getElementById('current-site-info');
@@ -28,13 +30,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 请求最新的制品数据
     socket.emit('deploy:requestArtifacts');
+    showLoadingIndicator();
     
     // 添加按钮事件监听
-    document.getElementById('refresh-artifacts').addEventListener('click', function() {
-        socket.emit('deploy:requestArtifacts');
-        showLoadingIndicator();
-    });
-    
     document.getElementById('cancel-selection').addEventListener('click', function() {
         clearSelection();
     });
@@ -122,9 +120,94 @@ socket.on('deploy:artifacts', function(data) {
     // 根据已部署的作品ID自动选择
     selectDeployedArtifacts();
     
+    // 渲染左侧一览列表
+    renderAlchemyList();
+    
     // 渲染卡片
     renderArtifactCards();
 });
+
+// 渲染左侧炼丹ID一览列表
+function renderAlchemyList() {
+    if (!artifacts || artifacts.length === 0) {
+        alchemyList.innerHTML = `
+            <div class="text-center py-3">
+                <p class="text-muted">暂无作品</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // 提取唯一的炼丹ID并计算每个ID下有多少个制品
+    const alchemyIds = {};
+    artifacts.forEach(artifact => {
+        if (!alchemyIds[artifact.alchemyId]) {
+            alchemyIds[artifact.alchemyId] = 1;
+        } else {
+            alchemyIds[artifact.alchemyId]++;
+        }
+    });
+    
+    // 构建HTML
+    let listHtml = `
+        <button class="all-artifacts-btn ${currentFilter === null ? 'active' : ''}" id="show-all-artifacts">
+            显示全部作品
+        </button>
+        <div class="list-group">
+    `;
+    
+    // 按照ID排序
+    const sortedIds = Object.keys(alchemyIds).sort((a, b) => {
+        // 如果是纯数字，则按数字排序
+        const numA = parseInt(a, 10);
+        const numB = parseInt(b, 10);
+        if (!isNaN(numA) && !isNaN(numB)) {
+            return numA - numB;
+        }
+        // 否则按字符串排序
+        return a.localeCompare(b);
+    });
+    
+    // 生成列表项
+    sortedIds.forEach(id => {
+        listHtml += `
+            <div class="alchemy-item ${currentFilter === id ? 'active' : ''}" data-alchemy-id="${id}">
+                <span class="alchemy-item-title">炼丹 #${id}</span>
+                <span class="badge">${alchemyIds[id]}</span>
+            </div>
+        `;
+    });
+    
+    listHtml += `</div>`;
+    alchemyList.innerHTML = listHtml;
+    
+    // 添加点击事件
+    document.getElementById('show-all-artifacts').addEventListener('click', function() {
+        currentFilter = null;
+        this.classList.add('active');
+        document.querySelectorAll('.alchemy-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        renderArtifactCards();
+    });
+    
+    document.querySelectorAll('.alchemy-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const alchemyId = this.getAttribute('data-alchemy-id');
+            
+            // 更新选中状态
+            document.querySelectorAll('.alchemy-item').forEach(i => {
+                i.classList.remove('active');
+            });
+            document.getElementById('show-all-artifacts').classList.remove('active');
+            this.classList.add('active');
+            
+            // 设置过滤器并重新渲染
+            currentFilter = alchemyId;
+            renderArtifactCards();
+        });
+    });
+}
 
 // 监听站点信息更新
 socket.on('deploy:siteInfo', function(data) {
@@ -308,9 +391,24 @@ function renderArtifactCards() {
         return;
     }
     
+    // 根据当前过滤器筛选要显示的制品
+    let filteredArtifacts = artifacts;
+    if (currentFilter !== null) {
+        filteredArtifacts = artifacts.filter(artifact => artifact.alchemyId === currentFilter);
+    }
+    
+    if (filteredArtifacts.length === 0) {
+        artifactsContainer.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <p class="text-muted">没有符合筛选条件的制品</p>
+            </div>
+        `;
+        return;
+    }
+    
     let cardsHtml = '';
     
-    artifacts.forEach((artifact, index) => {
+    filteredArtifacts.forEach((artifact, index) => {
         // 创建唯一标识符
         const uniqueId = `${artifact.alchemyId}_${artifact.iteration}`;
         
@@ -334,7 +432,7 @@ function renderArtifactCards() {
             : "https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&h=400&q=80";
         
         cardsHtml += `
-        <div class="col-12 col-sm-6 col-md-6 col-lg-4">
+        <div class="col-12 col-sm-6 col-md-12 col-lg-6">
             <div class="card h-100 ${isSelected ? 'card-selected' : ''}">
                 <input type="checkbox" class="artifact-checkbox" 
                        data-alchemy-id="${artifact.alchemyId}"
@@ -351,7 +449,7 @@ function renderArtifactCards() {
                 <div class="card-footer bg-white border-top-0 d-flex justify-content-between align-items-center">
                     <a href="${artifact.relativePath}" class="btn btn-outline-primary btn-sm" target="_blank">预览</a>
                     <button class="btn ${isSelected ? 'btn-danger' : 'btn-primary'} btn-sm select-artifact-btn" 
-                            data-index="${index}">
+                            data-index="${artifacts.indexOf(artifact)}">
                         ${isSelected ? '取消选择' : '选择'}
                     </button>
                 </div>

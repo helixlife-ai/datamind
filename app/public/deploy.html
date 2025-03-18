@@ -484,6 +484,76 @@
             color: #3b82f6;
             text-decoration: underline;
         }
+        
+        /* 新增：炼丹ID一览列表样式 */
+        #alchemy-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .alchemy-item {
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .alchemy-item:hover {
+            background-color: rgba(59, 130, 246, 0.08);
+        }
+        
+        .alchemy-item.active {
+            background-color: #3b82f6;
+            color: white;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+        }
+        
+        .alchemy-item .badge {
+            background-color: rgba(255, 255, 255, 0.3);
+            color: inherit;
+        }
+        
+        .alchemy-item-title {
+            font-weight: 500;
+        }
+        
+        /* 修改按钮样式 */
+        .all-artifacts-btn {
+            display: block;
+            width: 100%;
+            text-align: center;
+            padding: 8px;
+            margin-bottom: 16px;
+            background-color: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-weight: 500;
+            color: #334155;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .all-artifacts-btn:hover {
+            background-color: #e2e8f0;
+        }
+        
+        .all-artifacts-btn.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        
+        /* 适配小屏幕 */
+        @media (max-width: 768px) {
+            .deploy-panel {
+                margin-bottom: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -528,14 +598,29 @@
                 <p class="mx-auto" style="max-width: 700px;">
                     选择您想要发布的作品，一键部署到 GitHub Pages
                 </p>
-                <button id="refresh-artifacts" class="btn btn-outline-primary mt-3">
-                    <i class="bi bi-arrow-clockwise"></i> 刷新作品列表
-                </button>
             </section>
 
             <section class="mb-5 px-4">
                 <div class="row">
-                    <div class="col-md-7">
+                    <div class="col-md-2">
+                        <div class="deploy-panel">
+                            <div class="deploy-panel-header">
+                                <h3 class="section-title m-0">炼丹ID一览</h3>
+                            </div>
+                            <div class="deploy-panel-body">
+                                <div id="alchemy-list">
+                                    <div class="d-flex justify-content-center py-3">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                            <span class="visually-hidden">加载中...</span>
+                                        </div>
+                                        <span class="ms-2">加载中...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-5">
                         <div class="deploy-panel">
                             <div class="deploy-panel-header">
                                 <h3 class="section-title m-0">选择要部署的作品</h3>
