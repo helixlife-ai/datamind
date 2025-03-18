@@ -418,8 +418,8 @@ function renderArtifactCards() {
         );
         
         // 截断过长的查询文本
-        const queryText = artifact.query.length > 80 
-            ? artifact.query.substring(0, 80) + '...' 
+        const queryText = artifact.query.length > 100 
+            ? artifact.query.substring(0, 100) + '...' 
             : artifact.query;
             
         // 格式化时间戳
@@ -441,18 +441,28 @@ function renderArtifactCards() {
                 <div class="card-img-container">
                     <img src="${previewImgUrl}" alt="制品预览" class="card-img" loading="lazy">
                 </div>
-                <div class="card-body">
-                    <p class="card-text">${queryText}</p>
-                    <p class="card-text text-muted small">迭代: ${artifact.iteration} | 创建于: ${formattedDate}</p>
-                    <div class="text-end mb-2">
-                        <span class="badge bg-light text-secondary">#${artifact.alchemyId}</span>
+                <div class="card-body d-flex flex-column">
+                    <div class="query-box">
+                        <p class="card-text query-text">${queryText}</p>
+                    </div>
+                    <div class="meta-info mt-auto">
+                        <p class="card-text meta-text">
+                            <span class="meta-item"><i class="bi bi-repeat"></i> ${artifact.iteration}</span>
+                            <span class="meta-divider">|</span>
+                            <span class="meta-item"><i class="bi bi-calendar-event"></i> ${formattedDate}</span>
+                        </p>
+                        <div class="text-end mb-2">
+                            <span class="badge artifact-id-badge">#${artifact.alchemyId}</span>
+                        </div>
                     </div>
                 </div>
                 <div class="card-footer bg-white border-top-0 d-flex justify-content-between align-items-center">
-                    <a href="${artifact.relativePath}" class="btn btn-outline-primary btn-sm" target="_blank">预览</a>
+                    <a href="${artifact.relativePath}" class="btn btn-outline-primary btn-sm" target="_blank">
+                        <i class="bi bi-eye"></i> 预览
+                    </a>
                     <button class="btn ${isSelected ? 'btn-danger' : 'btn-primary'} btn-sm select-artifact-btn" 
                             data-index="${artifacts.indexOf(artifact)}">
-                        ${isSelected ? '取消选择' : '选择'}
+                        <i class="bi bi-${isSelected ? 'dash-circle' : 'plus-circle'}"></i> ${isSelected ? '取消选择' : '选择'}
                     </button>
                 </div>
             </div>

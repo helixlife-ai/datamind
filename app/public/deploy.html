@@ -74,8 +74,7 @@
         }
         
         .card-body {
-            padding: 16px;
-            flex: 1;
+            padding: 1rem;
         }
         
         .card-title {
@@ -93,10 +92,7 @@
         }
         
         .card-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 16px 16px;
+            padding: 0 1rem 1rem;
         }
         
         .card-footer .btn-group {
@@ -571,6 +567,119 @@
             font-size: 0.8rem;
             padding: 5px 8px;
             border-radius: 6px;
+        }
+        
+        /* 卡片内容优化样式 */
+        .query-box {
+            margin-bottom: 1rem;
+            flex-grow: 1;
+        }
+        
+        .query-text {
+            color: #334155;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            font-weight: 400;
+            margin-bottom: 0;
+        }
+        
+        .meta-info {
+            border-top: 1px dashed rgba(203, 213, 225, 0.5);
+            padding-top: 0.75rem;
+            margin-top: 0.5rem;
+        }
+        
+        .meta-text {
+            color: #64748b;
+            font-size: 0.8rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .meta-item i {
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+        
+        .meta-divider {
+            margin: 0 6px;
+            color: #cbd5e1;
+        }
+        
+        .artifact-id-badge {
+            background-color: #f1f5f9;
+            color: #334155;
+            font-weight: 500;
+            font-size: 0.8rem;
+            padding: 5px 10px;
+            border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .card-selected .artifact-id-badge {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .card-body {
+            padding: 1rem;
+        }
+        
+        .card-footer {
+            padding: 0 1rem 1rem;
+        }
+        
+        .card-footer .btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            padding: 0.5rem 0.85rem;
+            font-weight: 500;
+        }
+        
+        .card-footer .btn i {
+            font-size: 0.9rem;
+        }
+        
+        .artifact-checkbox {
+            width: 20px;
+            height: 20px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: all 0.2s;
+        }
+        
+        .artifact-checkbox:hover {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+        
+        .card-selected {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.1), 0 4px 12px rgba(59, 130, 246, 0.2);
+        }
+        
+        /* 卡片悬停效果增强 */
+        .card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
         }
     </style>
 </head>
