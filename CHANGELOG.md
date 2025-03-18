@@ -5,10 +5,7 @@
 ## [0.3.0] - 2025-03-17
 
 ### Added
-- Added DeliveryPlanner for automated content delivery planning
-- Added DeliveryGenerator for intelligent content generation  
-- Added SearchPlanner for intelligent search strategy generation
-
+- First official release version
 
 ## [0.2.2] - 2025-02-10
 
