@@ -93,7 +93,15 @@
         }
         
         .card-footer {
-            padding: 0 16px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px 16px;
+        }
+        
+        .card-footer .btn-group {
+            display: flex;
+            gap: 6px;
         }
         
         .card-footer .btn {
@@ -553,6 +561,16 @@
             .deploy-panel {
                 margin-bottom: 1rem;
             }
+        }
+        
+        /* 添加ID标识的样式 */
+        .card-footer .badge {
+            background-color: rgba(203, 213, 225, 0.5);
+            color: #1e293b;
+            font-weight: 500;
+            font-size: 0.8rem;
+            padding: 5px 8px;
+            border-radius: 6px;
         }
     </style>
 </head>

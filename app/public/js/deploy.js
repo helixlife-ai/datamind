@@ -172,7 +172,7 @@ function renderAlchemyList() {
     sortedIds.forEach(id => {
         listHtml += `
             <div class="alchemy-item ${currentFilter === id ? 'active' : ''}" data-alchemy-id="${id}">
-                <span class="alchemy-item-title">炼丹 #${id}</span>
+                <span class="alchemy-item-title">#${id}</span>
                 <span class="badge">${alchemyIds[id]}</span>
             </div>
         `;
@@ -442,9 +442,11 @@ function renderArtifactCards() {
                     <img src="${previewImgUrl}" alt="制品预览" class="card-img" loading="lazy">
                 </div>
                 <div class="card-body">
-                    <h5 class="card-title">炼丹 #${artifact.alchemyId}</h5>
                     <p class="card-text">${queryText}</p>
                     <p class="card-text text-muted small">迭代: ${artifact.iteration} | 创建于: ${formattedDate}</p>
+                    <div class="text-end mb-2">
+                        <span class="badge bg-light text-secondary">#${artifact.alchemyId}</span>
+                    </div>
                 </div>
                 <div class="card-footer bg-white border-top-0 d-flex justify-content-between align-items-center">
                     <a href="${artifact.relativePath}" class="btn btn-outline-primary btn-sm" target="_blank">预览</a>
