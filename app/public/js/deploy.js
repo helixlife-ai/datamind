@@ -5,6 +5,7 @@ const socket = io();
 let artifacts = [];
 let selectedArtifacts = [];
 let siteInfo = null;
+let deployedArtifactIds = []; // 存储已部署的作品ID
 
 // DOM元素
 const artifactsContainer = document.getElementById('artifacts-container');
@@ -19,11 +20,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // 初始化移动端菜单
     initMobileMenu();
     
-    // 请求制品数据
-    socket.emit('deploy:requestArtifacts');
-    
     // 请求当前站点信息
     socket.emit('deploy:requestSiteInfo');
+    
+    // 请求已部署的制品数据
+    socket.emit('deploy:requestDeployedArtifacts');
+    
+    // 请求最新的制品数据
+    socket.emit('deploy:requestArtifacts');
     
     // 添加按钮事件监听
     document.getElementById('refresh-artifacts').addEventListener('click', function() {
@@ -114,6 +118,11 @@ function saveConfig() {
 // 监听制品数据更新
 socket.on('deploy:artifacts', function(data) {
     artifacts = data;
+    
+    // 根据已部署的作品ID自动选择
+    selectDeployedArtifacts();
+    
+    // 渲染卡片
     renderArtifactCards();
 });
 
@@ -121,7 +130,57 @@ socket.on('deploy:artifacts', function(data) {
 socket.on('deploy:siteInfo', function(data) {
     siteInfo = data;
     renderSiteInfo();
+    
+    // 如果站点信息中包含repoUrl，则自动填充表单
+    if (siteInfo && siteInfo.repoUrl && siteInfo.repoUrl !== '未部署' && siteInfo.repoUrl !== '尚未部署') {
+        document.getElementById('repo-url').value = siteInfo.repoUrl;
+        document.getElementById('branch').value = siteInfo.branch || 'gh-pages';
+        
+        // 保存配置到localStorage
+        saveConfig();
+    }
 });
+
+// 监听已部署的作品数据
+socket.on('deploy:deployedArtifacts', function(data) {
+    if (data && Array.isArray(data)) {
+        // 不再只存储alchemyId，而是存储完整的部署作品信息
+        deployedArtifactIds = data;
+        console.log('已部署的作品:', deployedArtifactIds);
+        
+        // 如果制品数据已加载，自动选择已部署的作品
+        if (artifacts.length > 0) {
+            selectDeployedArtifacts();
+            renderArtifactCards();
+        }
+    }
+});
+
+// 自动选择已部署的作品
+function selectDeployedArtifacts() {
+    // 清除当前选择
+    selectedArtifacts = [];
+    
+    // 遍历当前制品列表，自动选中已部署的作品
+    for (let i = 0; i < artifacts.length; i++) {
+        const artifact = artifacts[i];
+        
+        // 检查制品的alchemyId和iteration是否与已部署的制品匹配
+        const isDeployed = deployedArtifactIds.some(deployedArtifact => 
+            deployedArtifact.alchemyId === artifact.alchemyId && 
+            deployedArtifact.iteration === artifact.iteration
+        );
+        
+        if (isDeployed) {
+            selectedArtifacts.push(artifact);
+        }
+    }
+    
+    // 更新选择计数
+    updateSelectionCount();
+    
+    console.log(`自动选择了 ${selectedArtifacts.length} 个已部署的作品`);
+}
 
 // 监听部署日志更新
 socket.on('deploy:log', function(message) {
@@ -135,6 +194,9 @@ socket.on('deploy:complete', function(result) {
         
         // 更新站点信息
         socket.emit('deploy:requestSiteInfo');
+        
+        // 重新获取已部署的作品列表
+        socket.emit('deploy:requestDeployedArtifacts');
     } else {
         appendToLog(`\n❌ 部署失败: ${result.error}`);
     }
@@ -145,6 +207,9 @@ socket.on('deploy:filesGenerated', function(result) {
     if (result.success) {
         appendToLog(`\n✅ 文件生成成功！\n共选择了 ${result.artifactCount} 个作品，保存到 ${result.path}`);
         showNotification('文件生成成功', '现在可以部署到GitHub Pages了');
+        
+        // 重新获取已部署的作品列表
+        socket.emit('deploy:requestDeployedArtifacts');
     } else {
         appendToLog(`\n❌ 文件生成失败: ${result.error}`);
     }

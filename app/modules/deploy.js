@@ -118,6 +118,24 @@ function setupDeployRoute(app, watchDirs, config, io) {
             }
         });
         
+        // 新增：客户端请求已部署的制品数据
+        socket.on('deploy:requestDeployedArtifacts', () => {
+            try {
+                console.log('收到已部署制品数据请求');
+                
+                // 获取已部署的制品数据
+                const deployedArtifacts = getDeployedArtifacts();
+                console.log(`找到 ${deployedArtifacts.length} 个已部署制品`);
+                
+                // 发送已部署制品数据给客户端
+                socket.emit('deploy:deployedArtifacts', deployedArtifacts);
+                console.log('已发送已部署制品数据给客户端');
+            } catch (err) {
+                console.error('发送已部署制品数据时出错:', err);
+                socket.emit('deploy:error', { message: '获取已部署制品数据失败' });
+            }
+        });
+        
         // 监听断开连接事件
         socket.on('disconnect', () => {
             console.log('Deploy客户端断开连接');
@@ -359,22 +377,23 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
         fs.mkdirSync(deployDir, { recursive: true });
     }
     
+    // 保存现有的部署信息
+    const deployInfoPath = path.join(deployDir, 'deploy_info.json');
+    let existingDeployInfo = null;
+    
+    if (fs.existsSync(deployInfoPath)) {
+        try {
+            existingDeployInfo = JSON.parse(fs.readFileSync(deployInfoPath, 'utf8'));
+            socket.emit('deploy:log', '保留现有部署信息');
+        } catch (e) {
+            console.error('读取部署信息时出错:', e);
+        }
+    }
+    
     // 移除现有的部署文件
     socket.emit('deploy:log', '清理现有部署文件...');
     try {
-        // 保留deploy_info.json文件
-        const deployInfoPath = path.join(deployDir, 'deploy_info.json');
-        let deployInfo = null;
-        
-        if (fs.existsSync(deployInfoPath)) {
-            try {
-                deployInfo = JSON.parse(fs.readFileSync(deployInfoPath, 'utf8'));
-            } catch (e) {
-                console.error('读取部署信息时出错:', e);
-            }
-        }
-        
-        // 删除目录中的所有文件和子目录
+        // 删除目录中的所有文件和子目录（除了deploy_info.json）
         const files = fs.readdirSync(deployDir);
         for (const file of files) {
             const filePath = path.join(deployDir, file);
@@ -387,11 +406,6 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
             }
         }
         
-        // 如果有部署信息，重新保存
-        if (deployInfo) {
-            fs.writeFileSync(deployInfoPath, JSON.stringify(deployInfo, null, 2), 'utf8');
-        }
-        
         socket.emit('deploy:log', '清理完成，开始生成新文件...');
     } catch (err) {
         console.error('清理部署目录时出错:', err);
@@ -400,15 +414,23 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
     }
     
     // 创建artifacts.json文件
-    const artifactsJson = artifacts.map(artifact => ({
-        alchemyId: artifact.alchemyId,
-        alchemyDir: artifact.alchemyDir,
-        query: artifact.query,
-        timestamp: artifact.timestamp,
-        iteration: artifact.iteration,
-        screenshot: artifact.screenshot,
-        relativePath: `artifacts/${artifact.alchemyId}.html`
-    }));
+    const artifactsJson = artifacts.map(artifact => {
+        // 从artifact.alchemyId提取唯一标识符
+        const artifactId = artifact.alchemyId;
+        
+        // 使用共同的文件名基础
+        const fileBaseName = `${artifactId}_${artifact.iteration}`;
+        
+        return {
+            alchemyId: artifact.alchemyId,
+            alchemyDir: artifact.alchemyDir,
+            query: artifact.query,
+            timestamp: artifact.timestamp,
+            iteration: artifact.iteration,
+            screenshot: null, // 初始为null，稍后更新
+            relativePath: `artifacts/${fileBaseName}.html` // 使用标准化的文件名
+        };
+    });
     
     // 写入artifacts.json
     fs.writeFileSync(
@@ -441,7 +463,8 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
     
     // 复制每个制品的HTML和截图文件
     let successCount = 0;
-    for (const artifact of artifacts) {
+    for (let i = 0; i < artifacts.length; i++) {
+        const artifact = artifacts[i];
         try {
             // 构建源文件路径
             const htmlSourcePath = path.join(alchemyPath, artifact.alchemyDir, artifact.outputPath);
@@ -455,8 +478,11 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
             // 读取HTML文件
             let htmlContent = fs.readFileSync(htmlSourcePath, 'utf8');
             
+            // 创建标准化的文件名
+            const fileBaseName = `${artifact.alchemyId}_${artifact.iteration}`;
+            
             // 构建目标文件路径
-            const htmlTargetPath = path.join(artifactsDir, `${artifact.alchemyId}.html`);
+            const htmlTargetPath = path.join(artifactsDir, `${fileBaseName}.html`);
             
             // 写入HTML文件
             fs.writeFileSync(htmlTargetPath, htmlContent, 'utf8');
@@ -464,21 +490,27 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
             // 如果有截图，复制截图文件
             if (artifact.screenshot) {
                 const screenshotSourcePath = path.join(alchemyPath, artifact.alchemyDir, artifact.screenshot);
-                const screenshotFilename = path.basename(artifact.screenshot);
-                const screenshotTargetPath = path.join(imagesDir, `${artifact.alchemyId}_${screenshotFilename}`);
+                const screenshotExtension = path.extname(artifact.screenshot); // 获取截图文件扩展名
+                const screenshotTargetPath = path.join(imagesDir, `${fileBaseName}${screenshotExtension}`);
                 
                 // 检查截图文件是否存在
                 if (fs.existsSync(screenshotSourcePath)) {
                     fs.copyFileSync(screenshotSourcePath, screenshotTargetPath);
                     
-                    // 更新artifacts.json中的截图路径
-                    const index = artifactsJson.findIndex(item => item.alchemyId === artifact.alchemyId);
+                    // 更新artifacts.json中的截图路径，与relativePath保持一致的命名模式
+                    const index = artifactsJson.findIndex(item => 
+                        item.alchemyId === artifact.alchemyId && 
+                        item.iteration === artifact.iteration
+                    );
                     if (index !== -1) {
-                        artifactsJson[index].screenshot = `images/${artifact.alchemyId}_${screenshotFilename}`;
+                        artifactsJson[index].screenshot = `images/${fileBaseName}${screenshotExtension}`;
                     }
                 } else {
                     socket.emit('deploy:log', `警告: 找不到制品 ${artifact.alchemyId} 的截图文件，使用默认图片`);
-                    const index = artifactsJson.findIndex(item => item.alchemyId === artifact.alchemyId);
+                    const index = artifactsJson.findIndex(item => 
+                        item.alchemyId === artifact.alchemyId && 
+                        item.iteration === artifact.iteration
+                    );
                     if (index !== -1) {
                         artifactsJson[index].screenshot = null;
                     }
@@ -486,54 +518,54 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
             }
             
             successCount++;
-            socket.emit('deploy:log', `已复制制品 ${artifact.alchemyId} 的文件`);
+            socket.emit('deploy:log', `已复制制品 ${artifact.alchemyId}（迭代 ${artifact.iteration}）的文件`);
         } catch (err) {
             console.error(`处理制品 ${artifact.alchemyId} 时出错:`, err);
             socket.emit('deploy:log', `处理制品 ${artifact.alchemyId} 时出错: ${err.message}`);
         }
     }
     
-    // 更新artifacts.json文件（因为可能有截图路径更新）
+    // 更新artifacts.json文件
     fs.writeFileSync(
         path.join(deployDir, 'artifacts.json'),
         JSON.stringify(artifactsJson, null, 2),
         'utf8'
     );
     
-    // 创建简单的index.html文件，重定向到gallery.html
-    const indexHtml = `
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0;url=./gallery.html">
-    <title>重定向到作品集</title>
-</head>
-<body>
-    <p>正在跳转到作品集...</p>
-    <script>window.location.href = "./gallery.html";</script>
-</body>
-</html>`;
-    
+    // 创建index.html文件，直接使用gallery的内容
+    const indexHtml = generateGalleryHtml(artifactsJson);
     fs.writeFileSync(path.join(deployDir, 'index.html'), indexHtml, 'utf8');
     
-    // 创建gallery.html文件
-    const galleryHtml = generateGalleryHtml(artifactsJson);
-    fs.writeFileSync(path.join(deployDir, 'gallery.html'), galleryHtml, 'utf8');
-    
-    socket.emit('deploy:log', `创建了gallery页面和重定向index页面`);
+    socket.emit('deploy:log', `创建了index页面`);
     
     // 添加.nojekyll文件（防止GitHub Pages使用Jekyll处理）
     fs.writeFileSync(path.join(deployDir, '.nojekyll'), '', 'utf8');
     
-    // 生成部署信息文件
-    const deployInfo = {
+    // 生成部署信息文件，保留之前的部署信息
+    let deployInfo = {
         lastDeploy: new Date().toISOString(),
         repoUrl: '尚未部署',
         branch: '尚未部署',
         artifactCount: successCount,
         url: '尚未部署'
     };
+    
+    // 如果存在之前的部署信息，则保留repoUrl、branch和url
+    if (existingDeployInfo) {
+        if (existingDeployInfo.repoUrl && existingDeployInfo.repoUrl !== '尚未部署' && existingDeployInfo.repoUrl !== '未部署') {
+            deployInfo.repoUrl = existingDeployInfo.repoUrl;
+        }
+        
+        if (existingDeployInfo.branch && existingDeployInfo.branch !== '尚未部署' && existingDeployInfo.branch !== '未部署') {
+            deployInfo.branch = existingDeployInfo.branch;
+        }
+        
+        if (existingDeployInfo.url && existingDeployInfo.url !== '尚未部署' && existingDeployInfo.url !== '未部署' && existingDeployInfo.url !== '未知') {
+            deployInfo.url = existingDeployInfo.url;
+        }
+        
+        socket.emit('deploy:log', `保留了之前的部署仓库信息: ${deployInfo.repoUrl}`);
+    }
     
     fs.writeFileSync(
         path.join(deployDir, 'deploy_info.json'),
@@ -1116,6 +1148,26 @@ function updateDeployInfo(repoUrl, branch, deployDir) {
     
     // 保存部署信息
     fs.writeFileSync(deployInfoPath, JSON.stringify(deployInfo, null, 2), 'utf8');
+}
+
+// 新增：获取已部署的制品数据
+function getDeployedArtifacts() {
+    console.log('获取已部署的制品数据');
+    const deployDir = path.join(process.cwd(), '..', 'work_dir/gh_page');
+    const artifactsPath = path.join(deployDir, 'artifacts.json');
+    
+    if (fs.existsSync(artifactsPath)) {
+        try {
+            console.log('找到已部署的制品信息文件');
+            return JSON.parse(fs.readFileSync(artifactsPath, 'utf8'));
+        } catch (err) {
+            console.error('读取已部署制品信息时出错:', err);
+            return [];
+        }
+    } else {
+        console.log('未找到已部署的制品信息文件');
+        return [];
+    }
 }
 
 module.exports = { setupDeployRoute }; 
