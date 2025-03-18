@@ -801,6 +801,362 @@
                 opacity: 0.6;
             }
         }
+        
+        /* 添加Contact部分的背景和样式 */
+        #contact {
+            background-image: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.95)), url('https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #contact .section-title,
+        #contact .section-subtitle {
+            color: white;
+            position: relative;
+            z-index: 5;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        #contact .section-subtitle {
+            color: rgba(255, 255, 255, 0.85);
+        }
+        
+        .contact-card {
+            background-color: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(79, 156, 249, 0.3);
+            border-radius: 12px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2), 0 0 15px rgba(79, 156, 249, 0.2);
+            position: relative;
+            z-index: 5;
+            transition: all 0.3s ease;
+        }
+        
+        .contact-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3), 0 0 20px rgba(79, 156, 249, 0.3);
+        }
+        
+        .contact-methods {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+            justify-content: center;
+        }
+        
+        .contact-method {
+            flex-basis: 260px;
+            text-align: center;
+            padding: 2rem;
+            background-color: rgba(30, 41, 59, 0.4);
+            border-radius: 12px;
+            border: 1px solid rgba(79, 156, 249, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .contact-method:hover {
+            transform: translateY(-5px);
+            background-color: rgba(30, 41, 59, 0.6);
+            border-color: rgba(79, 156, 249, 0.4);
+        }
+        
+        .contact-method::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, rgba(79, 156, 249, 0.1) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .contact-method:hover::before {
+            opacity: 1;
+        }
+        
+        .contact-icon {
+            font-size: 2.5rem;
+            color: #4f9cf9;
+            margin-bottom: 1rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background-color: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(79, 156, 249, 0.3);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .contact-method:hover .contact-icon {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(79, 156, 249, 0.3);
+        }
+        
+        .contact-method h4 {
+            font-size: 1.2rem;
+            color: white;
+            margin-bottom: 0.5rem;
+        }
+        
+        .contact-method p, .contact-method a {
+            color: rgba(255, 255, 255, 0.85);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+        
+        .contact-method a:hover {
+            color: #4f9cf9;
+        }
+        
+        /* 魔法粒子效果 */
+        .magic-particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+        
+        .magic-particle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: #4f9cf9;
+            border-radius: 50%;
+            animation: particle-float 12s infinite ease-in-out;
+            opacity: 0.1;
+        }
+        
+        @keyframes particle-float {
+            0%, 100% {
+                transform: translateY(0) translateX(0);
+            }
+            25% {
+                transform: translateY(-50px) translateX(30px);
+            }
+            50% {
+                transform: translateY(-100px) translateX(-30px);
+            }
+            75% {
+                transform: translateY(-50px) translateX(-60px);
+            }
+        }
+        
+        /* 添加社群部分的背景和样式 */
+        #community {
+            background-image: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.85)), url('https://images.unsplash.com/photo-1581090464777-f3220bbe1b8b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #community .section-title,
+        #community .section-subtitle {
+            color: white;
+            position: relative;
+            z-index: 5;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        #community .section-subtitle {
+            color: rgba(255, 255, 255, 0.85);
+        }
+        
+        .community-card {
+            background-color: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(79, 156, 249, 0.3);
+            border-radius: 12px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2), 0 0 15px rgba(79, 156, 249, 0.2);
+            position: relative;
+            z-index: 5;
+            transition: all 0.3s ease;
+        }
+        
+        .community-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3), 0 0 20px rgba(79, 156, 249, 0.3);
+        }
+        
+        .join-community {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 3rem;
+            justify-content: center;
+        }
+        
+        .community-info {
+            flex: 1;
+            min-width: 300px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .community-info h4 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .community-info p {
+            line-height: 1.7;
+            margin-bottom: 1.5rem;
+        }
+        
+        .community-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            background-color: rgba(79, 156, 249, 0.2);
+            border: 1px solid rgba(79, 156, 249, 0.4);
+            border-radius: 50px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .community-badge i {
+            margin-right: 5px;
+            color: #4f9cf9;
+        }
+        
+        .community-actions {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .social-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+        
+        .social-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(79, 156, 249, 0.3);
+            color: white;
+            font-size: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .social-link:hover {
+            background-color: rgba(79, 156, 249, 0.3);
+            transform: translateY(-5px);
+            color: white;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .community-contact {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background-color: rgba(30, 41, 59, 0.4);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .contact-item:hover {
+            background-color: rgba(30, 41, 59, 0.6);
+            transform: translateX(5px);
+        }
+        
+        .contact-item i {
+            color: #4f9cf9;
+            font-size: 1.3rem;
+        }
+        
+        .contact-item a {
+            color: white;
+            text-decoration: none;
+        }
+        
+        .contact-item a:hover {
+            color: #4f9cf9;
+        }
+        
+        .btn-join {
+            display: inline-block;
+            padding: 15px 30px;
+            background: linear-gradient(45deg, #3b82f6, #2563eb);
+            color: white;
+            border-radius: 50px;
+            font-weight: 500;
+            font-size: 1.1rem;
+            text-decoration: none;
+            border: none;
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+            transition: all 0.3s ease;
+            margin-top: 1.5rem;
+            text-align: center;
+        }
+        
+        .btn-join:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 25px rgba(37, 99, 235, 0.4);
+            color: white;
+        }
+        
+        /* 魔法光芒效果 */
+        .magic-glow {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(79, 156, 249, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+            z-index: 1;
+            opacity: 0.6;
+            animation: pulse 4s infinite alternate ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0% {
+                opacity: 0.4;
+                transform: scale(1);
+            }
+            100% {
+                opacity: 0.7;
+                transform: scale(1.2);
+            }
+        }
     </style>
 </head>
 <body>
@@ -818,8 +1174,7 @@
                     <a href="/" class="nav-link">首页</a>
                     <a href="/gallery" class="nav-link">作品</a>
                     <a href="#features" class="nav-link">特性</a>
-                    <a href="#about" class="nav-link">关于</a>
-                    <a href="#contact" class="nav-link">联系</a>
+                    <a href="#community" class="nav-link">社群</a>
                 </nav>
                 <button id="mobile-menu-button" class="mobile-menu-button d-md-none">
                     <i class="bi bi-list"></i>
@@ -832,8 +1187,7 @@
                 <a href="/" class="nav-link">首页</a>
                 <a href="/gallery" class="nav-link">作品</a>
                 <a href="#features" class="nav-link">特性</a>
-                <a href="#about" class="nav-link">关于</a>
-                <a href="#contact" class="nav-link">联系</a>
+                <a href="#community" class="nav-link">社群</a>
             </div>
         </div>
 
@@ -867,7 +1221,7 @@
                                 <i class="bi bi-fire"></i>
                             </div>
                             <h4 class="feature-title">数据转化术</h4>
-                            <p class="feature-text">如同炼金师提炼贵金属，我们从原始数据中萃取核心价值，转化为清晰可见的商业智慧。</p>
+                            <p class="feature-text">如同炼金师提炼贵金属，我们用AI的力量从原始数据中萃取核心价值，转化为清晰可见的商业智慧。</p>
                         </div>
                     </div>
                     
@@ -894,62 +1248,61 @@
             </div>
         </section>
 
-        <!-- 关于部分 -->
-        <section id="about" class="section">
+        <!-- 社群部分 -->
+        <section id="community" class="section">
             <!-- 装饰元素 -->
             <div class="alchemy-decoration symbol-1"></div>
             <div class="alchemy-decoration symbol-2"></div>
-            <div class="alchemy-decoration symbol-3"></div>
-            <div class="light-beam"></div>
+            <div class="magic-glow" style="top: 20%; right: 10%;"></div>
+            <div class="magic-glow" style="bottom: 15%; left: 5%;"></div>
+            <div class="magic-particles" id="magic-particles"></div>
             
             <div class="content-container">
-                <h3 class="section-title">炼金师团队</h3>
-                <p class="section-subtitle">我们是一群痴迷于数据炼金术的现代魔法师，用算法和智慧创造商业奇迹</p>
+                <h3 class="section-title">加入炼金师社群</h3>
+                <p class="section-subtitle">与志同道合的数据炼金术士们一起探索无限可能</p>
                 
-                <div class="row align-items-center">
-                    <div class="col-lg-6 mb-4 mb-lg-0">
-                        <img src="https://images.unsplash.com/photo-1568992688065-536aad8a12f6?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="炼金师团队" class="img-fluid rounded-3">
-                    </div>
-                    <div class="col-lg-6">
-                        <h4 class="mb-4 fw-bold">我们的炼金信条</h4>
-                        <p class="mb-4">DataMind 相信每一份数据都蕴含宝藏，犹如炼金术士相信卑金属可变黄金。我们的使命是通过先进的"数据炼金术"，揭示隐藏在平凡数据背后的非凡价值。</p>
-                        <p>投入数据，收获惊喜 — 这不仅是我们的承诺，更是我们不断探索的终极目标。</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- 联系部分 -->
-        <section id="contact" class="section">
-            <div class="content-container">
-                <h3 class="section-title">联系我们</h3>
-                <p class="section-subtitle">无论您有任何问题或需求，我们都乐意倾听和帮助</p>
-                
-                <div class="row justify-content-center">
-                    <div class="col-lg-8">
-                        <form class="p-4 bg-white rounded-3 shadow-sm">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label for="name" class="form-label">姓名</label>
-                                    <input type="text" class="form-control" id="name" placeholder="您的姓名">
+                <div class="community-card">
+                    <div class="join-community">
+                        <div class="community-info">
+                            <h4>共同探索数据的奥秘</h4>
+                            <p>DataMind社群汇聚了全球各地热爱数据分析与人工智能的炼金术士。在这里，我们分享最新的炼金技术、讨论实战案例，共同解决挑战。</p>
+                            <p>无论你是经验丰富的大师，还是刚开始探索数据世界的学徒，都能在我们的社群中找到归属。</p>
+                            
+                            <div class="community-badges">
+                                <span class="community-badge"><i class="bi bi-calendar-event"></i>每周活动</span>
+                                <span class="community-badge"><i class="bi bi-lightbulb-fill"></i>技术交流</span>
+                                <span class="community-badge"><i class="bi bi-book-fill"></i>学习资源</span>
+                                <span class="community-badge"><i class="bi bi-briefcase-fill"></i>就业机会</span>
+                            </div>
+                        </div>
+                        
+                        <div class="community-actions">
+                            <a href="/join" class="btn-join w-100">立即加入炼金师社群</a>
+                            
+                            <div class="community-contact">
+                                <div class="contact-item">
+                                    <i class="bi bi-envelope-fill"></i>
+                                    <a href="mailto:community@datamind.com">community@datamind.com</a>
                                 </div>
-                                <div class="col-md-6">
-                                    <label for="email" class="form-label">邮箱</label>
-                                    <input type="email" class="form-control" id="email" placeholder="您的邮箱地址">
+                                <div class="contact-item">
+                                    <i class="bi bi-discord"></i>
+                                    <a href="https://discord.gg/datamind" target="_blank">Discord: DataMind炼金术士公会</a>
                                 </div>
-                                <div class="col-12">
-                                    <label for="subject" class="form-label">主题</label>
-                                    <input type="text" class="form-control" id="subject" placeholder="消息主题">
-                                </div>
-                                <div class="col-12">
-                                    <label for="message" class="form-label">消息</label>
-                                    <textarea class="form-control" id="message" rows="5" placeholder="请详细描述您的需求或问题"></textarea>
-                                </div>
-                                <div class="col-12 text-center">
-                                    <button type="submit" class="btn btn-primary px-5">发送消息</button>
+                                <div class="contact-item">
+                                    <i class="bi bi-chat-dots-fill"></i>
+                                    <a href="#">微信公众号: DataMind炼金室</a>
                                 </div>
                             </div>
-                        </form>
+                            
+                            <h5 class="text-center mt-4 mb-2">关注我们的社交媒体</h5>
+                            <div class="social-links">
+                                <a href="#" class="social-link"><i class="bi bi-twitter"></i></a>
+                                <a href="#" class="social-link"><i class="bi bi-linkedin"></i></a>
+                                <a href="#" class="social-link"><i class="bi bi-github"></i></a>
+                                <a href="#" class="social-link"><i class="bi bi-youtube"></i></a>
+                                <a href="#" class="social-link"><i class="bi bi-wechat"></i></a>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -961,7 +1314,7 @@
                 <div class="row">
                     <div class="col-lg-4 mb-4 mb-lg-0">
                         <h5 class="mb-3">DataMind</h5>
-                        <p class="mb-0">数据炼金术的艺术家，将原始数据转化为智能洞察</p>
+                        <p class="mb-0">掌握数据炼金术，将原始数据转化为智能洞察</p>
                     </div>
                     <div class="col-lg-4 mb-4 mb-lg-0">
                         <h5 class="mb-3">快速链接</h5>
@@ -969,21 +1322,21 @@
                             <li><a href="/" class="text-white-50">首页</a></li>
                             <li><a href="/gallery.html" class="text-white-50">作品</a></li>
                             <li><a href="#features" class="text-white-50">特性</a></li>
-                            <li><a href="#about" class="text-white-50">关于</a></li>
+                            <li><a href="#community" class="text-white-50">社群</a></li>
                         </ul>
                     </div>
                     <div class="col-lg-4">
-                        <h5 class="mb-3">联系方式</h5>
+                        <h5 class="mb-3">在线联系</h5>
                         <ul class="list-unstyled">
-                            <li class="mb-2"><i class="bi bi-envelope me-2"></i> contact@datamind.com</li>
-                            <li class="mb-2"><i class="bi bi-telephone me-2"></i> +86 123 4567 8910</li>
-                            <li><i class="bi bi-geo-alt me-2"></i> 北京市海淀区中关村大街1号</li>
+                            <li class="mb-2"><i class="bi bi-envelope me-2"></i> community@datamind.club</li>
+                            <li class="mb-2"><i class="bi bi-discord me-2"></i> Discord: DataMind Club</li>
+                            <li><i class="bi bi-chat-dots me-2"></i> 微信公众号: DataMind Club</li>
                         </ul>
                     </div>
                 </div>
                 <hr class="my-4 bg-secondary">
                 <div class="text-center text-white-50">
-                    <p class="mb-0">&copy; 2023 DataMind. 保留所有权利。</p>
+                    <p class="mb-0">&copy; 2025 dataMind.club 保留所有权利。</p>
                 </div>
             </div>
         </footer>
@@ -1148,6 +1501,45 @@
             symbol.style.animationDelay = `${Math.random() * 15}s`;
             
             container.appendChild(symbol);
+        }
+        
+        // 创建魔法粒子效果
+        document.addEventListener('DOMContentLoaded', () => {
+            // 其他现有代码...
+            
+            // 添加联系部分的魔法粒子
+            const particlesContainer = document.getElementById('magic-particles');
+            if (particlesContainer) {
+                for (let i = 0; i < 30; i++) {
+                    createMagicParticle(particlesContainer);
+                }
+            }
+        });
+        
+        // 创建魔法粒子函数
+        function createMagicParticle(container) {
+            const particle = document.createElement('div');
+            particle.classList.add('magic-particle');
+            
+            // 随机大小
+            const size = Math.random() * 4 + 2;
+            particle.style.width = `${size}px`;
+            particle.style.height = `${size}px`;
+            
+            // 随机位置
+            const posX = Math.random() * 100;
+            const posY = Math.random() * 100;
+            particle.style.left = `${posX}%`;
+            particle.style.top = `${posY}%`;
+            
+            // 随机透明度
+            particle.style.opacity = Math.random() * 0.2 + 0.05;
+            
+            // 随机动画延迟和持续时间
+            particle.style.animationDelay = `${Math.random() * 5}s`;
+            particle.style.animationDuration = `${Math.random() * 10 + 8}s`;
+            
+            container.appendChild(particle);
         }
     </script>
 </body>
