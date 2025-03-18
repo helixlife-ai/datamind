@@ -541,6 +541,19 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
     // 添加.nojekyll文件（防止GitHub Pages使用Jekyll处理）
     fs.writeFileSync(path.join(deployDir, '.nojekyll'), '', 'utf8');
     
+    // 创建README.md文件
+    const repoInfo = existingDeployInfo && existingDeployInfo.repoUrl ? 
+        existingDeployInfo.repoUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/) : null;
+    
+    const username = repoInfo && repoInfo.length >= 3 ? repoInfo[1] : 'username';
+    const repoName = repoInfo && repoInfo.length >= 3 ? repoInfo[2].replace('.git', '') : 'repo';
+    const deployUrl = `https://${username}.github.io/${repoName}/`;
+    
+    const readmeContent = generateReadmeContent(artifactsJson, deployUrl, username, repoName);
+    fs.writeFileSync(path.join(deployDir, 'README.md'), readmeContent, 'utf8');
+    
+    socket.emit('deploy:log', `创建了README.md文件`);
+    
     // 生成部署信息文件，保留之前的部署信息
     let deployInfo = {
         lastDeploy: new Date().toISOString(),
@@ -579,6 +592,89 @@ function generateDeployFiles(artifacts, socket, watchDirs) {
         artifactCount: successCount,
         path: deployDir
     });
+}
+
+// 生成README.md的内容
+function generateReadmeContent(artifacts, deployUrl, username, repoName) {
+    // 获取当前日期
+    const now = new Date();
+    const dateString = now.toISOString().split('T')[0];
+    
+    // 获取作品总数
+    const artifactCount = artifacts.length;
+    
+    // 整理作品分类
+    const categories = {};
+    artifacts.forEach(artifact => {
+        const query = artifact.query;
+        // 提取查询中的关键词作为分类（简单处理，实际可能需要更复杂的算法）
+        const keywords = query.split(/\s+/).filter(word => word.length > 2);
+        const category = keywords.length > 0 ? keywords[0] : '其他';
+        
+        if (!categories[category]) {
+            categories[category] = [];
+        }
+        categories[category].push(artifact);
+    });
+    
+    // 生成作品列表
+    let artifactsList = '';
+    artifacts.slice(0, 5).forEach(artifact => {
+        artifactsList += `- [#${artifact.alchemyId} - ${artifact.query.substring(0, 50)}${artifact.query.length > 50 ? '...' : ''}](${deployUrl}artifacts/${artifact.alchemyId}_${artifact.iteration}.html)\n`;
+    });
+    
+    if (artifacts.length > 5) {
+        artifactsList += `- ... 更多作品请查看[完整列表](${deployUrl})\n`;
+    }
+    
+    return `# DataMind 作品展示
+
+> 由 DataMind 强力驱动 | 最后更新: ${dateString}
+
+![DataMind Banner](https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80)
+
+## 项目概述
+
+这个网站包含了通过 DataMind 生成的数据可视化和分析作品集。所有作品都由人工智能协助生成，展示了现代数据科学和可视化技术的强大功能。
+
+**网站地址**: [${deployUrl}](${deployUrl})
+
+## 作品集亮点
+
+当前共有 **${artifactCount}** 个作品，涵盖了多个数据分析和可视化领域。
+
+### 精选作品
+
+${artifactsList}
+
+## 关于 DataMind
+
+DataMind 是一个专注于数据分析和可视化的AI平台，它能够帮助用户快速生成数据报告、图表和交互式仪表板。通过简单的自然语言提示，用户可以获得专业质量的数据洞察和可视化效果。
+
+## 技术栈
+
+- 前端: HTML5, CSS3, JavaScript, Bootstrap
+- 数据可视化: D3.js, ECharts, Plotly
+- 部署: GitHub Pages
+
+## 如何使用
+
+1. 浏览首页查看所有作品概览
+2. 点击任何作品卡片进入详细视图
+3. 在详细视图中可以查看完整的数据分析和交互式图表
+
+## 贡献
+
+这个仓库由 DataMind 自动部署和维护。如果您对系统有任何建议或问题，请联系仓库管理员。
+
+## 许可证
+
+此项目中的数据可视化和分析内容遵循 [MIT 许可证](https://opensource.org/licenses/MIT)。
+
+---
+
+&copy; ${now.getFullYear()} DataMind | 由 [${username}](https://github.com/${username}) 部署
+`;
 }
 
 // 生成gallery.html内容
